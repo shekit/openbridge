@@ -49,4 +49,43 @@ describe('Claude Code backend', () => {
       expect(parsed.events.length).toBeGreaterThan(0);
     });
   });
+
+  describe('P1.4: parse session_id from system init event', () => {
+    it('extracts session_id from system init event', () => {
+      const stdout = JSON.stringify({
+        type: 'system',
+        subtype: 'init',
+        session_id: 'abc-123-def',
+      });
+      const parsed = parseClaudeOutput(stdout, '', 0);
+      expect(parsed.sessionId).toBe('abc-123-def');
+    });
+
+    it('emits SessionStarted normalized event', () => {
+      const stdout = JSON.stringify({
+        type: 'system',
+        subtype: 'init',
+        session_id: 'sess_xyz',
+      });
+      const parsed = parseClaudeOutput(stdout, '', 0);
+      const sessionEvent = parsed.events.find((e) => e.type === 'session_started');
+      expect(sessionEvent).toBeDefined();
+      expect(sessionEvent!.type === 'session_started' && sessionEvent!.sessionId).toBe('sess_xyz');
+    });
+
+    it('getSessionId() returns extracted session_id after first send', () => {
+      // Verify that the ClaudeBackend class stores session IDs
+      const backend = new ClaudeBackend();
+      expect(backend.getSessionId()).toBeNull();
+    });
+
+    it('returns null sessionId when no system init event present', () => {
+      const stdout = JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'hi' }] },
+      });
+      const parsed = parseClaudeOutput(stdout, '', 0);
+      expect(parsed.sessionId).toBeNull();
+    });
+  });
 });

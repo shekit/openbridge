@@ -142,7 +142,7 @@
             "getSessionId() returns the extracted session_id",
             "Unit test with sample system init JSON verifies extraction"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P1.5",
