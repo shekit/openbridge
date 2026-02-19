@@ -132,7 +132,7 @@
             "Process stdout is collected as a string",
             "Process exits and exit code is captured"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P1.4",
