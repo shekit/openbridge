@@ -2,7 +2,8 @@
 
 ## Current Status
 Phase 0 — Project Setup (complete)
-Phase 1 — Normalized Event Types and Backend Interface (not started)
+Phase 1 — Normalized Event Types and Backend Interface (complete)
+Phase 2 — SQLite Persistence and Router (not started)
 
 ## Session Log
 
@@ -41,3 +42,20 @@ Phase 1 — Normalized Event Types and Backend Interface (not started)
 - Created `vitest.config.ts` and `src/__tests__/placeholder.test.ts`
 - All verification passed: build succeeds, tests pass (1/1), init.sh check passes, dist/ output correct, .gitignore covers all required paths
 - Marked P0.1–P0.9 as passing in feature-list.json
+
+### Session 4 — Phase 1: Normalized Event Types and Backend Interface
+- Created `src/types/events.ts` — 8 normalized event type interfaces (AssistantText, ToolUse, ToolResult, CommandExecution, PermissionDenied, SessionStarted, TurnCompleted, ErrorEvent) with NormalizedEvent discriminated union
+- Created `src/types/backend.ts` — Backend interface (start, send, getSessionId, stop) with SendResult type
+- Created `src/backends/claude.ts` — Claude Code backend:
+  - `spawnCollect()` — spawns process, collects stdout/stderr, returns exit code
+  - `parseClaudeOutput()` — parses stream-json JSONL into normalized events
+  - `buildClaudeArgs()` — constructs CLI args, adds `-r SESSION_ID` for resume
+  - Handles: session_id extraction, assistant text, permission_denials, permission context from user errors, error events
+- Created `src/backends/codex.ts` — Codex CLI backend:
+  - `parseCodexOutput()` — parses JSON JSONL into normalized events
+  - `buildCodexArgs()` — constructs CLI args, uses `exec resume` subcommand for resume (no `--sandbox` on resume)
+  - Handles: thread_id extraction, agent_message text, command_execution, sandbox denial pattern detection
+  - Configurable sandbox mode (workspace-write, read-only, danger-full-access)
+- Created test files: `events.test.ts`, `backend.test.ts`, `claude.test.ts`, `codex.test.ts`
+- 71 tests passing across 5 test files
+- All 16 features (P1.1–P1.16) committed individually, all marked passing
