@@ -1,0 +1,32 @@
+{
+  "name": "codex-sandbox-denial",
+  "description": "Codex sandbox blocks a write outside workspace, then succeeds with a read-only command.",
+  "steps": [
+    {
+      "type": "send",
+      "text": "Run this exact shell command: touch /etc/codex-sandbox-test-999.txt"
+    },
+    {
+      "type": "wait_pattern",
+      "regex": "(operation not permitted|permission denied|sandbox|read.only|not allowed|SANDBOX_DENIAL)",
+      "flags": "i",
+      "timeoutMs": 120000
+    },
+    {
+      "type": "send",
+      "text": "Now run this exact shell command instead: echo CODEX_SANDBOX_RECOVERY_OK"
+    },
+    {
+      "type": "wait_pattern",
+      "regex": "CODEX_SANDBOX_RECOVERY_OK",
+      "flags": "i",
+      "timeoutMs": 120000
+    },
+    {
+      "type": "wait_quiet",
+      "quietMs": 1500,
+      "timeoutMs": 30000,
+      "requireOutputSinceLastSend": false
+    }
+  ]
+}

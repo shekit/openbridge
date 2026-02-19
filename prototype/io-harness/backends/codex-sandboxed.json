@@ -1,0 +1,26 @@
+{
+  "name": "codex-sandboxed",
+  "command": "/opt/homebrew/bin/codex",
+  "cwd": "{project}",
+  "fallbackOneShot": {
+    "command": "/opt/homebrew/bin/codex",
+    "parser": "codex-json",
+    "cwd": "{project}",
+    "startArgs": [
+      "exec",
+      "--skip-git-repo-check",
+      "--json",
+      "--sandbox",
+      "workspace-write",
+      "{prompt}"
+    ],
+    "resumeArgs": [
+      "exec",
+      "resume",
+      "--skip-git-repo-check",
+      "--json",
+      "{session_id}",
+      "{prompt}"
+    ]
+  }
+}

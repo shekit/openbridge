@@ -1,0 +1,33 @@
+{
+  "name": "claude-edit-denial",
+  "description": "Claude reads a file, then tries to Edit it, gets denied by permission system, recovers with echo.",
+  "steps": [
+    {
+      "type": "send",
+      "text": "First read /Users/abhishek/Documents/bigmac/openbridge/prototype/io-harness/backends/codex.json, then immediately use the Edit tool to replace the first line with '// test'."
+    },
+    {
+      "type": "wait_pattern",
+      "regex": "(PERMISSION_DENIAL|PERMISSION_CONTEXT|permission|blocked|not granted|denied|haven.t granted)",
+      "flags": "i",
+      "timeoutMs": 120000,
+      "optional": true
+    },
+    {
+      "type": "send",
+      "text": "Stop trying to edit. Run exactly: echo CLAUDE_EDIT_DENIAL_RECOVERED and show only that output."
+    },
+    {
+      "type": "wait_pattern",
+      "regex": "CLAUDE_EDIT_DENIAL_RECOVERED",
+      "flags": "i",
+      "timeoutMs": 120000
+    },
+    {
+      "type": "wait_quiet",
+      "quietMs": 1500,
+      "timeoutMs": 30000,
+      "requireOutputSinceLastSend": false
+    }
+  ]
+}
