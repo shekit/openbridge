@@ -266,7 +266,7 @@
             "Default is workspace-write",
             "Unit test verifies startArgs include --sandbox"
           ],
-          "status": "failing"
+          "status": "passing"
         }
       ]
     },
