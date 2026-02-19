@@ -121,7 +121,7 @@
             "send() returns Promise<{ events: NormalizedEvent[], sessionId: string | null }>",
             "TypeScript compiles with no errors"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P1.3",
