@@ -1,7 +1,8 @@
 # OpenBridge Progress
 
 ## Current Status
-Phase 0 — Project Setup (not started)
+Phase 0 — Project Setup (complete)
+Phase 1 — Normalized Event Types and Backend Interface (not started)
 
 ## Session Log
 
@@ -31,3 +32,12 @@ Phase 0 — Project Setup (not started)
   - `scripts/test.sh` — vitest runner
   - `.env.example` — Slack + Discord token template
   - `.gitignore` — node_modules, dist, .env.local, .openbridge/, logs
+
+### Session 3 — Phase 0: Project Setup
+- Created `package.json` (name: openbridge, bin → dist/cli.js, engines ≥ 18, scripts for build/test)
+- Created `tsconfig.json` (strict mode, ES2022, Node16 module resolution, output → dist/)
+- Created `src/index.ts` with exported `main()` function
+- Installed dev dependencies: typescript, vitest, @types/node
+- Created `vitest.config.ts` and `src/__tests__/placeholder.test.ts`
+- All verification passed: build succeeds, tests pass (1/1), init.sh check passes, dist/ output correct, .gitignore covers all required paths
+- Marked P0.1–P0.9 as passing in feature-list.json

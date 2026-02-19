@@ -15,7 +15,7 @@
             "bin field points to CLI entry point",
             "engines field requires node >= 18"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P0.2",
@@ -25,7 +25,7 @@
             "npx tsc --noEmit succeeds with zero errors",
             "Output directory is dist/"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P0.3",
@@ -35,7 +35,7 @@
             "npx tsc compiles successfully to dist/",
             "node dist/index.js runs without error"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P0.4",
@@ -45,7 +45,7 @@
             "npm test runs vitest",
             "A placeholder test in src/__tests__/ passes"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P0.5",
@@ -56,7 +56,7 @@
             "./scripts/init.sh check reports whether codex CLI is available",
             "./scripts/init.sh check verifies .env.local exists (or warns)"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P0.6",
@@ -65,7 +65,7 @@
             "./scripts/build.sh runs tsc and exits 0",
             "dist/ directory contains compiled JS files"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P0.7",
@@ -74,7 +74,7 @@
             "./scripts/test.sh runs vitest and exits 0",
             "Placeholder test passes"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P0.8",
@@ -84,7 +84,7 @@
             ".env.local is ignored",
             ".openbridge/ is ignored"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P0.9",
@@ -93,7 +93,7 @@
             ".env.example exists with placeholder values for SLACK_BOT_TOKEN, SLACK_APP_TOKEN, DISCORD_BOT_TOKEN",
             "Comments explain what each variable is for"
           ],
-          "status": "failing"
+          "status": "passing"
         }
       ]
     },
