@@ -215,7 +215,7 @@
             "getSessionId() returns the extracted thread_id",
             "Unit test with sample thread.started JSON verifies extraction"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P1.12",

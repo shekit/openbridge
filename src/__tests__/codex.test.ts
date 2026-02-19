@@ -46,4 +46,40 @@ describe('Codex CLI backend', () => {
       expect(parsed.events.length).toBeGreaterThan(0);
     });
   });
+
+  describe('P1.11: parse thread_id from thread.started event', () => {
+    it('extracts thread_id from thread.started event', () => {
+      const stdout = JSON.stringify({
+        type: 'thread.started',
+        thread_id: 'thread_abc123',
+      });
+      const parsed = parseCodexOutput(stdout, '', 0);
+      expect(parsed.sessionId).toBe('thread_abc123');
+    });
+
+    it('emits SessionStarted normalized event', () => {
+      const stdout = JSON.stringify({
+        type: 'thread.started',
+        thread_id: 'thread_xyz',
+      });
+      const parsed = parseCodexOutput(stdout, '', 0);
+      const sessionEvent = parsed.events.find((e) => e.type === 'session_started');
+      expect(sessionEvent).toBeDefined();
+      expect(sessionEvent!.type === 'session_started' && sessionEvent!.sessionId).toBe('thread_xyz');
+    });
+
+    it('getSessionId() returns null initially', () => {
+      const backend = new CodexBackend();
+      expect(backend.getSessionId()).toBeNull();
+    });
+
+    it('returns null sessionId when no thread.started event present', () => {
+      const stdout = JSON.stringify({
+        type: 'item.completed',
+        item: { type: 'agent_message', text: 'hello' },
+      });
+      const parsed = parseCodexOutput(stdout, '', 0);
+      expect(parsed.sessionId).toBeNull();
+    });
+  });
 });
