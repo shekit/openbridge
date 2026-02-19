@@ -124,4 +124,56 @@ describe('Codex CLI backend', () => {
       expect(textEvents).toHaveLength(0);
     });
   });
+
+  describe('P1.13: parse command_execution events', () => {
+    it('extracts command_execution with exit_code and aggregated_output', () => {
+      const stdout = JSON.stringify({
+        type: 'item.completed',
+        item: {
+          type: 'command_execution',
+          command: 'ls -la',
+          exit_code: 0,
+          aggregated_output: 'total 8\ndrwxr-xr-x 2 user staff 64 Jan 1 00:00 .',
+        },
+      });
+      const parsed = parseCodexOutput(stdout, '', 0);
+      const cmdEvents = parsed.events.filter((e) => e.type === 'command_execution');
+      expect(cmdEvents).toHaveLength(1);
+      const cmd = cmdEvents[0];
+      expect(cmd.type === 'command_execution' && cmd.command).toBe('ls -la');
+      expect(cmd.type === 'command_execution' && cmd.exitCode).toBe(0);
+      expect(cmd.type === 'command_execution' && cmd.output).toContain('total 8');
+    });
+
+    it('handles non-zero exit code', () => {
+      const stdout = JSON.stringify({
+        type: 'item.completed',
+        item: {
+          type: 'command_execution',
+          command: 'cat nonexistent.txt',
+          exit_code: 1,
+          aggregated_output: 'cat: nonexistent.txt: No such file or directory',
+        },
+      });
+      const parsed = parseCodexOutput(stdout, '', 0);
+      const cmdEvents = parsed.events.filter((e) => e.type === 'command_execution');
+      expect(cmdEvents).toHaveLength(1);
+      expect(cmdEvents[0].type === 'command_execution' && cmdEvents[0].exitCode).toBe(1);
+    });
+
+    it('handles missing command and output fields', () => {
+      const stdout = JSON.stringify({
+        type: 'item.completed',
+        item: {
+          type: 'command_execution',
+          exit_code: 0,
+        },
+      });
+      const parsed = parseCodexOutput(stdout, '', 0);
+      const cmdEvents = parsed.events.filter((e) => e.type === 'command_execution');
+      expect(cmdEvents).toHaveLength(1);
+      expect(cmdEvents[0].type === 'command_execution' && cmdEvents[0].command).toBe('');
+      expect(cmdEvents[0].type === 'command_execution' && cmdEvents[0].output).toBe('');
+    });
+  });
 });

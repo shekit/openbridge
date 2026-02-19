@@ -235,7 +235,7 @@
             "exit_code and aggregated_output are captured as CommandExecution events",
             "Unit test verifies parsing"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P1.14",
