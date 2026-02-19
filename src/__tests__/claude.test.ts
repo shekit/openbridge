@@ -291,4 +291,58 @@ describe('Claude Code backend', () => {
       expect(denial!.type === 'permission_denied' && denial!.context).toBeUndefined();
     });
   });
+
+  describe('P1.8: parse error events', () => {
+    it('result events with is_error: true produce Error normalized events', () => {
+      const stdout = JSON.stringify({
+        type: 'result',
+        is_error: true,
+        errors: ['Authentication failed: invalid API key'],
+        subtype: 'api_error',
+      });
+      const parsed = parseClaudeOutput(stdout, '', 1);
+      const errorEvents = parsed.events.filter((e) => e.type === 'error');
+      expect(errorEvents).toHaveLength(1);
+      expect(errorEvents[0].type === 'error' && errorEvents[0].message).toBe(
+        'Authentication failed: invalid API key',
+      );
+    });
+
+    it('result error with no errors array produces generic message', () => {
+      const stdout = JSON.stringify({
+        type: 'result',
+        is_error: true,
+        subtype: 'unknown_error',
+      });
+      const parsed = parseClaudeOutput(stdout, '', 1);
+      const errorEvents = parsed.events.filter((e) => e.type === 'error');
+      expect(errorEvents).toHaveLength(1);
+      expect(errorEvents[0].type === 'error' && errorEvents[0].message).toBe(
+        'Claude execution failed (unknown_error)',
+      );
+    });
+
+    it('non-zero exit code with no structured error produces Error event', () => {
+      const stdout = JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'partial output' }] },
+      });
+      const parsed = parseClaudeOutput(stdout, '', 1);
+      const errorEvents = parsed.events.filter((e) => e.type === 'error');
+      expect(errorEvents).toHaveLength(1);
+      expect(errorEvents[0].type === 'error' && errorEvents[0].message).toBe(
+        'Claude exited with code 1',
+      );
+    });
+
+    it('zero exit code with no errors produces no Error events', () => {
+      const stdout = JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'all good' }] },
+      });
+      const parsed = parseClaudeOutput(stdout, '', 0);
+      const errorEvents = parsed.events.filter((e) => e.type === 'error');
+      expect(errorEvents).toHaveLength(0);
+    });
+  });
 });

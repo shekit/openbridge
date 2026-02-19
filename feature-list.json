@@ -184,7 +184,7 @@
             "Non-zero exit codes with no structured error produce Error events",
             "Unit test verifies both cases"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P1.9",
