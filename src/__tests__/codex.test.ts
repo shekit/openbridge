@@ -335,4 +335,89 @@ describe('Codex CLI backend', () => {
       expect(backend).toBeDefined();
     });
   });
+
+  describe('error handling', () => {
+    it('parses error events', () => {
+      const stdout = JSON.stringify({
+        type: 'error',
+        message: 'API key invalid',
+      });
+      const parsed = parseCodexOutput(stdout, '', 1);
+      const errors = parsed.events.filter((e) => e.type === 'error');
+      expect(errors).toHaveLength(1);
+      expect(errors[0].type === 'error' && errors[0].message).toBe('API key invalid');
+    });
+
+    it('parses turn.failed events', () => {
+      const stdout = JSON.stringify({
+        type: 'turn.failed',
+        error: { message: 'Rate limit exceeded' },
+      });
+      const parsed = parseCodexOutput(stdout, '', 1);
+      const errors = parsed.events.filter((e) => e.type === 'error');
+      expect(errors).toHaveLength(1);
+      expect(errors[0].type === 'error' && errors[0].message).toBe('Rate limit exceeded');
+    });
+
+    it('turn.failed with no error message produces generic message', () => {
+      const stdout = JSON.stringify({
+        type: 'turn.failed',
+      });
+      const parsed = parseCodexOutput(stdout, '', 1);
+      const errors = parsed.events.filter((e) => e.type === 'error');
+      expect(errors).toHaveLength(1);
+      expect(errors[0].type === 'error' && errors[0].message).toBe('Codex turn failed');
+    });
+
+    it('non-zero exit with no structured error produces Error event', () => {
+      const stdout = JSON.stringify({
+        type: 'item.completed',
+        item: { type: 'agent_message', text: 'partial' },
+      });
+      const parsed = parseCodexOutput(stdout, '', 1);
+      const errors = parsed.events.filter((e) => e.type === 'error');
+      expect(errors).toHaveLength(1);
+      expect(errors[0].type === 'error' && errors[0].message).toBe('Codex exited with code 1');
+    });
+
+    it('zero exit with no errors produces no Error events', () => {
+      const stdout = JSON.stringify({
+        type: 'item.completed',
+        item: { type: 'agent_message', text: 'all good' },
+      });
+      const parsed = parseCodexOutput(stdout, '', 0);
+      const errors = parsed.events.filter((e) => e.type === 'error');
+      expect(errors).toHaveLength(0);
+    });
+  });
+
+  describe('edge cases', () => {
+    it('does not flag sandbox denial on command_execution with exit_code 0', () => {
+      // Regression: prototype only checks sandbox denial on non-zero exit
+      const stdout = JSON.stringify({
+        type: 'item.completed',
+        item: {
+          type: 'command_execution',
+          command: 'grep "permission denied" log.txt',
+          exit_code: 0,
+          aggregated_output: 'line 5: permission denied to user foo',
+        },
+      });
+      const parsed = parseCodexOutput(stdout, '', 0);
+      const denials = parsed.events.filter((e) => e.type === 'permission_denied');
+      expect(denials).toHaveLength(0);
+    });
+
+    it('every parse result ends with turn_completed', () => {
+      const parsed = parseCodexOutput('', '', 0);
+      const lastEvent = parsed.events[parsed.events.length - 1];
+      expect(lastEvent.type).toBe('turn_completed');
+    });
+
+    it('handles empty output gracefully', () => {
+      const parsed = parseCodexOutput('', '', 0);
+      expect(parsed.sessionId).toBeNull();
+      expect(parsed.events).toHaveLength(1); // just turn_completed
+    });
+  });
 });

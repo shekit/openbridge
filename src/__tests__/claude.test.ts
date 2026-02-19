@@ -380,4 +380,47 @@ describe('Claude Code backend', () => {
       expect(secondArgs[secondArgs.indexOf('-r') + 1]).toBe('resume_test_id');
     });
   });
+
+  describe('edge cases', () => {
+    it('every parse result ends with turn_completed', () => {
+      const parsed = parseClaudeOutput('', '', 0);
+      const lastEvent = parsed.events[parsed.events.length - 1];
+      expect(lastEvent.type).toBe('turn_completed');
+    });
+
+    it('handles empty output gracefully', () => {
+      const parsed = parseClaudeOutput('', '', 0);
+      expect(parsed.sessionId).toBeNull();
+      expect(parsed.events).toHaveLength(1); // just turn_completed
+    });
+
+    it('result with both permission_denials and is_error emits both', () => {
+      const stdout = JSON.stringify({
+        type: 'result',
+        is_error: true,
+        errors: ['Session expired'],
+        permission_denials: [
+          { tool_name: 'Bash', tool_input: { command: 'ls' } },
+        ],
+      });
+      const parsed = parseClaudeOutput(stdout, '', 1);
+      const denials = parsed.events.filter((e) => e.type === 'permission_denied');
+      const errors = parsed.events.filter((e) => e.type === 'error');
+      expect(denials).toHaveLength(1);
+      expect(errors).toHaveLength(1);
+    });
+
+    it('skips non-JSON lines without crashing', () => {
+      const stdout = [
+        'some random stderr text',
+        JSON.stringify({ type: 'system', subtype: 'init', session_id: 'test123' }),
+        'WARNING: something happened',
+        JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'hi' }] } }),
+      ].join('\n');
+      const parsed = parseClaudeOutput(stdout, '', 0);
+      expect(parsed.sessionId).toBe('test123');
+      const texts = parsed.events.filter((e) => e.type === 'assistant_text');
+      expect(texts).toHaveLength(1);
+    });
+  });
 });

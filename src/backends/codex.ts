@@ -87,8 +87,8 @@ export function parseCodexOutput(
           output,
         });
 
-        // Check for sandbox denial in command output
-        if (SANDBOX_DENIAL_RE.test(output)) {
+        // Check for sandbox denial in command output (only on non-zero exit)
+        if (exitCodeVal !== 0 && SANDBOX_DENIAL_RE.test(output)) {
           events.push({
             type: 'permission_denied',
             toolName: 'sandbox',
