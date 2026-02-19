@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ClaudeBackend, spawnCollect, parseClaudeOutput } from '../backends/claude.js';
+import { ClaudeBackend, spawnCollect, parseClaudeOutput, buildClaudeArgs } from '../backends/claude.js';
 import type { Backend } from '../types/backend.js';
 
 describe('Claude Code backend', () => {
@@ -343,6 +343,41 @@ describe('Claude Code backend', () => {
       const parsed = parseClaudeOutput(stdout, '', 0);
       const errorEvents = parsed.events.filter((e) => e.type === 'error');
       expect(errorEvents).toHaveLength(0);
+    });
+  });
+
+  describe('P1.9: session resume with -r flag', () => {
+    it('first call does not include -r flag', () => {
+      const args = buildClaudeArgs('hello', null);
+      expect(args).not.toContain('-r');
+      expect(args).toContain('hello');
+      expect(args).toContain('-p');
+      expect(args).toContain('--output-format');
+      expect(args).toContain('stream-json');
+    });
+
+    it('second call includes -r SESSION_ID', () => {
+      const args = buildClaudeArgs('follow-up', 'sess_abc123');
+      expect(args).toContain('-r');
+      const rIndex = args.indexOf('-r');
+      expect(args[rIndex + 1]).toBe('sess_abc123');
+      expect(args[args.length - 1]).toBe('follow-up');
+    });
+
+    it('session ID from first call is reused in args', () => {
+      // Simulate: first call extracts session, second call uses it
+      const firstOutput = JSON.stringify({
+        type: 'system',
+        subtype: 'init',
+        session_id: 'resume_test_id',
+      });
+      const firstParsed = parseClaudeOutput(firstOutput, '', 0);
+      expect(firstParsed.sessionId).toBe('resume_test_id');
+
+      // Second call should include -r with the extracted session ID
+      const secondArgs = buildClaudeArgs('do more', firstParsed.sessionId);
+      expect(secondArgs).toContain('-r');
+      expect(secondArgs[secondArgs.indexOf('-r') + 1]).toBe('resume_test_id');
     });
   });
 });

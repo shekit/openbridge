@@ -157,6 +157,26 @@ export function parseClaudeOutput(
   return { events, sessionId };
 }
 
+/** Build CLI args for a claude oneshot invocation. */
+export function buildClaudeArgs(
+  text: string,
+  sessionId: string | null,
+): string[] {
+  const args = [
+    '-p',
+    '--verbose',
+    '--output-format', 'stream-json',
+    '--input-format', 'text',
+  ];
+
+  if (sessionId) {
+    args.push('-r', sessionId);
+  }
+
+  args.push(text);
+  return args;
+}
+
 export class ClaudeBackend implements Backend {
   private sessionId: string | null = null;
   private projectDir: string = '';
@@ -167,18 +187,7 @@ export class ClaudeBackend implements Backend {
   }
 
   async send(text: string): Promise<SendResult> {
-    const args = [
-      '-p',
-      '--verbose',
-      '--output-format', 'stream-json',
-      '--input-format', 'text',
-    ];
-
-    if (this.sessionId) {
-      args.push('-r', this.sessionId);
-    }
-
-    args.push(text);
+    const args = buildClaudeArgs(text, this.sessionId);
 
     console.log(`[claude] spawning: claude ${args.join(' ').slice(0, 120)}...`);
     const result = await spawnCollect('claude', args, this.projectDir);

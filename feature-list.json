@@ -194,7 +194,7 @@
             "Session ID from first call is reused",
             "Unit test verifies args construction for resume"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P1.10",
