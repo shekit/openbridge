@@ -252,4 +252,44 @@ describe('Codex CLI backend', () => {
       );
     });
   });
+
+  describe('P1.15: session resume with resume subcommand', () => {
+    it('first call uses codex exec (not resume)', () => {
+      const args = buildCodexArgs('hello', null, 'workspace-write');
+      expect(args[0]).toBe('exec');
+      expect(args[1]).not.toBe('resume');
+      expect(args).toContain('--json');
+      expect(args[args.length - 1]).toBe('hello');
+    });
+
+    it('second call uses codex exec resume SESSION_ID', () => {
+      const args = buildCodexArgs('follow-up', 'thread_abc', 'workspace-write');
+      expect(args[0]).toBe('exec');
+      expect(args[1]).toBe('resume');
+      expect(args).toContain('--skip-git-repo-check');
+      expect(args).toContain('--json');
+      expect(args).toContain('thread_abc');
+      expect(args[args.length - 1]).toBe('follow-up');
+    });
+
+    it('--sandbox flag is NOT included in resume args', () => {
+      const args = buildCodexArgs('follow-up', 'thread_abc', 'workspace-write');
+      expect(args).not.toContain('--sandbox');
+      expect(args).not.toContain('workspace-write');
+    });
+
+    it('session ID from first call is reused in resume args', () => {
+      // Simulate: first call returns thread_id, second call uses it
+      const firstOutput = JSON.stringify({
+        type: 'thread.started',
+        thread_id: 'thread_resume_test',
+      });
+      const firstParsed = parseCodexOutput(firstOutput, '', 0);
+      expect(firstParsed.sessionId).toBe('thread_resume_test');
+
+      const secondArgs = buildCodexArgs('do more', firstParsed.sessionId, 'workspace-write');
+      expect(secondArgs).toContain('thread_resume_test');
+      expect(secondArgs[1]).toBe('resume');
+    });
+  });
 });

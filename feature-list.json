@@ -255,7 +255,7 @@
             "--sandbox flag is NOT included in resume args",
             "Unit test verifies args construction for resume"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P1.16",
