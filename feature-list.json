@@ -153,7 +153,7 @@
             "Returns AssistantText normalized events",
             "Unit test with sample assistant JSON verifies parsing"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P1.6",

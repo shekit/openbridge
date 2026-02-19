@@ -88,4 +88,69 @@ describe('Claude Code backend', () => {
       expect(parsed.sessionId).toBeNull();
     });
   });
+
+  describe('P1.5: parse assistant text from assistant events', () => {
+    it('extracts text from assistant message content', () => {
+      const stdout = JSON.stringify({
+        type: 'assistant',
+        message: {
+          content: [{ type: 'text', text: 'Hello, I can help with that.' }],
+        },
+      });
+      const parsed = parseClaudeOutput(stdout, '', 0);
+      const textEvent = parsed.events.find((e) => e.type === 'assistant_text');
+      expect(textEvent).toBeDefined();
+      expect(textEvent!.type === 'assistant_text' && textEvent!.text).toBe(
+        'Hello, I can help with that.',
+      );
+    });
+
+    it('concatenates multiple text blocks', () => {
+      const stdout = JSON.stringify({
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'text', text: 'First part.' },
+            { type: 'tool_use', id: 'toolu_01', name: 'Read', input: {} },
+            { type: 'text', text: 'Second part.' },
+          ],
+        },
+      });
+      const parsed = parseClaudeOutput(stdout, '', 0);
+      const textEvent = parsed.events.find((e) => e.type === 'assistant_text');
+      expect(textEvent).toBeDefined();
+      expect(textEvent!.type === 'assistant_text' && textEvent!.text).toBe(
+        'First part.\nSecond part.',
+      );
+    });
+
+    it('returns AssistantText normalized events', () => {
+      const stdout = [
+        JSON.stringify({
+          type: 'assistant',
+          message: { content: [{ type: 'text', text: 'Response 1' }] },
+        }),
+        JSON.stringify({
+          type: 'assistant',
+          message: { content: [{ type: 'text', text: 'Response 2' }] },
+        }),
+      ].join('\n');
+
+      const parsed = parseClaudeOutput(stdout, '', 0);
+      const textEvents = parsed.events.filter((e) => e.type === 'assistant_text');
+      expect(textEvents).toHaveLength(2);
+    });
+
+    it('skips assistant events with no text content', () => {
+      const stdout = JSON.stringify({
+        type: 'assistant',
+        message: {
+          content: [{ type: 'tool_use', id: 'toolu_01', name: 'Bash', input: {} }],
+        },
+      });
+      const parsed = parseClaudeOutput(stdout, '', 0);
+      const textEvents = parsed.events.filter((e) => e.type === 'assistant_text');
+      expect(textEvents).toHaveLength(0);
+    });
+  });
 });
