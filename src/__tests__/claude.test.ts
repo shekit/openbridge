@@ -153,4 +153,55 @@ describe('Claude Code backend', () => {
       expect(textEvents).toHaveLength(0);
     });
   });
+
+  describe('P1.6: parse permission_denials from result event', () => {
+    it('parses permission_denials array from result event', () => {
+      const stdout = JSON.stringify({
+        type: 'result',
+        permission_denials: [
+          {
+            tool_name: 'Bash',
+            tool_use_id: 'toolu_01',
+            tool_input: { command: 'touch file.txt' },
+          },
+          {
+            tool_name: 'Write',
+            tool_use_id: 'toolu_02',
+            tool_input: { file_path: 'file.txt', content: '' },
+          },
+        ],
+      });
+      const parsed = parseClaudeOutput(stdout, '', 0);
+      const denials = parsed.events.filter((e) => e.type === 'permission_denied');
+      expect(denials).toHaveLength(2);
+      expect(denials[0].type === 'permission_denied' && denials[0].toolName).toBe('Bash');
+      expect(denials[0].type === 'permission_denied' && denials[0].toolInput).toEqual({
+        command: 'touch file.txt',
+      });
+      expect(denials[1].type === 'permission_denied' && denials[1].toolName).toBe('Write');
+    });
+
+    it('empty permission_denials array produces no PermissionDenied events', () => {
+      const stdout = JSON.stringify({
+        type: 'result',
+        permission_denials: [],
+      });
+      const parsed = parseClaudeOutput(stdout, '', 0);
+      const denials = parsed.events.filter((e) => e.type === 'permission_denied');
+      expect(denials).toHaveLength(0);
+    });
+
+    it('handles missing tool_input gracefully', () => {
+      const stdout = JSON.stringify({
+        type: 'result',
+        permission_denials: [
+          { tool_name: 'Edit' },
+        ],
+      });
+      const parsed = parseClaudeOutput(stdout, '', 0);
+      const denials = parsed.events.filter((e) => e.type === 'permission_denied');
+      expect(denials).toHaveLength(1);
+      expect(denials[0].type === 'permission_denied' && denials[0].toolInput).toEqual({});
+    });
+  });
 });

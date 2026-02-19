@@ -164,7 +164,7 @@
             "Empty permission_denials array produces no PermissionDenied events",
             "Unit test with sample result JSON verifies parsing"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P1.7",
