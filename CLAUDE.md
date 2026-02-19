@@ -70,15 +70,29 @@ scripts/
   test.sh               — test runner
 ```
 
-### CRITICAL: Commit After EVERY Feature
+### CRITICAL: Commit After EVERY SINGLE Feature — Not at the End of a Phase
 
-**This is a hard requirement. Do not batch commits.**
+**This is the most important rule in this project. Violating it is a blocking failure.**
 
-After completing each feature:
-1. Verify it works (run ALL verification steps)
-2. Update feature-list.json to mark as passing
-3. **Immediately commit**
-4. Then move to the next feature
+Each feature (e.g., P1.1, P1.2, P1.3) gets its own individual git commit. You must commit IMMEDIATELY after completing each feature — not after finishing a group of features, not at the end of a phase, not when you feel like it. ONE feature = ONE commit. No exceptions.
+
+**The workflow for EVERY feature is:**
+1. Implement the feature
+2. Verify it works (run ALL verification steps)
+3. Update feature-list.json to mark that feature as passing
+4. `git add` the specific files you changed
+5. `git commit` with a message referencing the feature ID (e.g., "P1.3: Claude Code backend — parse assistant text")
+6. **ONLY THEN** move to the next feature
+
+**Do NOT do this:**
+- Implement P1.1, P1.2, P1.3, then commit them all together — WRONG
+- Finish an entire phase, then make one big commit — WRONG
+- "I'll commit at the end" — WRONG
+
+**Do this:**
+- Implement P1.1 → verify → update feature-list → commit
+- Implement P1.2 → verify → update feature-list → commit
+- Implement P1.3 → verify → update feature-list → commit
 
 **Only commit files YOU created or modified:**
 - Use `git add <specific-files>` — NOT `git add .` or `git add -A`
@@ -96,7 +110,8 @@ After completing each feature:
 - Work on ONE feature at a time
 - Run tests after implementing each feature
 - Update feature-list.json when a feature passes/fails
-- Never move to the next feature until the current one passes all verification steps
+- **Commit immediately after each feature passes** — do not continue to the next feature without committing first
+- Never move to the next feature until the current one passes all verification steps AND is committed
 
 ### Ending a Session
 - Commit all work in progress
@@ -141,7 +156,7 @@ Keep it succinct. Don't leave things running without explicitly requesting testi
 2. **Never remove or weaken tests** — If a test is failing, fix the code, not the test
 3. **Never remove or weaken verification steps** — They exist for a reason
 4. **Always verify before marking passing** — Run through ALL verification steps
-5. **Commit after each feature** — Keep git history clean and recoverable
+5. **Commit after EACH feature, not at the end of a phase** — Every feature ID gets its own commit. This is non-negotiable.
 6. **Update progress file** — Document what you did for the next session
 7. **Follow the architecture** — Don't deviate without discussion
 8. **Ask when unclear** — Don't make assumptions
