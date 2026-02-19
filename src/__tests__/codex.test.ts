@@ -82,4 +82,46 @@ describe('Codex CLI backend', () => {
       expect(parsed.sessionId).toBeNull();
     });
   });
+
+  describe('P1.12: parse agent_message text', () => {
+    it('extracts text from item.completed agent_message', () => {
+      const stdout = JSON.stringify({
+        type: 'item.completed',
+        item: { type: 'agent_message', text: 'I created the file for you.' },
+      });
+      const parsed = parseCodexOutput(stdout, '', 0);
+      const textEvents = parsed.events.filter((e) => e.type === 'assistant_text');
+      expect(textEvents).toHaveLength(1);
+      expect(textEvents[0].type === 'assistant_text' && textEvents[0].text).toBe(
+        'I created the file for you.',
+      );
+    });
+
+    it('handles multiple agent_message events', () => {
+      const stdout = [
+        JSON.stringify({
+          type: 'item.completed',
+          item: { type: 'agent_message', text: 'First response' },
+        }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { type: 'agent_message', text: 'Second response' },
+        }),
+      ].join('\n');
+
+      const parsed = parseCodexOutput(stdout, '', 0);
+      const textEvents = parsed.events.filter((e) => e.type === 'assistant_text');
+      expect(textEvents).toHaveLength(2);
+    });
+
+    it('ignores reasoning events', () => {
+      const stdout = JSON.stringify({
+        type: 'item.completed',
+        item: { type: 'reasoning', text: 'thinking...' },
+      });
+      const parsed = parseCodexOutput(stdout, '', 0);
+      const textEvents = parsed.events.filter((e) => e.type === 'assistant_text');
+      expect(textEvents).toHaveLength(0);
+    });
+  });
 });

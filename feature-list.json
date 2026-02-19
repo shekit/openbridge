@@ -225,7 +225,7 @@
             "Text content is extracted as AssistantText normalized events",
             "Unit test verifies parsing"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P1.13",
