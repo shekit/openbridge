@@ -204,4 +204,91 @@ describe('Claude Code backend', () => {
       expect(denials[0].type === 'permission_denied' && denials[0].toolInput).toEqual({});
     });
   });
+
+  describe('P1.7: parse permission context from user error events', () => {
+    it('attaches context from user error events to PermissionDenied', () => {
+      const stdout = [
+        JSON.stringify({
+          type: 'result',
+          permission_denials: [
+            { tool_name: 'Bash', tool_input: { command: 'rm -rf /' } },
+          ],
+        }),
+        JSON.stringify({
+          type: 'user',
+          message: {
+            content: [
+              {
+                type: 'tool_result',
+                is_error: true,
+                content: 'Bash tool permission not granted for this command',
+              },
+            ],
+          },
+        }),
+      ].join('\n');
+
+      const parsed = parseClaudeOutput(stdout, '', 0);
+      const denials = parsed.events.filter((e) => e.type === 'permission_denied');
+      expect(denials).toHaveLength(1);
+      expect(
+        denials[0].type === 'permission_denied' && denials[0].context,
+      ).toBe('Bash tool permission not granted for this command');
+    });
+
+    it('ignores user error events without permission-related text', () => {
+      const stdout = [
+        JSON.stringify({
+          type: 'result',
+          permission_denials: [
+            { tool_name: 'Bash', tool_input: { command: 'ls' } },
+          ],
+        }),
+        JSON.stringify({
+          type: 'user',
+          message: {
+            content: [
+              {
+                type: 'tool_result',
+                is_error: true,
+                content: 'File not found: foo.txt',
+              },
+            ],
+          },
+        }),
+      ].join('\n');
+
+      const parsed = parseClaudeOutput(stdout, '', 0);
+      const denial = parsed.events.find((e) => e.type === 'permission_denied');
+      expect(denial).toBeDefined();
+      expect(denial!.type === 'permission_denied' && denial!.context).toBeUndefined();
+    });
+
+    it('ignores user events that are not errors', () => {
+      const stdout = [
+        JSON.stringify({
+          type: 'result',
+          permission_denials: [
+            { tool_name: 'Write', tool_input: { file_path: 'a.txt' } },
+          ],
+        }),
+        JSON.stringify({
+          type: 'user',
+          message: {
+            content: [
+              {
+                type: 'tool_result',
+                is_error: false,
+                content: 'This mentions permission but is not an error',
+              },
+            ],
+          },
+        }),
+      ].join('\n');
+
+      const parsed = parseClaudeOutput(stdout, '', 0);
+      const denial = parsed.events.find((e) => e.type === 'permission_denied');
+      expect(denial!.type === 'permission_denied' && denial!.context).toBeUndefined();
+    });
+  });
 });

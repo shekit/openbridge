@@ -174,7 +174,7 @@
             "Context text is included in PermissionDenied events",
             "Unit test verifies extraction"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P1.8",
