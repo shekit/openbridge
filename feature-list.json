@@ -245,7 +245,7 @@
             "Command execution output with these patterns also detected",
             "Unit test with sample sandbox denial output verifies detection"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P1.15",

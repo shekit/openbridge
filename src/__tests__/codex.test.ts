@@ -176,4 +176,80 @@ describe('Codex CLI backend', () => {
       expect(cmdEvents[0].type === 'command_execution' && cmdEvents[0].output).toBe('');
     });
   });
+
+  describe('P1.14: detect sandbox denial patterns in output', () => {
+    it('detects "Operation not permitted" in agent_message text', () => {
+      const stdout = JSON.stringify({
+        type: 'item.completed',
+        item: {
+          type: 'agent_message',
+          text: 'touch: /etc/test.txt: Operation not permitted',
+        },
+      });
+      const parsed = parseCodexOutput(stdout, '', 0);
+      const denials = parsed.events.filter((e) => e.type === 'permission_denied');
+      expect(denials).toHaveLength(1);
+      expect(denials[0].type === 'permission_denied' && denials[0].toolName).toBe('sandbox');
+    });
+
+    it('detects "permission denied" in agent_message text (case insensitive)', () => {
+      const stdout = JSON.stringify({
+        type: 'item.completed',
+        item: {
+          type: 'agent_message',
+          text: 'Error: Permission Denied when trying to write to /usr/local',
+        },
+      });
+      const parsed = parseCodexOutput(stdout, '', 0);
+      const denials = parsed.events.filter((e) => e.type === 'permission_denied');
+      expect(denials).toHaveLength(1);
+    });
+
+    it('detects sandbox denial in command_execution output', () => {
+      const stdout = JSON.stringify({
+        type: 'item.completed',
+        item: {
+          type: 'command_execution',
+          command: 'touch /etc/test.txt',
+          exit_code: 1,
+          aggregated_output: 'touch: /etc/test.txt: Operation not permitted',
+        },
+      });
+      const parsed = parseCodexOutput(stdout, '', 0);
+      const denials = parsed.events.filter((e) => e.type === 'permission_denied');
+      expect(denials).toHaveLength(1);
+      expect(denials[0].type === 'permission_denied' && denials[0].toolInput).toEqual({
+        command: 'touch /etc/test.txt',
+      });
+    });
+
+    it('does not flag normal output as sandbox denial', () => {
+      const stdout = JSON.stringify({
+        type: 'item.completed',
+        item: {
+          type: 'agent_message',
+          text: 'I created the file successfully.',
+        },
+      });
+      const parsed = parseCodexOutput(stdout, '', 0);
+      const denials = parsed.events.filter((e) => e.type === 'permission_denied');
+      expect(denials).toHaveLength(0);
+    });
+
+    it('includes context in permission_denied event', () => {
+      const stdout = JSON.stringify({
+        type: 'item.completed',
+        item: {
+          type: 'agent_message',
+          text: 'The command failed with: Operation not permitted on /etc/hosts',
+        },
+      });
+      const parsed = parseCodexOutput(stdout, '', 0);
+      const denials = parsed.events.filter((e) => e.type === 'permission_denied');
+      expect(denials).toHaveLength(1);
+      expect(denials[0].type === 'permission_denied' && denials[0].context).toContain(
+        'Operation not permitted',
+      );
+    });
+  });
 });
