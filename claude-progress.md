@@ -219,3 +219,17 @@ Phase 7 — Integration and Polish (complete)
 - 374 tests passing across 14 test files
 - All 10 features (P7.1–P7.10) committed individually, all marked passing
 - All 76 features across all 8 phases (P0–P7) are now passing
+
+### Session 11 — Code Review & Bug Fixes
+- Full codebase review identified 10 issues (4 high, 3 medium, 3 low severity)
+- Fixed 4 high-severity bugs:
+  1. **Slack file uploads silently ignored** — `handleMessage` in slack.ts now detects `message.files` and routes through `handleFileUpload`
+  2. **Discord project bind/create buttons did nothing** — added `handleProjectBindHere()` and `handleProjectCreateNew()` handlers in discord.ts for the `project_bind_here:*` and `project_create_new:*` button customIds
+  3. **Discord slash commands never registered** — `start()` now calls `registerCommands()` (wrapped in try/catch so it's non-fatal in test/offline environments)
+  4. **`/settings backend` change had no effect** — both adapters wrote to a dead `settings` table key instead of updating `projects.backend_name`; added `store.updateProjectBackend()` and updated both adapters to use it
+- Fixed 1 medium-severity bug:
+  5. **`sendWithTimeout` orphaned child processes** — timer now cleared on normal completion; `backend.stop()` called on timeout and in both `send()`/`respond()` catch blocks; active backend tracking cleaned up after successful oneshot completion
+- Extracted duplicated code:
+  6. **`splitText()` duplicated in slack.ts and discord.ts** — extracted to new `src/utils.ts`, both adapters import from shared module and re-export for backward compatibility
+- Updated 2 test files to match new behavior (settings tests check `project.backend_name` instead of dead settings key)
+- 374 tests still passing across 14 test files after all changes

@@ -152,6 +152,10 @@ export class Store {
     return info.changes > 0;
   }
 
+  updateProjectBackend(id: number, backendName: string): void {
+    this.db.prepare('UPDATE projects SET backend_name = ? WHERE id = ?').run(backendName, id);
+  }
+
   // --- Sessions CRUD ---
 
   createSession(threadId: string, projectId: number): Session {

@@ -25,6 +25,7 @@ import {
 import type { Router, RouteResult } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
+import { splitText } from '../utils.js';
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 
@@ -72,6 +73,13 @@ export class DiscordAdapter {
     await this.client.login(this.botToken);
     this.botUserId = this.client.user?.id ?? null;
     console.log('[discord] connected via gateway');
+
+    // Register slash commands — non-fatal if it fails (e.g., rate limits, test env)
+    try {
+      await this.registerCommands();
+    } catch (err) {
+      console.warn('[discord] failed to register slash commands (non-fatal):', err);
+    }
   }
 
   /** Stop the Discord adapter — disconnect. */
@@ -229,9 +237,20 @@ export class DiscordAdapter {
     await this.renderEvents(channelId, threadId, result.events, message);
   }
 
-  /** Handle button clicks for permission prompts. */
+  /** Handle button clicks for permission prompts and project bind actions. */
   private async handleButtonInteraction(interaction: any): Promise<void> {
-    const customId = interaction.customId;
+    const customId: string = interaction.customId;
+
+    // Handle project bind/create buttons
+    if (customId.startsWith('project_bind_here:')) {
+      await this.handleProjectBindHere(interaction, customId.slice('project_bind_here:'.length));
+      return;
+    }
+    if (customId.startsWith('project_create_new:')) {
+      await this.handleProjectCreateNew(interaction, customId.slice('project_create_new:'.length));
+      return;
+    }
+
     if (customId !== 'permission_allow' && customId !== 'permission_deny') {
       return;
     }
@@ -277,6 +296,55 @@ export class DiscordAdapter {
           await this.sendToThread(threadId, interaction, `:warning: **Error:** ${event.message}`);
           break;
       }
+    }
+  }
+
+  /** Handle "Use this channel" button for project binding. */
+  private async handleProjectBindHere(interaction: any, name: string): Promise<void> {
+    const channelId = interaction.channelId;
+    const defaultBackend = this.store.getSetting('default_backend') ?? 'claude';
+
+    try {
+      this.store.createProject(channelId, name, defaultBackend);
+      await interaction.update({
+        content: `Bound this channel to project \`${name}\` (${defaultBackend})`,
+        components: [],
+      });
+    } catch (err: any) {
+      await interaction.update({
+        content: `:warning: Failed to bind: ${err.message}`,
+        components: [],
+      });
+    }
+  }
+
+  /** Handle "Create #name" button for project creation. */
+  private async handleProjectCreateNew(interaction: any, name: string): Promise<void> {
+    const defaultBackend = this.store.getSetting('default_backend') ?? 'claude';
+
+    try {
+      const guild = interaction.guild;
+      if (!guild) {
+        await interaction.update({
+          content: ':warning: This command can only be used in a server.',
+          components: [],
+        });
+        return;
+      }
+      const newChannel = await guild.channels.create({
+        name,
+        type: ChannelType.GuildText,
+      });
+      this.store.createProject(newChannel.id, name, defaultBackend);
+      await interaction.update({
+        content: `Created and bound <#${newChannel.id}> to project \`${name}\` (${defaultBackend})`,
+        components: [],
+      });
+    } catch (err: any) {
+      await interaction.update({
+        content: `:warning: Failed to create channel: ${err.message}`,
+        components: [],
+      });
     }
   }
 
@@ -463,7 +531,7 @@ export class DiscordAdapter {
         await interaction.reply(`:warning: Unknown backend \`${newBackend}\`. Valid options: \`claude\`, \`codex\``);
         return;
       }
-      this.store.setSetting(`project_${project.id}_backend`, newBackend);
+      this.store.updateProjectBackend(project.id, newBackend);
       await interaction.reply(`Backend changed to \`${newBackend}\` for this project.`);
     } else {
       await interaction.reply('Usage: `/settings args:backend <claude|codex>`');
@@ -570,23 +638,5 @@ export class DiscordAdapter {
   }
 }
 
-/** Split text into chunks at word boundaries. */
-export function splitText(text: string, limit: number): string[] {
-  const chunks: string[] = [];
-  let remaining = text;
-
-  while (remaining.length > limit) {
-    let splitAt = remaining.lastIndexOf(' ', limit);
-    if (splitAt <= 0) {
-      splitAt = limit;
-    }
-    chunks.push(remaining.slice(0, splitAt));
-    remaining = remaining.slice(splitAt).trimStart();
-  }
-
-  if (remaining.length > 0) {
-    chunks.push(remaining);
-  }
-
-  return chunks;
-}
+// splitText is imported from ../utils.js
+export { splitText } from '../utils.js';

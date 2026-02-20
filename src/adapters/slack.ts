@@ -10,6 +10,7 @@ import { App, type LogLevel } from '@slack/bolt';
 import type { Router, RouteResult } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
+import { splitText } from '../utils.js';
 
 const SLACK_MESSAGE_LIMIT = 4000;
 
@@ -135,6 +136,12 @@ export class SlackAdapter {
         thread_ts: threadTs,
         text: 'Processing...',
       });
+    }
+
+    // Handle file attachments — route through handleFileUpload
+    if (Array.isArray(message.files) && message.files.length > 0) {
+      await this.handleFileUpload(channelId, threadTs, message.files, text, client);
+      return;
     }
 
     // Check if the session is waiting_for_input (freeform text response)
@@ -482,8 +489,7 @@ export class SlackAdapter {
         });
         return;
       }
-      // Update the project's backend (we'd need an update method on store)
-      this.store.setSetting(`project_${project.id}_backend`, newBackend);
+      this.store.updateProjectBackend(project.id, newBackend);
       await client.chat.postMessage({
         channel: channelId,
         text: `Backend changed to \`${newBackend}\` for this project.`,
@@ -536,25 +542,5 @@ export class SlackAdapter {
   }
 }
 
-/** Split text into chunks at word boundaries. */
-export function splitText(text: string, limit: number): string[] {
-  const chunks: string[] = [];
-  let remaining = text;
-
-  while (remaining.length > limit) {
-    // Find the last space before the limit
-    let splitAt = remaining.lastIndexOf(' ', limit);
-    if (splitAt <= 0) {
-      // No space found — split at limit
-      splitAt = limit;
-    }
-    chunks.push(remaining.slice(0, splitAt));
-    remaining = remaining.slice(splitAt).trimStart();
-  }
-
-  if (remaining.length > 0) {
-    chunks.push(remaining);
-  }
-
-  return chunks;
-}
+// splitText is imported from ../utils.js
+export { splitText } from '../utils.js';

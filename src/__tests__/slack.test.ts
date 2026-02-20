@@ -854,8 +854,8 @@ describe('SlackAdapter', () => {
         text: 'backend codex',
       });
 
-      const setting = store.getSetting(`project_${project.id}_backend`);
-      expect(setting).toBe('codex');
+      const updated = store.getProjectById(project.id);
+      expect(updated?.backend_name).toBe('codex');
 
       expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({

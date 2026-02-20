@@ -953,8 +953,8 @@ describe('DiscordAdapter', () => {
 
       await triggerInteraction(interaction);
 
-      const setting = store.getSetting(`project_${project.id}_backend`);
-      expect(setting).toBe('codex');
+      const updated = store.getProjectById(project.id);
+      expect(updated?.backend_name).toBe('codex');
 
       const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
       expect(text).toContain('codex');

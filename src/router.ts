@@ -47,10 +47,22 @@ export class Router {
     if (this.timeoutMs <= 0) {
       return backend.send(text);
     }
-    return Promise.race([
-      backend.send(text),
+
+    let timer: ReturnType<typeof setTimeout>;
+
+    const result = await Promise.race([
+      backend.send(text).then((r) => {
+        clearTimeout(timer);
+        return r;
+      }),
       new Promise<never>((_, reject) => {
-        setTimeout(() => {
+        timer = setTimeout(async () => {
+          // Kill the orphaned backend process
+          try {
+            await backend.stop();
+          } catch {
+            // Ignore stop errors during timeout cleanup
+          }
           reject(new Error(
             `Backend timed out after ${Math.round(this.timeoutMs / 1000)} seconds. ` +
             'The operation took too long and was killed.',
@@ -58,6 +70,8 @@ export class Router {
         }, this.timeoutMs);
       }),
     ]);
+
+    return result;
   }
 
   /**
@@ -121,12 +135,16 @@ export class Router {
     try {
       result = await this.sendWithTimeout(backend, text);
     } catch (err) {
-      // Backend crashed or timed out — transition to dead
+      // Backend crashed or timed out — clean up and transition to dead
+      try { await backend.stop(); } catch { /* ignore stop errors */ }
       this.activeBackends.delete(session.thread_id);
       this.store.updateSessionState(session.id, 'dead');
       console.log(`[router] backend failed for session ${session.id}:`, err);
       throw err;
     }
+
+    // Clean up active backend tracking (oneshot — process already exited)
+    this.activeBackends.delete(session.thread_id);
 
     // Store the backend session ID for future resume
     if (result.sessionId) {
@@ -188,10 +206,14 @@ export class Router {
     try {
       result = await this.sendWithTimeout(backend, text);
     } catch (err) {
+      try { await backend.stop(); } catch { /* ignore stop errors */ }
       this.activeBackends.delete(session.thread_id);
       this.store.updateSessionState(session.id, 'dead');
       throw err;
     }
+
+    // Clean up active backend tracking (oneshot — process already exited)
+    this.activeBackends.delete(session.thread_id);
 
     // Store updated session ID
     if (result.sessionId) {
