@@ -496,7 +496,7 @@
             "Different threads in the same channel go to different sessions",
             "New thread creates a new session automatically"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P3.6",
