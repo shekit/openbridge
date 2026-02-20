@@ -233,3 +233,15 @@ Phase 7 — Integration and Polish (complete)
   6. **`splitText()` duplicated in slack.ts and discord.ts** — extracted to new `src/utils.ts`, both adapters import from shared module and re-export for backward compatibility
 - Updated 2 test files to match new behavior (settings tests check `project.backend_name` instead of dead settings key)
 - 374 tests still passing across 14 test files after all changes
+
+### Session 12 — Phase 9: Production-Readiness Fixes
+- Implemented 6 targeted fixes from a second code review:
+  1. **P9.1: /project stores name as project_dir** — both adapters now require absolute paths, use `path.basename()` for channel names, validate with `path.isAbsolute()`
+  2. **P9.2: .env parser quote stripping** — `loadEnvFile()` now strips surrounding single/double quotes from values
+  3. **P9.3: Backend child processes unkillable on timeout** — `spawnCollect()` returns `SpawnHandle` with `.result` and `.kill()`, backends track active handles, `stop()` kills child process
+  4. **P9.4: (backend as any).sessionId type bypass** — added `setSessionId()` to Backend interface, router uses it instead of type-unsafe property access
+  5. **P9.5: Discord button handler drops chained permission_denied** — button handler now delegates to `renderEvents()` instead of inline event loop
+  6. **P9.6: False positive shutdown test** — restructured test with deferred send pattern, assertion changed from `>= 0` to `> 0`
+- 382 tests passing across 14 test files
+- All 6 features (P9.1–P9.6) committed individually, all marked passing
+- Total: 82 features across 9 phases (P0–P7, P9), all passing

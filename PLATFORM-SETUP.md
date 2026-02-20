@@ -22,7 +22,18 @@
 6. **Event Subscriptions** → Enable → Subscribe to bot events:
    - `message.channels` (messages in public channels)
    - `message.groups` (messages in private channels)
-7. Invite the bot to a channel with `/invite @OpenBridge`
+7. **Slash Commands** → **Create New Command** for each:
+
+   | Command | Request URL | Description |
+   |---------|-------------|-------------|
+   | `/project` | `https://localhost` | Bind channel to a project |
+   | `/new` | `https://localhost` | Reset session |
+   | `/settings` | `https://localhost` | View/change settings |
+
+   (Request URL is ignored in Socket Mode — any placeholder works.)
+
+8. **Reinstall the app** to your workspace after adding commands
+9. Invite the bot to a channel with `/invite @OpenBridge`
 
 ## Discord Setup
 

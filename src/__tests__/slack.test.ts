@@ -734,13 +734,13 @@ describe('SlackAdapter', () => {
 
       await triggerCommand('/project', {
         channel_id: 'C_BOUND',
-        text: 'my-app',
+        text: 'connect my-app',
       });
 
       expect(mockApp.client.conversations.create).not.toHaveBeenCalled();
       expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
-          text: expect.stringContaining('absolute directory path'),
+          text: expect.stringContaining('absolute path'),
         })
       );
     });
@@ -771,7 +771,7 @@ describe('SlackAdapter', () => {
     });
   });
 
-  describe('P3.15: /project with no args lists all bindings', () => {
+  describe('P3.15: /project list shows all bindings', () => {
     it('lists all channel -> project -> backend bindings', async () => {
       createAdapter();
       await adapter.start();
@@ -781,7 +781,7 @@ describe('SlackAdapter', () => {
 
       await triggerCommand('/project', {
         channel_id: 'C_PROJ1',
-        text: '',
+        text: 'list',
       });
 
       const calls = mockApp.client.chat.postMessage.mock.calls;
@@ -801,7 +801,7 @@ describe('SlackAdapter', () => {
 
       await triggerCommand('/project', {
         channel_id: 'C_ANY',
-        text: '',
+        text: 'list',
       });
 
       const calls = mockApp.client.chat.postMessage.mock.calls;

@@ -1,16 +1,19 @@
 /**
- * Simple interactive prompt utilities for the CLI wizard.
- * Uses Node.js readline — no external dependencies.
+ * Interactive prompt utilities for the CLI wizard.
+ *
+ * Uses @clack/prompts for beautiful interactive prompts when running in a real terminal.
+ * Falls back to the PromptIO interface for testing (mock injection).
  */
 
 import * as readline from 'node:readline';
+import * as clack from '@clack/prompts';
 
 export interface PromptIO {
   question(query: string): Promise<string>;
   close(): void;
 }
 
-/** Create a readline-based prompt IO. */
+/** Create a readline-based prompt IO (used when tests inject a custom IO). */
 export function createPromptIO(
   input: NodeJS.ReadableStream = process.stdin,
   output: NodeJS.WritableStream = process.stdout,
@@ -31,14 +34,40 @@ export function createPromptIO(
 
 /**
  * Ask user to select one or more options from a numbered list.
+ * When io is null, uses @clack/prompts for interactive selection.
  * Returns the selected option values.
  */
 export async function promptSelect(
-  io: PromptIO,
+  io: PromptIO | null,
   message: string,
   options: { label: string; value: string }[],
   multi: boolean = false,
 ): Promise<string[]> {
+  // Use @clack/prompts for real terminal interaction
+  if (!io) {
+    if (multi) {
+      const result = await clack.multiselect({
+        message,
+        options: options.map((opt) => ({ label: opt.label, value: opt.value })),
+      });
+      if (clack.isCancel(result)) {
+        clack.cancel('Setup cancelled.');
+        process.exit(0);
+      }
+      return result as string[];
+    }
+    const result = await clack.select({
+      message,
+      options: options.map((opt) => ({ label: opt.label, value: opt.value })),
+    });
+    if (clack.isCancel(result)) {
+      clack.cancel('Setup cancelled.');
+      process.exit(0);
+    }
+    return [result as string];
+  }
+
+  // Fallback: numbered list (for testing with mock IO)
   console.log(`\n${message}`);
   options.forEach((opt, i) => {
     console.log(`  ${i + 1}) ${opt.label}`);
@@ -74,12 +103,34 @@ export async function promptSelect(
 
 /**
  * Ask user for a text input with optional validation.
+ * When io is null, uses @clack/prompts.
  */
 export async function promptText(
-  io: PromptIO,
+  io: PromptIO | null,
   message: string,
   validate?: (input: string) => string | null,
 ): Promise<string> {
+  // Use @clack/prompts for real terminal interaction
+  if (!io) {
+    const result = await clack.text({
+      message,
+      validate: (value) => {
+        if (!value) return 'Input cannot be empty.';
+        if (validate) {
+          const error = validate(value);
+          if (error) return error;
+        }
+        return undefined;
+      },
+    });
+    if (clack.isCancel(result)) {
+      clack.cancel('Setup cancelled.');
+      process.exit(0);
+    }
+    return result as string;
+  }
+
+  // Fallback for testing
   while (true) {
     const answer = await io.question(`${message}: `);
 
@@ -102,12 +153,25 @@ export async function promptText(
 
 /**
  * Ask a yes/no question. Returns true for yes.
+ * When io is null, uses @clack/prompts.
  */
 export async function promptConfirm(
-  io: PromptIO,
+  io: PromptIO | null,
   message: string,
   defaultYes: boolean = true,
 ): Promise<boolean> {
+  if (!io) {
+    const result = await clack.confirm({
+      message,
+      initialValue: defaultYes,
+    });
+    if (clack.isCancel(result)) {
+      clack.cancel('Setup cancelled.');
+      process.exit(0);
+    }
+    return result as boolean;
+  }
+
   const hint = defaultYes ? '[Y/n]' : '[y/N]';
   const answer = await io.question(`${message} ${hint}: `);
 

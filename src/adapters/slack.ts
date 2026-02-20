@@ -7,6 +7,7 @@
  */
 
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import { App, type LogLevel } from '@slack/bolt';
 import type { Router, RouteResult } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
@@ -91,6 +92,105 @@ export class SlackAdapter {
       await this.handlePermissionAction(body as any, 'deny', client);
     });
 
+    // Project bind/create buttons
+    this.app.action('project_bind_here', async ({ body, ack, client }) => {
+      await ack();
+      const action = (body as any).actions?.[0];
+      const projectDir = action?.value;
+      const channelId = (body as any).channel?.id;
+      if (!projectDir || !channelId) return;
+      try {
+        const channelName = path.basename(projectDir);
+        this.store.createProject(channelId, projectDir, this.store.getSetting('default_backend') ?? 'claude');
+        await (client as any).chat.postMessage({
+          channel: channelId,
+          text: `Bound this channel to project \`${projectDir}\` (${channelName})`,
+        });
+      } catch (err: any) {
+        await (client as any).chat.postMessage({
+          channel: channelId,
+          text: `:warning: Failed to bind: ${err.message}`,
+        });
+      }
+    });
+
+    this.app.action('project_create_new', async ({ body, ack, client }) => {
+      await ack();
+      const action = (body as any).actions?.[0];
+      const projectDir = action?.value;
+      const sourceChannelId = (body as any).channel?.id;
+      if (!projectDir || !sourceChannelId) return;
+      try {
+        const channelName = path.basename(projectDir);
+        const result = await (client as any).conversations.create({ name: channelName });
+        const newChannelId = result.channel.id;
+        this.store.createProject(newChannelId, projectDir, this.store.getSetting('default_backend') ?? 'claude');
+        // Invite the user who clicked the button
+        const userId = (body as any).user?.id;
+        if (userId) {
+          await (client as any).conversations.invite({ channel: newChannelId, users: userId }).catch(() => {});
+        }
+        await (client as any).chat.postMessage({
+          channel: sourceChannelId,
+          text: `Created and bound <#${newChannelId}> to project \`${projectDir}\` (${this.store.getSetting('default_backend') ?? 'claude'})`,
+        });
+      } catch (err: any) {
+        await (client as any).chat.postMessage({
+          channel: sourceChannelId,
+          text: `:warning: Failed to create channel: ${err.message}`,
+        });
+      }
+    });
+
+    this.app.action('project_bind_existing', async ({ body, ack, client }) => {
+      await ack();
+      const action = (body as any).actions?.[0];
+      const sourceChannelId = (body as any).channel?.id;
+      if (!action?.value || !sourceChannelId) return;
+      try {
+        const { channelId: targetChannelId, projectDir } = JSON.parse(action.value);
+        const backend = this.store.getSetting('default_backend') ?? 'claude';
+        this.store.createProject(targetChannelId, projectDir, backend);
+        await (client as any).chat.postMessage({
+          channel: sourceChannelId,
+          text: `Bound <#${targetChannelId}> to project \`${projectDir}\` (${backend})`,
+        });
+      } catch (err: any) {
+        await (client as any).chat.postMessage({
+          channel: sourceChannelId,
+          text: `:warning: Failed to bind: ${err.message}`,
+        });
+      }
+    });
+
+    this.app.action(/^project_pick_/, async ({ body, ack, client }) => {
+      await ack();
+      const action = (body as any).actions?.[0];
+      const channelId = (body as any).channel?.id;
+      const projectDir = action?.value;
+      if (!projectDir || !channelId) return;
+      // Treat like a connect — bind to this channel
+      const existing = this.store.getProjectByChannelId(channelId);
+      if (existing) {
+        // Channel already bound — create new channel for this project
+        await this.handleProjectConnect(channelId, projectDir, { user_id: (body as any).user?.id }, client as any);
+      } else {
+        const backend = this.store.getSetting('default_backend') ?? 'claude';
+        try {
+          this.store.createProject(channelId, projectDir, backend);
+          await (client as any).chat.postMessage({
+            channel: channelId,
+            text: `Bound this channel to project \`${projectDir}\` (${backend})`,
+          });
+        } catch (err: any) {
+          await (client as any).chat.postMessage({
+            channel: channelId,
+            text: `:warning: Failed to bind: ${err.message}`,
+          });
+        }
+      }
+    });
+
     // Slash commands
     this.app.command('/project', async ({ command, ack, client }) => {
       await ack();
@@ -110,8 +210,8 @@ export class SlackAdapter {
 
   /** Handle an incoming Slack message. */
   private async handleMessage(message: any, client: any): Promise<void> {
-    // Ignore bot messages (including our own)
-    if (message.bot_id || message.subtype === 'bot_message') {
+    // Ignore bot messages (including our own) and system messages
+    if (message.bot_id || message.subtype) {
       return;
     }
     if (this.botUserId && message.user === this.botUserId) {
@@ -343,19 +443,35 @@ export class SlackAdapter {
   /** Handle /project slash command. */
   private async handleProjectCommand(command: any, client: any): Promise<void> {
     const channelId = command.channel_id;
-    const args = (command.text || '').trim();
+    const rawArgs = (command.text || '').trim();
+    const parts = rawArgs.split(/\s+/);
+    const subcommand = parts[0] || '';
+    const subArg = parts.slice(1).join(' ');
 
-    if (!args) {
-      // List all bindings
+    // /project (no args) or /project help — show usage
+    if (!subcommand || subcommand === 'help') {
+      await client.chat.postMessage({
+        channel: channelId,
+        text: [
+          '*`/project` commands:*',
+          '• `/project list` — show all project bindings',
+          '• `/project connect /absolute/path` — bind a project to a channel',
+          '• `/project disconnect` — unbind this channel',
+        ].join('\n'),
+      });
+      return;
+    }
+
+    // /project list
+    if (subcommand === 'list') {
       const projects = this.store.listProjects();
       if (projects.length === 0) {
         await client.chat.postMessage({
           channel: channelId,
-          text: 'No project bindings found. Use `/project /absolute/path/to/dir` to create one.',
+          text: 'No project bindings found. Use `/project connect /absolute/path` to bind one.',
         });
         return;
       }
-
       let text = '*Project Bindings:*\n';
       for (const p of projects) {
         text += `• <#${p.channel_id}> → \`${p.project_dir}\` (${p.backend_name})\n`;
@@ -364,50 +480,150 @@ export class SlackAdapter {
       return;
     }
 
-    // Validate that the argument is an absolute directory path
-    if (!path.isAbsolute(args)) {
-      await client.chat.postMessage({
-        channel: channelId,
-        text: ':warning: Please provide an absolute directory path. Example: `/project /home/user/my-app`',
-      });
+    // /project disconnect
+    if (subcommand === 'disconnect') {
+      const project = this.store.getProjectByChannelId(channelId);
+      if (!project) {
+        await client.chat.postMessage({
+          channel: channelId,
+          text: 'This channel is not bound to a project.',
+        });
+      } else {
+        this.store.deleteProject(project.id);
+        await client.chat.postMessage({
+          channel: channelId,
+          text: `Disconnected this channel from \`${project.project_dir}\`.`,
+        });
+      }
       return;
     }
 
-    const channelName = path.basename(args);
+    // /project connect [/path/to/dir]
+    if (subcommand === 'connect') {
+      const projectDir = subArg;
+      if (!projectDir) {
+        // No path given — show picker if projects_root is set
+        const root = this.store.getSetting('projects_root');
+        if (root && fs.existsSync(root)) {
+          const entries = fs.readdirSync(root, { withFileTypes: true })
+            .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+            .map(e => e.name)
+            .sort();
+          if (entries.length === 0) {
+            await client.chat.postMessage({
+              channel: channelId,
+              text: `:warning: No subdirectories found in \`${root}\`. Use \`/project connect /absolute/path\` instead.`,
+            });
+            return;
+          }
+          const buttons = entries.slice(0, 20).map((name: string) => ({
+            type: 'button' as const,
+            text: { type: 'plain_text' as const, text: name },
+            action_id: `project_pick_${name}`,
+            value: path.join(root, name),
+          }));
+          // Slack actions block allows max 25 elements, split into rows of 5
+          const actionBlocks = [];
+          for (let i = 0; i < buttons.length; i += 5) {
+            actionBlocks.push({
+              type: 'actions' as const,
+              elements: buttons.slice(i, i + 5),
+            });
+          }
+          await client.chat.postMessage({
+            channel: channelId,
+            text: `Pick a project from \`${root}\`:`,
+            blocks: [
+              {
+                type: 'section',
+                text: { type: 'mrkdwn', text: `*Pick a project from* \`${root}\`:` },
+              },
+              ...actionBlocks,
+            ],
+          });
+        } else {
+          await client.chat.postMessage({
+            channel: channelId,
+            text: ':warning: Usage: `/project connect /absolute/path/to/dir`\n_Tip: Set a projects root with `/settings root /path` to enable the project picker._',
+          });
+        }
+        return;
+      }
+      if (!path.isAbsolute(projectDir)) {
+        // Check if it's a name that matches a subdirectory in projects_root
+        const root = this.store.getSetting('projects_root');
+        if (root) {
+          const fullPath = path.join(root, projectDir);
+          if (fs.existsSync(fullPath)) {
+            await this.handleProjectConnect(channelId, fullPath, command, client);
+            return;
+          }
+        }
+        await client.chat.postMessage({
+          channel: channelId,
+          text: ':warning: Please provide an absolute path. Example: `/project connect /home/user/my-app`',
+        });
+        return;
+      }
+      await this.handleProjectConnect(channelId, projectDir, command, client);
+      return;
+    }
 
-    // Check if current channel is bound
+    // Backwards compat: /project /absolute/path still works
+    if (path.isAbsolute(subcommand + (subArg ? ' ' + subArg : ''))) {
+      const projectDir = rawArgs;
+      await this.handleProjectConnect(channelId, projectDir, command, client);
+      return;
+    }
+
+    await client.chat.postMessage({
+      channel: channelId,
+      text: `:warning: Unknown subcommand \`${subcommand}\`. Try \`/project help\`.`,
+    });
+  }
+
+  /** Handle project connect flow — bind a directory to a channel. */
+  private async handleProjectConnect(channelId: string, projectDir: string, command: any, client: any): Promise<void> {
+    const channelName = path.basename(projectDir);
     const existing = this.store.getProjectByChannelId(channelId);
 
     if (existing) {
-      // Channel already bound — create a new channel with derived name
+      // Channel already bound — try to create a new channel with derived name
       try {
         const result = await client.conversations.create({ name: channelName });
         const newChannelId = result.channel?.id;
         if (newChannelId) {
-          // Bind the new channel with the absolute directory path
-          this.store.createProject(newChannelId, args, existing.backend_name);
+          this.store.createProject(newChannelId, projectDir, existing.backend_name);
+          const userId = command.user_id;
+          if (userId) {
+            await client.conversations.invite({ channel: newChannelId, users: userId }).catch(() => {});
+          }
           await client.chat.postMessage({
             channel: channelId,
-            text: `Created and bound <#${newChannelId}> to project \`${args}\` (${existing.backend_name})`,
+            text: `Created and bound <#${newChannelId}> to project \`${projectDir}\` (${existing.backend_name})`,
           });
         }
       } catch (err: any) {
-        await client.chat.postMessage({
-          channel: channelId,
-          text: `:warning: Failed to create channel: ${err.message}`,
-        });
+        if (err.data?.error === 'name_taken') {
+          await this.handleNameTaken(channelId, channelName, projectDir, client);
+        } else {
+          await client.chat.postMessage({
+            channel: channelId,
+            text: `:warning: Failed to create channel: ${err.message}`,
+          });
+        }
       }
     } else {
       // Channel is unbound — offer bind options
       await client.chat.postMessage({
         channel: channelId,
-        text: `Bind project \`${args}\` to this channel?`,
+        text: `Bind project \`${projectDir}\` to this channel?`,
         blocks: [
           {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `Bind project directory \`${args}\`?`,
+              text: `Bind project directory \`${projectDir}\`?`,
             },
           },
           {
@@ -417,17 +633,69 @@ export class SlackAdapter {
                 type: 'button',
                 text: { type: 'plain_text', text: 'Use this channel' },
                 action_id: 'project_bind_here',
-                value: args,
+                value: projectDir,
               },
               {
                 type: 'button',
                 text: { type: 'plain_text', text: `Create #${channelName}` },
                 action_id: 'project_create_new',
-                value: args,
+                value: projectDir,
               },
             ],
           },
         ],
+      });
+    }
+  }
+
+  /** Handle name_taken error when creating a channel — offer to bind existing. */
+  private async handleNameTaken(channelId: string, channelName: string, projectDir: string, client: any): Promise<void> {
+    try {
+      const listResult = await client.conversations.list({ types: 'public_channel,private_channel', limit: 1000 });
+      const existingChannel = listResult.channels?.find((c: any) => c.name === channelName);
+      if (existingChannel) {
+        const boundProject = this.store.getProjectByChannelId(existingChannel.id);
+        if (boundProject) {
+          await client.chat.postMessage({
+            channel: channelId,
+            text: `:warning: Channel <#${existingChannel.id}> is already bound to project \`${boundProject.project_dir}\``,
+          });
+        } else {
+          await client.chat.postMessage({
+            channel: channelId,
+            text: `Channel <#${existingChannel.id}> already exists. Bind project \`${projectDir}\` to it?`,
+            blocks: [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `Channel <#${existingChannel.id}> already exists. Bind project directory \`${projectDir}\` to it?`,
+                },
+              },
+              {
+                type: 'actions',
+                elements: [
+                  {
+                    type: 'button',
+                    text: { type: 'plain_text', text: `Bind to #${channelName}` },
+                    action_id: 'project_bind_existing',
+                    value: JSON.stringify({ channelId: existingChannel.id, projectDir }),
+                  },
+                ],
+              },
+            ],
+          });
+        }
+      } else {
+        await client.chat.postMessage({
+          channel: channelId,
+          text: `:warning: Channel #${channelName} exists but the bot can't see it (likely a private channel). Go to #${channelName} and run \`/project connect ${projectDir}\` to bind it.`,
+        });
+      }
+    } catch {
+      await client.chat.postMessage({
+        channel: channelId,
+        text: `:warning: Channel #${channelName} already exists. Go to that channel and run \`/project connect ${projectDir}\` to bind it.`,
       });
     }
   }
@@ -482,10 +750,18 @@ export class SlackAdapter {
     const args = (command.text || '').trim();
 
     if (!args) {
-      // Show current settings
+      // Show current settings with usage hints
+      const root = this.store.getSetting('projects_root');
+      let text = `*Settings for this project:*\n• Backend: \`${project.backend_name}\`\n• Directory: \`${project.project_dir}\``;
+      if (root) {
+        text += `\n• Projects root: \`${root}\``;
+      }
+      text += '\n\n_Commands:_';
+      text += '\n• `/settings backend claude` or `codex` — switch backend';
+      text += '\n• `/settings root /path` — set projects root folder';
       await client.chat.postMessage({
         channel: channelId,
-        text: `*Settings for this project:*\n• Backend: \`${project.backend_name}\`\n• Directory: \`${project.project_dir}\``,
+        text,
       });
       return;
     }
@@ -506,10 +782,24 @@ export class SlackAdapter {
         channel: channelId,
         text: `Backend changed to \`${newBackend}\` for this project.`,
       });
+    } else if (parts[0] === 'root' && parts[1]) {
+      const rootPath = parts.slice(1).join(' ');
+      if (!path.isAbsolute(rootPath)) {
+        await client.chat.postMessage({
+          channel: channelId,
+          text: ':warning: Please provide an absolute path. Example: `/settings root /home/user/projects`',
+        });
+        return;
+      }
+      this.store.setSetting('projects_root', rootPath);
+      await client.chat.postMessage({
+        channel: channelId,
+        text: `Projects root set to \`${rootPath}\`. Use \`/project connect\` to pick from subdirectories.`,
+      });
     } else {
       await client.chat.postMessage({
         channel: channelId,
-        text: 'Usage: `/settings backend <claude|codex>`',
+        text: '*Usage:*\n• `/settings backend <claude|codex>`\n• `/settings root /path`',
       });
     }
   }

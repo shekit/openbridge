@@ -144,6 +144,7 @@ function createMockInteraction(overrides: {
   isThread?: boolean;
   parentId?: string;
   options?: Record<string, string | null>;
+  subcommand?: string;
   guildChannels?: any;
 } = {}) {
   const isThread = overrides.isThread ?? false;
@@ -178,6 +179,7 @@ function createMockInteraction(overrides: {
     guild: mockGuild,
     options: {
       getString: vi.fn((name: string) => overrides.options?.[name] ?? null),
+      getSubcommand: vi.fn(() => overrides.subcommand ?? null),
     },
     reply: vi.fn(async (content: any) => {
       replies.push(content);
@@ -822,7 +824,7 @@ describe('DiscordAdapter', () => {
 
       const { interaction } = createMockInteraction({
         commandName: 'project',
-        options: { path: '' },
+        subcommand: 'list',
       });
 
       // Should not throw
@@ -858,7 +860,7 @@ describe('DiscordAdapter', () => {
   });
 
   describe('P4.11: Discord — /project command flow (create, list, bind)', () => {
-    it('lists all bindings when no path provided', async () => {
+    it('lists all bindings with list subcommand', async () => {
       createAdapter();
       await adapter.start();
 
@@ -867,7 +869,7 @@ describe('DiscordAdapter', () => {
 
       const { interaction, replies } = createMockInteraction({
         commandName: 'project',
-        options: { path: null },
+        subcommand: 'list',
       });
 
       await triggerInteraction(interaction);
@@ -885,7 +887,7 @@ describe('DiscordAdapter', () => {
 
       const { interaction, replies } = createMockInteraction({
         commandName: 'project',
-        options: { path: null },
+        subcommand: 'list',
       });
 
       await triggerInteraction(interaction);
@@ -903,6 +905,7 @@ describe('DiscordAdapter', () => {
       const { interaction, createdChannels, mockGuild } = createMockInteraction({
         commandName: 'project',
         channelId: 'C_BOUND',
+        subcommand: 'connect',
         options: { path: '/test/my-app' },
       });
 
@@ -927,6 +930,7 @@ describe('DiscordAdapter', () => {
       const { interaction, replies, mockGuild } = createMockInteraction({
         commandName: 'project',
         channelId: 'C_BOUND',
+        subcommand: 'connect',
         options: { path: 'my-app' },
       });
 
@@ -944,6 +948,7 @@ describe('DiscordAdapter', () => {
       const { interaction, replies } = createMockInteraction({
         commandName: 'project',
         channelId: 'C_UNBOUND',
+        subcommand: 'connect',
         options: { path: '/test/my-app' },
       });
 

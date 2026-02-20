@@ -23,6 +23,7 @@ import {
   type ThreadChannel,
 } from 'discord.js';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import type { Router, RouteResult } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
@@ -105,8 +106,18 @@ export class DiscordAdapter {
       new SlashCommandBuilder()
         .setName('project')
         .setDescription('Manage project bindings')
-        .addStringOption((option) =>
-          option.setName('path').setDescription('Absolute path to the project directory').setRequired(false)
+        .addSubcommand((sub) =>
+          sub.setName('connect')
+            .setDescription('Bind a project directory to a channel')
+            .addStringOption((opt) => opt.setName('path').setDescription('Absolute path to project directory').setRequired(false))
+        )
+        .addSubcommand((sub) =>
+          sub.setName('list')
+            .setDescription('List all project bindings')
+        )
+        .addSubcommand((sub) =>
+          sub.setName('disconnect')
+            .setDescription('Unbind this channel from its project')
         ),
       new SlashCommandBuilder()
         .setName('new')
@@ -115,7 +126,7 @@ export class DiscordAdapter {
         .setName('settings')
         .setDescription('View or modify bridge settings')
         .addStringOption((option) =>
-          option.setName('args').setDescription('Setting to change (e.g. "backend codex")').setRequired(false)
+          option.setName('args').setDescription('Setting to change (e.g. "backend codex", "root /path")').setRequired(false)
         ),
     ];
 
@@ -249,6 +260,26 @@ export class DiscordAdapter {
     }
     if (customId.startsWith('project_create_new:')) {
       await this.handleProjectCreateNew(interaction, customId.slice('project_create_new:'.length));
+      return;
+    }
+    if (customId.startsWith('project_pick:')) {
+      const projectDir = customId.slice('project_pick:'.length);
+      const channelId = interaction.channelId;
+      const existing = this.store.getProjectByChannelId(channelId);
+      if (existing) {
+        await this.handleProjectConnect(interaction, channelId, projectDir);
+      } else {
+        const backend = this.store.getSetting('default_backend') ?? 'claude';
+        try {
+          this.store.createProject(channelId, projectDir, backend);
+          await interaction.update({
+            content: `Bound this channel to project \`${projectDir}\` (${backend})`,
+            components: [],
+          });
+        } catch (err: any) {
+          await interaction.reply(`:warning: Failed to bind: ${err.message}`);
+        }
+      }
       return;
     }
 
@@ -414,16 +445,15 @@ export class DiscordAdapter {
   /** Handle /project slash command. */
   private async handleProjectCommand(interaction: any): Promise<void> {
     const channelId = interaction.channelId;
-    const projectPath = interaction.options?.getString?.('path') || '';
+    const subcommand = interaction.options?.getSubcommand?.() || '';
 
-    if (!projectPath) {
-      // List all bindings
+    // /project list
+    if (subcommand === 'list') {
       const projects = this.store.listProjects();
       if (projects.length === 0) {
-        await interaction.reply('No project bindings found. Use `/project path:/absolute/path/to/dir` to create one.');
+        await interaction.reply('No project bindings found. Use `/project connect` to bind one.');
         return;
       }
-
       let text = '**Project Bindings:**\n';
       for (const p of projects) {
         text += `- <#${p.channel_id}> → \`${p.project_dir}\` (${p.backend_name})\n`;
@@ -432,19 +462,85 @@ export class DiscordAdapter {
       return;
     }
 
-    // Validate that the argument is an absolute directory path
-    if (!path.isAbsolute(projectPath)) {
-      await interaction.reply(':warning: Please provide an absolute directory path. Example: `/project path:/home/user/my-app`');
+    // /project disconnect
+    if (subcommand === 'disconnect') {
+      const project = this.store.getProjectByChannelId(channelId);
+      if (!project) {
+        await interaction.reply('This channel is not bound to a project.');
+      } else {
+        this.store.deleteProject(project.id);
+        await interaction.reply(`Disconnected this channel from \`${project.project_dir}\`.`);
+      }
       return;
     }
 
-    const channelName = path.basename(projectPath);
+    // /project connect [path]
+    if (subcommand === 'connect') {
+      const projectPath = interaction.options?.getString?.('path') || '';
 
-    // Check if current channel is bound
+      if (!projectPath) {
+        // No path — show picker if projects_root is set
+        const root = this.store.getSetting('projects_root');
+        if (root && fs.existsSync(root)) {
+          const entries = fs.readdirSync(root, { withFileTypes: true })
+            .filter((e: fs.Dirent) => e.isDirectory() && !e.name.startsWith('.'))
+            .map((e: fs.Dirent) => e.name)
+            .sort();
+          if (entries.length === 0) {
+            await interaction.reply(`:warning: No subdirectories found in \`${root}\`. Use \`/project connect path:/absolute/path\` instead.`);
+            return;
+          }
+          const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+          for (let i = 0; i < Math.min(entries.length, 20); i += 5) {
+            const row = new ActionRowBuilder<ButtonBuilder>();
+            for (const name of entries.slice(i, i + 5)) {
+              row.addComponents(
+                new ButtonBuilder()
+                  .setCustomId(`project_pick:${path.join(root, name)}`)
+                  .setLabel(name)
+                  .setStyle(ButtonStyle.Secondary)
+              );
+            }
+            rows.push(row);
+          }
+          await interaction.reply({
+            content: `**Pick a project from** \`${root}\`:`,
+            components: rows,
+          });
+        } else {
+          await interaction.reply(':warning: Provide a path: `/project connect path:/absolute/path`\n_Tip: Set a projects root with `/settings args:root /path` to enable the picker._');
+        }
+        return;
+      }
+
+      if (!path.isAbsolute(projectPath)) {
+        // Check if it matches a subdirectory in projects_root
+        const root = this.store.getSetting('projects_root');
+        if (root) {
+          const fullPath = path.join(root, projectPath);
+          if (fs.existsSync(fullPath)) {
+            await this.handleProjectConnect(interaction, channelId, fullPath);
+            return;
+          }
+        }
+        await interaction.reply(':warning: Please provide an absolute directory path. Example: `/project connect path:/home/user/my-app`');
+        return;
+      }
+
+      await this.handleProjectConnect(interaction, channelId, projectPath);
+      return;
+    }
+
+    await interaction.reply(':warning: Unknown subcommand. Use `/project connect`, `/project list`, or `/project disconnect`.');
+  }
+
+  /** Handle project connect flow for Discord. */
+  private async handleProjectConnect(interaction: any, channelId: string, projectPath: string): Promise<void> {
+    const channelName = path.basename(projectPath);
     const existing = this.store.getProjectByChannelId(channelId);
 
     if (existing) {
-      // Channel already bound — create a new channel with derived name
+      // Channel already bound — create a new channel
       try {
         const guild = interaction.guild;
         if (!guild) {
@@ -512,16 +608,22 @@ export class DiscordAdapter {
     const project = this.store.getProjectByChannelId(channelId);
 
     if (!project) {
-      await interaction.reply('This channel is not bound to a project. Use `/project name:<name>` first.');
+      await interaction.reply('This channel is not bound to a project. Use `/project connect` first.');
       return;
     }
 
     const args = interaction.options?.getString?.('args') || '';
 
     if (!args) {
-      await interaction.reply(
-        `**Settings for this project:**\n- Backend: \`${project.backend_name}\`\n- Directory: \`${project.project_dir}\``
-      );
+      const root = this.store.getSetting('projects_root');
+      let text = `**Settings for this project:**\n- Backend: \`${project.backend_name}\`\n- Directory: \`${project.project_dir}\``;
+      if (root) {
+        text += `\n- Projects root: \`${root}\``;
+      }
+      text += '\n\n_Commands:_';
+      text += '\n- `/settings args:backend claude` or `codex` — switch backend';
+      text += '\n- `/settings args:root /path` — set projects root folder';
+      await interaction.reply(text);
       return;
     }
 
@@ -534,8 +636,16 @@ export class DiscordAdapter {
       }
       this.store.updateProjectBackend(project.id, newBackend);
       await interaction.reply(`Backend changed to \`${newBackend}\` for this project.`);
+    } else if (parts[0] === 'root' && parts[1]) {
+      const rootPath = parts.slice(1).join(' ');
+      if (!path.isAbsolute(rootPath)) {
+        await interaction.reply(':warning: Please provide an absolute path. Example: `/settings args:root /home/user/projects`');
+        return;
+      }
+      this.store.setSetting('projects_root', rootPath);
+      await interaction.reply(`Projects root set to \`${rootPath}\`. Use \`/project connect\` to pick from subdirectories.`);
     } else {
-      await interaction.reply('Usage: `/settings args:backend <claude|codex>`');
+      await interaction.reply('**Usage:**\n- `/settings args:backend <claude|codex>`\n- `/settings args:root /path`');
     }
   }
 

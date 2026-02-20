@@ -9,6 +9,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { execSync } from 'node:child_process';
 import { Store } from '../store.js';
+import * as clack from '@clack/prompts';
 import { type PromptIO, createPromptIO, promptSelect, promptText, promptConfirm } from './prompt.js';
 
 export type Platform = 'slack' | 'discord';
@@ -65,7 +66,7 @@ export function detectCli(name: string): boolean {
 }
 
 /** Step 1: Platform selection (P6.2) */
-export async function selectPlatforms(io: PromptIO): Promise<Platform[]> {
+export async function selectPlatforms(io: PromptIO | null): Promise<Platform[]> {
   const selected = await promptSelect(
     io,
     'Which messaging platform(s) do you want to use?',
@@ -84,7 +85,7 @@ export async function selectPlatforms(io: PromptIO): Promise<Platform[]> {
 
 /** Step 2: Token input (P6.3) */
 export async function inputTokens(
-  io: PromptIO,
+  io: PromptIO | null,
   platforms: Platform[],
 ): Promise<Pick<InitConfig, 'slackBotToken' | 'slackAppToken' | 'discordBotToken'>> {
   const result: Pick<InitConfig, 'slackBotToken' | 'slackAppToken' | 'discordBotToken'> = {};
@@ -108,7 +109,7 @@ export async function inputTokens(
 }
 
 /** Step 3: Backend auto-detection (P6.4) */
-export async function detectBackend(io: PromptIO): Promise<string> {
+export async function detectBackend(io: PromptIO | null): Promise<string> {
   console.log('\n[init] --- Backend Detection ---');
 
   const hasClaude = detectCli('claude');
@@ -197,22 +198,53 @@ export function saveConfig(
   store.setSetting('default_backend', defaultBackend);
 }
 
+/** Step 5 (optional): Set projects root directory */
+export async function setProjectsRoot(
+  io: PromptIO | null,
+  store: Store,
+): Promise<void> {
+  const wantRoot = await promptConfirm(
+    io,
+    'Set a projects root folder? (Makes /project connect show a picker)',
+    false,
+  );
+
+  if (wantRoot) {
+    const rootDir = await promptText(io, 'Projects root directory (absolute path)', (input) => {
+      const resolved = path.resolve(input);
+      if (!fs.existsSync(resolved)) {
+        return `Directory does not exist: ${resolved}`;
+      }
+      return null;
+    });
+    store.setSetting('projects_root', path.resolve(rootDir));
+    console.log(`[init] projects root set to ${path.resolve(rootDir)}`);
+  }
+}
+
 /**
  * Run the full init wizard.
- * Accepts optional PromptIO for testing (defaults to stdin/stdout).
+ * Accepts optional PromptIO for testing (defaults to interactive @clack/prompts).
  */
 export async function runInit(io?: PromptIO): Promise<void> {
-  const prompt = io ?? createPromptIO();
+  // When no IO is injected, use null to signal @clack/prompts mode
+  const prompt: PromptIO | null = io ?? null;
+  const legacyPrompt = io ?? createPromptIO();
 
   try {
-    console.log('\n[init] OpenBridge Setup Wizard\n[init] ======================\n');
+    if (!io) {
+      clack.intro('OpenBridge Setup');
+    } else {
+      console.log('\n[init] OpenBridge Setup Wizard\n[init] ======================\n');
+    }
 
     // Step 1: Platform selection (P6.2)
     const platforms = await selectPlatforms(prompt);
     console.log(`[init] selected: ${platforms.join(', ')}`);
 
     // Step 2: Token input (P6.3)
-    const tokens = await inputTokens(prompt, platforms);
+    // Token input always uses legacy prompt (clack text works too but tokens need specific prompts)
+    const tokens = await inputTokens(io ? legacyPrompt : prompt as any, platforms);
 
     // Step 3: Backend detection (P6.4)
     const defaultBackend = await detectBackend(prompt);
@@ -229,19 +261,28 @@ export async function runInit(io?: PromptIO): Promise<void> {
     saveConfig(store, platforms, defaultBackend);
 
     // Step 5: First project creation (P6.5)
-    await createFirstProject(prompt, store, defaultBackend);
+    await createFirstProject(prompt as any ?? legacyPrompt, store, defaultBackend);
 
-    // Step 6: Write .env.local (P6.6)
+    // Step 6: Optional projects root
+    await setProjectsRoot(prompt, store);
+
+    // Step 7: Write .env.local (P6.6)
     const envPath = path.resolve('.env.local');
     writeEnvFile(envPath, tokens);
     console.log(`\n[init] tokens saved to ${envPath}`);
 
     store.close();
 
-    console.log('\n[init] setup complete! Run "openbridge start" to launch the bridge.');
-  } finally {
     if (!io) {
-      prompt.close();
+      clack.outro('Setup complete! Run "openbridge start" to launch the bridge.');
+    } else {
+      console.log('\n[init] setup complete! Run "openbridge start" to launch the bridge.');
+    }
+  } finally {
+    if (io) {
+      // Only close if we created a legacy prompt
+    } else {
+      legacyPrompt.close();
     }
   }
 }

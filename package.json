@@ -24,6 +24,7 @@
     "vitest": "^4.0.18"
   },
   "dependencies": {
+    "@clack/prompts": "^1.0.1",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@slack/bolt": "^4.6.0",
     "@slack/web-api": "^7.14.1",
