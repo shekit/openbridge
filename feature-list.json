@@ -1033,6 +1033,76 @@
           "status": "passing"
         }
       ]
+    },
+    {
+      "id": "P8",
+      "name": "Code Review Bug Fixes and Refactoring",
+      "outcome": "Critical bugs fixed, duplicated code extracted, production readiness improved",
+      "features": [
+        {
+          "id": "P8.1",
+          "description": "Fix Slack file uploads silently ignored — handleMessage now detects message.files and routes through handleFileUpload",
+          "verification": [
+            "Slack message with file attachments calls handleFileUpload",
+            "File descriptions are combined with message text and sent to backend",
+            "Messages without files still route normally"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P8.2",
+          "description": "Fix Discord project_bind_here and project_create_new button handlers — clicking 'Use this channel' or 'Create #name' now works",
+          "verification": [
+            "project_bind_here button creates a project binding for the current channel",
+            "project_create_new button creates a new guild channel and binds it",
+            "Both handlers update the interaction message to confirm the action"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P8.3",
+          "description": "Fix Discord slash commands never registered — start() now calls registerCommands() with non-fatal error handling",
+          "verification": [
+            "Discord adapter start() calls registerCommands() after login",
+            "registerCommands failure does not prevent adapter from starting",
+            "Warning logged if command registration fails"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P8.4",
+          "description": "Fix /settings backend change having no effect — both adapters now update projects.backend_name via store.updateProjectBackend()",
+          "verification": [
+            "store.updateProjectBackend() updates the backend_name column in projects table",
+            "Slack /settings backend <name> updates the project row, not the settings table",
+            "Discord /settings backend <name> updates the project row, not the settings table",
+            "Router reads project.backend_name which now reflects the change"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P8.5",
+          "description": "Fix sendWithTimeout orphaning child processes — timer cleared on success, backend.stop() called on timeout and in error catch blocks",
+          "verification": [
+            "Timer is cleared when backend.send() completes normally (no leaked timers)",
+            "backend.stop() is called inside the timeout handler before rejecting",
+            "send() and respond() catch blocks call backend.stop() before transitioning to dead",
+            "Active backend tracking cleaned up after successful oneshot completion"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P8.6",
+          "description": "Extract duplicated splitText() to shared src/utils.ts — both adapters import from shared module",
+          "verification": [
+            "src/utils.ts exports splitText()",
+            "slack.ts imports splitText from utils.ts and re-exports for backward compatibility",
+            "discord.ts imports splitText from utils.ts and re-exports for backward compatibility",
+            "No duplicated splitText implementations remain in adapter files"
+          ],
+          "status": "passing"
+        }
+      ]
     }
   ]
 }
