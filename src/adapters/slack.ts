@@ -578,7 +578,12 @@ export class SlackAdapter {
 
     await client.chat.postMessage({
       channel: channelId,
-      text: `:warning: Unknown subcommand \`${subcommand}\`. Try \`/project help\`.`,
+      text: [
+        `:warning: Unsupported command \`${subcommand}\`. Try one of these:`,
+        '• `/project list` — show all project bindings',
+        '• `/project connect /absolute/path` — bind a project to a channel',
+        '• `/project disconnect` — unbind this channel',
+      ].join('\n'),
     });
   }
 

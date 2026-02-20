@@ -1,0 +1,64 @@
+{
+  "display_information": {
+    "name": "OpenBridge",
+    "description": "Remote control for coding agents via Slack",
+    "background_color": "#1a1a2e"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "OpenBridge",
+      "always_online": true
+    },
+    "slash_commands": [
+      {
+        "command": "/project",
+        "description": "Manage project bindings (connect, list, disconnect)",
+        "usage_hint": "connect /path | list | disconnect",
+        "should_escape": false
+      },
+      {
+        "command": "/new",
+        "description": "Reset the current session in this thread",
+        "should_escape": false
+      },
+      {
+        "command": "/settings",
+        "description": "View or change bridge settings",
+        "usage_hint": "backend claude | root /path",
+        "should_escape": false
+      }
+    ]
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "chat:write",
+        "channels:history",
+        "channels:read",
+        "channels:manage",
+        "channels:join",
+        "groups:history",
+        "groups:read",
+        "groups:write",
+        "files:read",
+        "files:write",
+        "commands",
+        "reactions:write"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "bot_events": [
+        "message.channels",
+        "message.groups"
+      ]
+    },
+    "interactivity": {
+      "is_enabled": true
+    },
+    "socket_mode_enabled": true,
+    "org_deploy_enabled": false,
+    "token_rotation_enabled": false
+  }
+}

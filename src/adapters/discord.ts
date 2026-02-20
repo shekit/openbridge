@@ -531,7 +531,12 @@ export class DiscordAdapter {
       return;
     }
 
-    await interaction.reply(':warning: Unknown subcommand. Use `/project connect`, `/project list`, or `/project disconnect`.');
+    await interaction.reply([
+      ':warning: Unsupported command. Try one of these:',
+      '- `/project connect` — bind a project to a channel',
+      '- `/project list` — show all project bindings',
+      '- `/project disconnect` — unbind this channel',
+    ].join('\n'));
   }
 
   /** Handle project connect flow for Discord. */

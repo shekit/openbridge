@@ -3,18 +3,25 @@
  *
  * Reads config from .openbridge/, loads tokens from environment,
  * creates the router and messaging adapters, and starts listening.
+ * On subsequent interactive runs, shows a settings menu before starting.
  */
 
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import * as clack from '@clack/prompts';
 import { Store } from '../store.js';
 import { Router, type BackendFactory } from '../router.js';
 import { ClaudeBackend } from '../backends/claude.js';
 import { CodexBackend } from '../backends/codex.js';
 import { SlackAdapter } from '../adapters/slack.js';
 import { DiscordAdapter } from '../adapters/discord.js';
-import type { Platform } from './init.js';
-import { runInit } from './init.js';
+import {
+  type Platform,
+  runInit,
+  inputTokens,
+  detectBackend,
+  mergeEnvFile,
+} from './init.js';
 
 export interface StartDeps {
   /** Override the database path (for testing). */
@@ -68,6 +75,156 @@ export function createBackendFactory(): BackendFactory {
   };
 }
 
+type StartMenuAction = 'start' | 'add_platform' | 'update_tokens' | 'change_backend' | 'rerun_setup';
+
+/**
+ * Show the settings menu on subsequent interactive runs.
+ * Handles the chosen action (add platform, update tokens, etc.)
+ * then returns so the bridge can start normally.
+ */
+async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
+  const store = new Store(dbPath);
+
+  try {
+    const platformsJson = store.getSetting('platforms');
+    const platforms: Platform[] = platformsJson ? JSON.parse(platformsJson) : [];
+    const defaultBackend = store.getSetting('default_backend') ?? 'claude';
+
+    clack.intro('OpenBridge');
+
+    const options: { label: string; value: StartMenuAction; hint?: string }[] = [
+      { label: 'Start the bridge', value: 'start', hint: 'default' },
+    ];
+
+    const allPlatforms: Platform[] = ['slack', 'discord'];
+    const unconfigured = allPlatforms.filter((p) => !platforms.includes(p));
+
+    if (unconfigured.length > 0) {
+      const names = unconfigured.map((p) => p.charAt(0).toUpperCase() + p.slice(1));
+      options.push({
+        label: 'Add a platform',
+        value: 'add_platform',
+        hint: names.join(', '),
+      });
+    }
+
+    if (platforms.length > 0) {
+      const names = platforms.map((p) => p.charAt(0).toUpperCase() + p.slice(1));
+      options.push({
+        label: 'Update tokens',
+        value: 'update_tokens',
+        hint: names.join(', '),
+      });
+    }
+
+    options.push({
+      label: 'Change default backend',
+      value: 'change_backend',
+      hint: `current: ${defaultBackend}`,
+    });
+
+    options.push({ label: 'Re-run full setup', value: 'rerun_setup' });
+
+    const action = await clack.select({
+      message: 'What would you like to do?',
+      options,
+      initialValue: 'start' as StartMenuAction,
+    });
+
+    if (clack.isCancel(action)) {
+      clack.cancel('Cancelled.');
+      process.exit(0);
+    }
+
+    switch (action) {
+      case 'start':
+        return;
+
+      case 'add_platform': {
+        let platformToAdd: Platform;
+        if (unconfigured.length === 1) {
+          platformToAdd = unconfigured[0];
+          clack.log.info(`Adding ${platformToAdd.charAt(0).toUpperCase() + platformToAdd.slice(1)}...`);
+        } else {
+          const selected = await clack.select({
+            message: 'Which platform do you want to add?',
+            options: unconfigured.map((p) => ({
+              label: p.charAt(0).toUpperCase() + p.slice(1),
+              value: p,
+            })),
+          });
+          if (clack.isCancel(selected)) {
+            clack.cancel('Cancelled.');
+            process.exit(0);
+          }
+          platformToAdd = selected as Platform;
+        }
+
+        const tokens = await inputTokens(null, [platformToAdd]);
+        mergeEnvFile(envPath, tokens);
+
+        platforms.push(platformToAdd);
+        store.setSetting('platforms', JSON.stringify(platforms));
+        clack.log.success(
+          `${platformToAdd.charAt(0).toUpperCase() + platformToAdd.slice(1)} added. Starting the bridge...`,
+        );
+        return;
+      }
+
+      case 'update_tokens': {
+        let platformsToUpdate: Platform[];
+        if (platforms.length === 1) {
+          platformsToUpdate = [platforms[0]];
+        } else {
+          const selected = await clack.select({
+            message: 'Which platform tokens do you want to update?',
+            options: [
+              ...platforms.map((p) => ({
+                label: p.charAt(0).toUpperCase() + p.slice(1),
+                value: p as string,
+              })),
+              { label: 'Both', value: 'both' },
+            ],
+          });
+          if (clack.isCancel(selected)) {
+            clack.cancel('Cancelled.');
+            process.exit(0);
+          }
+          platformsToUpdate =
+            selected === 'both' ? [...platforms] : [selected as Platform];
+        }
+
+        const tokens = await inputTokens(null, platformsToUpdate);
+        mergeEnvFile(envPath, tokens);
+        clack.log.success('Tokens updated. Starting the bridge...');
+        return;
+      }
+
+      case 'change_backend': {
+        const newBackend = await detectBackend(null);
+        store.setSetting('default_backend', newBackend);
+        clack.log.success(`Default backend changed to ${newBackend}. Starting the bridge...`);
+        return;
+      }
+
+      case 'rerun_setup': {
+        store.close();
+        const dbDir = path.dirname(dbPath);
+        fs.rmSync(dbDir, { recursive: true, force: true });
+        if (fs.existsSync(envPath)) fs.rmSync(envPath);
+        await runInit();
+        return;
+      }
+    }
+  } finally {
+    try {
+      store.close();
+    } catch {
+      // Already closed (e.g. rerun_setup closes it before wiping)
+    }
+  }
+}
+
 /**
  * Launch the bridge process.
  */
@@ -76,10 +233,13 @@ export async function runStart(deps?: StartDeps): Promise<void> {
   const envPath = deps?.envPath ?? path.resolve('.env.local');
   const dryRun = deps?.dryRun ?? false;
 
-  // Auto-run init if .openbridge/ doesn't exist yet
+  // Auto-run init if .openbridge/ doesn't exist yet (first run)
   if (!fs.existsSync(path.dirname(dbPath))) {
     console.log('[start] first run detected — running setup wizard...\n');
     await runInit();
+  } else if (process.stdin.isTTY && !dryRun) {
+    // Subsequent interactive runs: show the settings menu
+    await handleStartMenu(dbPath, envPath);
   }
 
   // Load environment variables
@@ -92,7 +252,7 @@ export async function runStart(deps?: StartDeps): Promise<void> {
   // Read config from settings
   const platformsJson = store.getSetting('platforms');
   if (!platformsJson) {
-    console.error('[start] no platforms configured. Run "openbridge init" first.');
+    console.error('[start] no platforms configured. Run "openbridge start" to set up.');
     store.close();
     process.exit(1);
     return;

@@ -3,24 +3,17 @@
 /**
  * OpenBridge CLI entry point.
  *
- * Handles 'init' and 'start' subcommands.
- * Usage: openbridge <command>
+ * Usage: openbridge start
  */
 
-import { runInit } from './cli/init.js';
 import { runStart } from './cli/start.js';
 
 const USAGE = `
 openbridge — Remote control for coding agents via Slack/Discord
 
 Usage:
-  openbridge init     Set up OpenBridge (platforms, tokens, backend, first project)
-  openbridge start    Launch the bridge process
+  openbridge start    Launch the bridge (runs setup wizard on first use)
   openbridge --help   Show this help message
-
-Commands:
-  init    Interactive setup wizard — configure platforms, tokens, and create first project
-  start   Start the bridge and connect to messaging platforms
 `.trim();
 
 export function parseArgs(argv: string[]): { command: string | null; args: string[] } {
@@ -55,10 +48,6 @@ export async function cli(argv: string[]): Promise<void> {
 
     case 'version':
       console.log('openbridge 0.1.0');
-      break;
-
-    case 'init':
-      await runInit();
       break;
 
     case 'start':

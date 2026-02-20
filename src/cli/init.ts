@@ -1,8 +1,9 @@
 /**
  * openbridge init — Interactive setup wizard.
  *
- * Guides the user through platform selection, token input, backend detection,
- * and first project creation. Writes config to .openbridge/ and .env.local.
+ * Guides the user through platform selection, token input (with inline
+ * setup instructions and verification), and backend detection. Writes
+ * config to .openbridge/ and .env.local.
  */
 
 import * as fs from 'node:fs';
@@ -20,9 +21,9 @@ export interface InitConfig {
   slackAppToken?: string;
   discordBotToken?: string;
   defaultBackend: string;
-  projectName: string;
-  projectDir: string;
 }
+
+const DISCORD_PERMISSIONS = '397284600912';
 
 /** Validate a Slack bot token format. */
 export function validateSlackBotToken(token: string): string | null {
@@ -55,6 +56,54 @@ export function validateDiscordToken(token: string): string | null {
   return null;
 }
 
+/** Extract the Application ID from a Discord bot token. */
+export function extractDiscordAppId(token: string): string | null {
+  try {
+    const firstPart = token.split('.')[0];
+    const decoded = Buffer.from(firstPart, 'base64').toString();
+    if (/^\d+$/.test(decoded)) {
+      return decoded;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Verify a Slack bot token by calling auth.test. Returns bot name on success, null on failure. */
+export async function verifySlackToken(botToken: string): Promise<string | null> {
+  try {
+    const res = await fetch('https://slack.com/api/auth.test', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${botToken}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
+    const data = await res.json() as any;
+    if (data.ok) {
+      return data.user ?? data.bot_id ?? 'bot';
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Verify a Discord bot token by calling /users/@me. Returns bot username on success, null on failure. */
+export async function verifyDiscordToken(botToken: string): Promise<string | null> {
+  try {
+    const res = await fetch('https://discord.com/api/v10/users/@me', {
+      headers: { 'Authorization': `Bot ${botToken}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as any;
+    return data.username ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Check if a CLI tool is available on PATH. */
 export function detectCli(name: string): boolean {
   try {
@@ -83,26 +132,147 @@ export async function selectPlatforms(io: PromptIO | null): Promise<Platform[]> 
   return selected as Platform[];
 }
 
-/** Step 2: Token input (P6.3) */
+/** Step 2: Token input with inline setup instructions and verification (P6.3) */
 export async function inputTokens(
   io: PromptIO | null,
   platforms: Platform[],
 ): Promise<Pick<InitConfig, 'slackBotToken' | 'slackAppToken' | 'discordBotToken'>> {
   const result: Pick<InitConfig, 'slackBotToken' | 'slackAppToken' | 'discordBotToken'> = {};
+  const isInteractive = !io;
 
   if (platforms.includes('slack')) {
-    console.log('\n[init] --- Slack Setup ---');
-    console.log('[init] You need a Slack app with Socket Mode enabled.');
-    console.log('[init] Create one at: https://api.slack.com/apps');
-    result.slackBotToken = await promptText(io, 'Slack Bot Token (xoxb-...)', validateSlackBotToken);
-    result.slackAppToken = await promptText(io, 'Slack App Token (xapp-...)', validateSlackAppToken);
+    // Phase 1: Show setup instructions (once, before token entry loop)
+    const slackCreateSteps = [
+      '1. Go to api.slack.com/apps → Create New App → From an app manifest',
+      '2. Pick your workspace, switch to the JSON tab',
+      '3. Paste the contents of slack-manifest.json from this project',
+      '4. Click Create',
+      '5. Install to Workspace → copy the Bot Token (xoxb-...)',
+      '6. Basic Information → App-Level Tokens → Generate Token',
+      '   Give it the connections:write scope → copy the token (xapp-...)',
+    ].join('\n');
+
+    if (isInteractive) {
+      clack.note(slackCreateSteps, 'Slack Setup');
+    } else {
+      console.log('\n[init] --- Slack Setup ---');
+      console.log(slackCreateSteps);
+    }
+
+    // Token entry + verification (retries on failure in interactive mode)
+    while (true) {
+      result.slackBotToken = await promptText(io, 'Slack Bot Token (xoxb-...)', validateSlackBotToken);
+      result.slackAppToken = await promptText(io, 'Slack App Token (xapp-...)', validateSlackAppToken);
+
+      if (isInteractive) {
+        const s = clack.spinner();
+        s.start('Verifying Slack token...');
+        const botName = await verifySlackToken(result.slackBotToken!);
+        if (botName) {
+          s.stop(`Slack token verified — connected as "${botName}"`);
+          break;
+        }
+        s.stop('Could not verify Slack token — the token may be invalid or the network is down.');
+        const retry = await promptConfirm(io, 'Re-enter Slack tokens?', true);
+        if (!retry) break;
+      } else {
+        console.log('[init] verifying Slack token...');
+        const botName = await verifySlackToken(result.slackBotToken!);
+        if (botName) {
+          console.log(`[init] Slack token verified — connected as "${botName}"`);
+        } else {
+          console.log('[init] could not verify token — continuing');
+        }
+        break;
+      }
+    }
+
+    // Phase 2: Tell user to invite the bot
+    const slackInviteSteps = [
+      'Go to your Slack workspace and invite the bot to a channel:',
+      '',
+      '  /invite @OpenBridge',
+      '',
+      'The bot will appear online once the bridge is running.',
+    ].join('\n');
+
+    if (isInteractive) {
+      clack.note(slackInviteSteps, 'Invite the bot');
+    } else {
+      console.log('\n[init] --- Invite the bot ---');
+      console.log(slackInviteSteps);
+    }
   }
 
   if (platforms.includes('discord')) {
-    console.log('\n[init] --- Discord Setup ---');
-    console.log('[init] You need a Discord bot application.');
-    console.log('[init] Create one at: https://discord.com/developers/applications');
-    result.discordBotToken = await promptText(io, 'Discord Bot Token', validateDiscordToken);
+    // Phase 1: Create the bot and get token
+    const discordCreateSteps = [
+      '1. Go to discord.com/developers/applications → New Application',
+      '2. Bot tab → Reset Token → copy it (you\'ll paste it below)',
+      '3. Bot tab → Privileged Gateway Intents → Enable Message Content Intent',
+    ].join('\n');
+
+    if (isInteractive) {
+      clack.note(discordCreateSteps, 'Discord Setup');
+    } else {
+      console.log('\n[init] --- Discord Setup ---');
+      console.log(discordCreateSteps);
+    }
+
+    // Token entry + verification (retries on failure in interactive mode)
+    while (true) {
+      result.discordBotToken = await promptText(io, 'Discord Bot Token', validateDiscordToken);
+
+      if (isInteractive) {
+        const s = clack.spinner();
+        s.start('Verifying Discord token...');
+        const botName = await verifyDiscordToken(result.discordBotToken!);
+        if (botName) {
+          s.stop(`Discord token verified — bot name: "${botName}"`);
+          break;
+        }
+        s.stop('Could not verify Discord token — the token may be invalid or the network is down.');
+        const retry = await promptConfirm(io, 'Re-enter Discord token?', true);
+        if (!retry) break;
+      } else {
+        console.log('[init] verifying Discord token...');
+        const botName = await verifyDiscordToken(result.discordBotToken!);
+        if (botName) {
+          console.log(`[init] Discord token verified — bot name: "${botName}"`);
+        } else {
+          console.log('[init] could not verify token — continuing');
+        }
+        break;
+      }
+    }
+
+    // Phase 2: Show the pre-filled invite URL
+    const appId = extractDiscordAppId(result.discordBotToken!);
+    if (appId) {
+      const inviteUrl = `https://discord.com/oauth2/authorize?client_id=${appId}&scope=bot&permissions=${DISCORD_PERMISSIONS}`;
+      const inviteSteps = [
+        'Open this URL in your browser to add the bot to your server:',
+        '',
+        inviteUrl,
+        '',
+        'Pick your server → Authorize, then come back here.',
+      ].join('\n');
+
+      if (isInteractive) {
+        clack.note(inviteSteps, 'Add bot to your server');
+      } else {
+        console.log('\n[init] --- Add bot to your server ---');
+        console.log(inviteSteps);
+      }
+    } else {
+      if (isInteractive) {
+        clack.log.warn('Could not extract App ID from token. Add the bot manually:');
+        clack.log.info('discord.com/developers/applications → OAuth2 → URL Generator');
+      } else {
+        console.log('[init] Could not extract App ID from token.');
+        console.log('[init] Add the bot manually: discord.com/developers/applications → OAuth2 → URL Generator');
+      }
+    }
   }
 
   return result;
@@ -110,16 +280,16 @@ export async function inputTokens(
 
 /** Step 3: Backend auto-detection (P6.4) */
 export async function detectBackend(io: PromptIO | null): Promise<string> {
-  console.log('\n[init] --- Backend Detection ---');
-
   const hasClaude = detectCli('claude');
   const hasCodex = detectCli('codex');
 
-  if (hasClaude) console.log('[init] found: claude CLI');
-  if (hasCodex) console.log('[init] found: codex CLI');
   if (!hasClaude && !hasCodex) {
-    console.log('[init] no coding backends found. Install Claude Code or Codex CLI first.');
-    console.log('[init] defaulting to "claude" — you can change this later with /settings.');
+    if (!io) {
+      clack.log.warn('No coding backends found. Install Claude Code or Codex CLI first.');
+      clack.log.info('Defaulting to "claude" — you can change this later with /settings.');
+    } else {
+      console.log('[init] no coding backends found — defaulting to "claude".');
+    }
     return 'claude';
   }
 
@@ -128,7 +298,11 @@ export async function detectBackend(io: PromptIO | null): Promise<string> {
   if (hasCodex) available.push({ label: 'Codex CLI', value: 'codex' });
 
   if (available.length === 1) {
-    console.log(`[init] using ${available[0].label} as default backend.`);
+    if (!io) {
+      clack.log.success(`Found ${available[0].label} — using it as default backend.`);
+    } else {
+      console.log(`[init] using ${available[0].label} as default backend.`);
+    }
     return available[0].value;
   }
 
@@ -136,41 +310,14 @@ export async function detectBackend(io: PromptIO | null): Promise<string> {
   return selected[0];
 }
 
-/** Step 4: First project creation (P6.5) */
-export async function createFirstProject(
-  io: PromptIO,
-  store: Store,
-  defaultBackend: string,
-): Promise<{ name: string; dir: string }> {
-  console.log('\n[init] --- First Project ---');
-
-  const name = await promptText(io, 'Project name');
-  const dirInput = await promptText(io, 'Project directory (absolute path)', (input) => {
-    const resolved = path.resolve(input);
-    if (!fs.existsSync(resolved)) {
-      return `Directory does not exist: ${resolved}`;
-    }
-    return null;
-  });
-
-  const dir = path.resolve(dirInput);
-
-  // Create a placeholder channel_id — the actual channel binding happens via /project
-  const channelId = `pending:${name}`;
-  store.createProject(channelId, dir, defaultBackend);
-  console.log(`[init] project "${name}" created → ${dir} (backend: ${defaultBackend})`);
-
-  return { name, dir };
-}
-
-/** Step 5: Write tokens to .env.local (P6.6) */
+/** Write tokens to .env.local (P6.6) */
 export function writeEnvFile(
   envPath: string,
   tokens: Pick<InitConfig, 'slackBotToken' | 'slackAppToken' | 'discordBotToken'>,
 ): void {
   const lines: string[] = [
     '# OpenBridge Environment Variables',
-    '# Generated by openbridge init',
+    '# Auto-generated by openbridge setup wizard',
     '',
   ];
 
@@ -188,6 +335,35 @@ export function writeEnvFile(
   fs.writeFileSync(envPath, lines.join('\n'));
 }
 
+/** Read existing .env.local, merge new tokens, and write back. */
+export function mergeEnvFile(
+  envPath: string,
+  newTokens: Pick<InitConfig, 'slackBotToken' | 'slackAppToken' | 'discordBotToken'>,
+): void {
+  const existing: Record<string, string> = {};
+  if (fs.existsSync(envPath)) {
+    const content = fs.readFileSync(envPath, 'utf-8');
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIndex = trimmed.indexOf('=');
+      if (eqIndex === -1) continue;
+      existing[trimmed.substring(0, eqIndex).trim()] = trimmed.substring(eqIndex + 1).trim();
+    }
+  }
+
+  if (newTokens.slackBotToken) existing.SLACK_BOT_TOKEN = newTokens.slackBotToken;
+  if (newTokens.slackAppToken) existing.SLACK_APP_TOKEN = newTokens.slackAppToken;
+  if (newTokens.discordBotToken) existing.DISCORD_BOT_TOKEN = newTokens.discordBotToken;
+
+  const lines = ['# OpenBridge Environment Variables', '# Auto-generated by openbridge setup wizard', ''];
+  for (const [key, value] of Object.entries(existing)) {
+    lines.push(`${key}=${value}`);
+  }
+  lines.push('');
+  fs.writeFileSync(envPath, lines.join('\n'));
+}
+
 /** Save platform and backend config to the store (P6.6) */
 export function saveConfig(
   store: Store,
@@ -198,14 +374,14 @@ export function saveConfig(
   store.setSetting('default_backend', defaultBackend);
 }
 
-/** Step 5 (optional): Set projects root directory */
+/** Optional: Set projects root directory */
 export async function setProjectsRoot(
   io: PromptIO | null,
   store: Store,
 ): Promise<void> {
   const wantRoot = await promptConfirm(
     io,
-    'Set a projects root folder? (Makes /project connect show a picker)',
+    'Set a projects root folder? (enables /project connect picker)',
     false,
   );
 
@@ -218,7 +394,11 @@ export async function setProjectsRoot(
       return null;
     });
     store.setSetting('projects_root', path.resolve(rootDir));
-    console.log(`[init] projects root set to ${path.resolve(rootDir)}`);
+    if (!io) {
+      clack.log.success(`Projects root set to ${path.resolve(rootDir)}`);
+    } else {
+      console.log(`[init] projects root set to ${path.resolve(rootDir)}`);
+    }
   }
 }
 
@@ -238,18 +418,16 @@ export async function runInit(io?: PromptIO): Promise<void> {
       console.log('\n[init] OpenBridge Setup Wizard\n[init] ======================\n');
     }
 
-    // Step 1: Platform selection (P6.2)
+    // Step 1: Platform selection
     const platforms = await selectPlatforms(prompt);
-    console.log(`[init] selected: ${platforms.join(', ')}`);
 
-    // Step 2: Token input (P6.3)
-    // Token input always uses legacy prompt (clack text works too but tokens need specific prompts)
+    // Step 2: Token input with inline setup instructions + verification
     const tokens = await inputTokens(io ? legacyPrompt : prompt as any, platforms);
 
-    // Step 3: Backend detection (P6.4)
+    // Step 3: Backend detection
     const defaultBackend = await detectBackend(prompt);
 
-    // Step 4: Initialize .openbridge/ and database (P6.6)
+    // Step 4: Initialize database
     const dbDir = path.resolve('.openbridge');
     if (!fs.existsSync(dbDir)) {
       fs.mkdirSync(dbDir, { recursive: true });
@@ -257,31 +435,25 @@ export async function runInit(io?: PromptIO): Promise<void> {
     const dbPath = path.join(dbDir, 'bridge.db');
     const store = new Store(dbPath);
 
-    // Save settings (P6.6)
+    // Save settings
     saveConfig(store, platforms, defaultBackend);
 
-    // Step 5: First project creation (P6.5)
-    await createFirstProject(prompt as any ?? legacyPrompt, store, defaultBackend);
-
-    // Step 6: Optional projects root
+    // Step 5: Optional projects root
     await setProjectsRoot(prompt, store);
 
-    // Step 7: Write .env.local (P6.6)
+    // Step 6: Write .env.local
     const envPath = path.resolve('.env.local');
     writeEnvFile(envPath, tokens);
-    console.log(`\n[init] tokens saved to ${envPath}`);
 
     store.close();
 
     if (!io) {
-      clack.outro('Setup complete! Run "openbridge start" to launch the bridge.');
+      clack.outro('Setup complete! The bridge will now start.');
     } else {
-      console.log('\n[init] setup complete! Run "openbridge start" to launch the bridge.');
+      console.log('\n[init] setup complete!');
     }
   } finally {
-    if (io) {
-      // Only close if we created a legacy prompt
-    } else {
+    if (!io) {
       legacyPrompt.close();
     }
   }

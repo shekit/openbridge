@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { loadEnvFile, createBackendFactory, runStart } from '../cli/start.js';
 import * as initModule from '../cli/init.js';
+import * as clack from '@clack/prompts';
 import { Store } from '../store.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';

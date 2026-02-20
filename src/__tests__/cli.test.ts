@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock the init and start modules before importing cli
-vi.mock('../cli/init.js', () => ({
-  runInit: vi.fn(async () => { console.log('[init] mock init'); }),
-}));
+// Mock the start module before importing cli
 vi.mock('../cli/start.js', () => ({
   runStart: vi.fn(async () => { console.log('[start] mock start'); }),
 }));
@@ -19,12 +16,6 @@ describe('CLI entry point (P6.1)', () => {
     it('returns null command for no args', () => {
       const result = parseArgs(['node', 'cli.js']);
       expect(result.command).toBe(null);
-      expect(result.args).toEqual([]);
-    });
-
-    it('parses init command', () => {
-      const result = parseArgs(['node', 'cli.js', 'init']);
-      expect(result.command).toBe('init');
       expect(result.args).toEqual([]);
     });
 
@@ -55,9 +46,9 @@ describe('CLI entry point (P6.1)', () => {
     });
 
     it('passes extra args through', () => {
-      const result = parseArgs(['node', 'cli.js', 'init', '--force']);
-      expect(result.command).toBe('init');
-      expect(result.args).toEqual(['--force']);
+      const result = parseArgs(['node', 'cli.js', 'start', '--dry-run']);
+      expect(result.command).toBe('start');
+      expect(result.args).toEqual(['--dry-run']);
     });
 
     it('returns unknown commands as-is', () => {
@@ -71,7 +62,6 @@ describe('CLI entry point (P6.1)', () => {
       const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
       await cli(['node', 'cli.js']);
       expect(spy).toHaveBeenCalledWith(expect.stringContaining('openbridge'));
-      expect(spy).toHaveBeenCalledWith(expect.stringContaining('init'));
       expect(spy).toHaveBeenCalledWith(expect.stringContaining('start'));
     });
 
@@ -79,7 +69,6 @@ describe('CLI entry point (P6.1)', () => {
       const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
       await cli(['node', 'cli.js', '--help']);
       expect(spy).toHaveBeenCalledWith(expect.stringContaining('openbridge'));
-      expect(spy).toHaveBeenCalledWith(expect.stringContaining('init'));
       expect(spy).toHaveBeenCalledWith(expect.stringContaining('start'));
     });
 
@@ -95,13 +84,6 @@ describe('CLI entry point (P6.1)', () => {
       await cli(['node', 'cli.js', 'foobar']);
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('unknown command: foobar'));
       expect(exitSpy).toHaveBeenCalledWith(1);
-    });
-
-    it('calls runInit for init command', async () => {
-      const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-      await cli(['node', 'cli.js', 'init']);
-      // runInit prints a log message
-      expect(spy).toHaveBeenCalledWith(expect.stringContaining('[init]'));
     });
 
     it('calls runStart for start command', async () => {

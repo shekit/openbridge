@@ -4,12 +4,13 @@ import {
   selectPlatforms,
   inputTokens,
   detectBackend,
-  createFirstProject,
   writeEnvFile,
+  mergeEnvFile,
   saveConfig,
   validateSlackBotToken,
   validateSlackAppToken,
   validateDiscordToken,
+  extractDiscordAppId,
   detectCli,
 } from '../cli/init.js';
 import { Store } from '../store.js';
@@ -158,13 +159,11 @@ describe('CLI init — backend auto-detection (P6.4)', () => {
   });
 
   it('reports found backends', async () => {
-    // We can't control which CLIs are installed, but we can test the function
-    // by mocking detectCli. Instead, test the exported function directly.
     const logSpy = vi.spyOn(console, 'log');
     const io = mockIO(['1']); // select first available option
-    await detectBackend(io);
-    // Should log the detection header
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Backend Detection'));
+    const result = await detectBackend(io);
+    // Should return a valid backend and log something about it
+    expect(['claude', 'codex']).toContain(result);
   });
 
   it('returns a valid backend name', async () => {
@@ -176,50 +175,22 @@ describe('CLI init — backend auto-detection (P6.4)', () => {
   });
 });
 
-describe('CLI init — first project creation (P6.5)', () => {
-  beforeEach(() => {
-    vi.spyOn(console, 'log').mockImplementation(() => {});
+describe('CLI init — Discord App ID extraction', () => {
+  it('extracts app ID from a valid bot token', () => {
+    // Base64 encode "1234567890" to simulate a Discord token first segment
+    const fakeId = '1234567890';
+    const encoded = Buffer.from(fakeId).toString('base64');
+    const fakeToken = `${encoded}.AAAAAA.abcdefghijklmnopqrstuvwx`;
+    expect(extractDiscordAppId(fakeToken)).toBe(fakeId);
   });
 
-  it('creates project in store', async () => {
-    const tmpDir = createTempDir('openbridge-init-test-');
-    const dbPath = path.join(tmpDir, '.openbridge', 'bridge.db');
-    const store = new Store(dbPath);
-
-    const projectDir = createTempDir('openbridge-project-');
-    const io = mockIO(['my-project', projectDir]);
-
-    const result = await createFirstProject(io, store, 'claude');
-    expect(result.name).toBe('my-project');
-    expect(result.dir).toBe(projectDir);
-
-    // Verify project was stored
-    const projects = store.listProjects();
-    expect(projects.length).toBe(1);
-    expect(projects[0].project_dir).toBe(projectDir);
-    expect(projects[0].backend_name).toBe('claude');
-
-    store.close();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-    fs.rmSync(projectDir, { recursive: true, force: true });
+  it('returns null for invalid token format', () => {
+    expect(extractDiscordAppId('not-a-token')).toBeNull();
   });
 
-  it('reports project is ready', async () => {
-    const tmpDir = createTempDir('openbridge-init-test-');
-    const dbPath = path.join(tmpDir, '.openbridge', 'bridge.db');
-    const store = new Store(dbPath);
-
-    const projectDir = createTempDir('openbridge-project-');
-    const logSpy = vi.spyOn(console, 'log');
-    const io = mockIO(['test-proj', projectDir]);
-
-    await createFirstProject(io, store, 'codex');
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('test-proj'));
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('created'));
-
-    store.close();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-    fs.rmSync(projectDir, { recursive: true, force: true });
+  it('returns null for non-numeric decoded value', () => {
+    const encoded = Buffer.from('not-a-number').toString('base64');
+    expect(extractDiscordAppId(`${encoded}.AAAAAA.abc`)).toBeNull();
   });
 });
 
@@ -275,6 +246,61 @@ describe('CLI init — config writing (P6.6)', () => {
       expect(content).toContain('SLACK_BOT_TOKEN=xoxb-test');
       expect(content).toContain('SLACK_APP_TOKEN=xapp-test');
       expect(content).toContain('DISCORD_BOT_TOKEN=discord-test');
+
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+  });
+
+  describe('mergeEnvFile', () => {
+    it('creates file if it does not exist', () => {
+      const tmpDir = createTempDir('openbridge-merge-env-');
+      const envPath = path.join(tmpDir, '.env.local');
+
+      mergeEnvFile(envPath, { slackBotToken: 'xoxb-new' });
+
+      const content = fs.readFileSync(envPath, 'utf-8');
+      expect(content).toContain('SLACK_BOT_TOKEN=xoxb-new');
+
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('preserves existing tokens when adding new ones', () => {
+      const tmpDir = createTempDir('openbridge-merge-env-');
+      const envPath = path.join(tmpDir, '.env.local');
+      fs.writeFileSync(envPath, 'SLACK_BOT_TOKEN=xoxb-old\nSLACK_APP_TOKEN=xapp-old\n');
+
+      mergeEnvFile(envPath, { discordBotToken: 'discord-new' });
+
+      const content = fs.readFileSync(envPath, 'utf-8');
+      expect(content).toContain('SLACK_BOT_TOKEN=xoxb-old');
+      expect(content).toContain('SLACK_APP_TOKEN=xapp-old');
+      expect(content).toContain('DISCORD_BOT_TOKEN=discord-new');
+
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('overwrites existing tokens with new values', () => {
+      const tmpDir = createTempDir('openbridge-merge-env-');
+      const envPath = path.join(tmpDir, '.env.local');
+      fs.writeFileSync(envPath, 'SLACK_BOT_TOKEN=xoxb-old\n');
+
+      mergeEnvFile(envPath, { slackBotToken: 'xoxb-updated' });
+
+      const content = fs.readFileSync(envPath, 'utf-8');
+      expect(content).toContain('SLACK_BOT_TOKEN=xoxb-updated');
+      expect(content).not.toContain('xoxb-old');
+
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('preserves header comments in output', () => {
+      const tmpDir = createTempDir('openbridge-merge-env-');
+      const envPath = path.join(tmpDir, '.env.local');
+
+      mergeEnvFile(envPath, { slackBotToken: 'xoxb-test' });
+
+      const content = fs.readFileSync(envPath, 'utf-8');
+      expect(content).toContain('# OpenBridge Environment Variables');
 
       fs.rmSync(tmpDir, { recursive: true, force: true });
     });
