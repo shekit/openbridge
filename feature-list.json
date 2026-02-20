@@ -1313,7 +1313,7 @@
             "Auth rejection tested (missing/wrong secret)",
             "All existing tests still pass"
           ],
-          "status": "failing"
+          "status": "passing"
         }
       ]
     }
