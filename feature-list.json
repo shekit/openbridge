@@ -476,7 +476,7 @@
             "Messages in unbound channels are ignored",
             "Bot's own messages are ignored (no loops)"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P3.4",
