@@ -466,7 +466,7 @@
             "Slack adapter implements this interface",
             "TypeScript compiles with no errors"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P3.3",
