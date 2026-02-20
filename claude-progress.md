@@ -5,6 +5,7 @@ Phase 0 — Project Setup (complete)
 Phase 1 — Normalized Event Types and Backend Interface (complete)
 Phase 2 — SQLite Persistence and Router (complete)
 Phase 3 — Slack Adapter (complete)
+Phase 4 — Discord Adapter (complete)
 
 ## Session Log
 
@@ -100,3 +101,26 @@ Phase 3 — Slack Adapter (complete)
 - Created `src/__tests__/slack.test.ts` — 52 tests using mock Bolt App injection
 - 205 tests passing across 8 test files
 - All 18 features (P3.1–P3.18) committed individually, all marked passing
+
+### Session 7 — Phase 4: Discord Adapter
+- Installed `discord.js`
+- Created `src/adapters/discord.ts` — Discord adapter:
+  - `createDiscordClient()` factory with GuildMessages, Guilds, MessageContent intents
+  - `DiscordAdapter` class with DI-friendly constructor (accepts optional pre-created Client for testing)
+  - Message handler: filters bots, routes bound channels (using parent channel ID for threads), ignores unbound
+  - Auto-threading: top-level messages use `message.startThread()` with message text as thread name, posts "Processing..." indicator
+  - Thread-to-session routing via router.send() with thread channel ID as session key
+  - `renderEvents()` dispatches AssistantText, PermissionDenied, and Error events
+  - `postText()` with splitText() utility for messages exceeding 2000 char limit
+  - `postPermissionPrompt()` renders ActionRowBuilder with Allow/Deny ButtonBuilders (Success/Danger styles), includes tool name/input and "or type a custom response"
+  - `handleButtonInteraction()` for Allow/Deny buttons: interaction.update() clears components, routes via router.respond()
+  - Freeform text routing: checks session.state before routing, uses router.respond() when waiting_for_input
+  - `postError()` for backend failures and Error events
+  - `registerCommands()` uses REST API + SlashCommandBuilder to register /project, /new, /settings globally
+  - `/project` command: no-args lists bindings, from bound channel creates new guild channel, from unbound offers bind buttons
+  - `/new` command: resets session via router.resetSession() using parent channel ID, warns if not in thread
+  - `/settings` command: shows backend/directory, supports "backend <name>" to switch
+  - `handleFileUpload()` detects message.attachments, combines file descriptions with text, routes through backend
+- Created `src/__tests__/discord.test.ts` — 48 tests using mock Discord Client injection
+- 253 tests passing across 9 test files
+- All 14 features (P4.1–P4.14) committed individually, all marked passing
