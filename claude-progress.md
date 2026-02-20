@@ -245,3 +245,59 @@ Phase 7 — Integration and Polish (complete)
 - 382 tests passing across 14 test files
 - All 6 features (P9.1–P9.6) committed individually, all marked passing
 - Total: 82 features across 9 phases (P0–P7, P9), all passing
+
+### Session 13 — UX Overhaul, Smart Start Menu, /project new
+
+Major UX improvements across the CLI onboarding, slash commands, and ongoing configuration.
+
+**Slash command UX (commit 4f66a57):**
+- Refactored `/project` into explicit subcommands: `connect`, `list`, `disconnect`
+- Added project picker buttons (Slack Block Kit, Discord ButtonBuilder) when projects root is set and no path given
+- Added `/settings` hints showing current values and usage examples
+- Ported all subcommand improvements to Discord (native slash command subcommands via SlashCommandBuilder)
+- Switched CLI prompts from raw readline to `@clack/prompts` (note, spinner, select, confirm, text)
+- Fixed Slack button handler for project picker (project_pick_ action pattern)
+- Added message subtype filtering (skip bot_message, message_changed, etc.)
+- Handle Slack `name_taken` error when creating channels
+
+**Onboarding wizard improvements (commit c04327a):**
+- Inline setup instructions during onboarding — step-by-step Slack/Discord app creation shown in terminal
+- Split Slack flow: show setup → enter tokens → verify with spinner → show invite instructions
+- Token verification via `verifySlackToken()` (Slack auth.test API) and `verifyDiscordToken()` (Discord /users/@me)
+- Token verification blocks on failure with retry prompt — loops until success or user skips
+- Discord invite URL auto-generated from bot token using `extractDiscordAppId()` (base64 decode)
+- Removed standalone `init` CLI command — `start` auto-runs init on first use
+- Removed `createFirstProject()` step (was creating useless pending entries)
+- Added `mergeEnvFile()` — reads existing .env.local, merges new tokens, writes back (preserves existing tokens when adding a platform)
+
+**Smart start menu (commit c04327a, 40be2c8, 235739a, fe1f1c5):**
+- `openbridge start` now shows an interactive menu on subsequent runs (when `.openbridge/` already exists):
+  - Start the bridge (default — press Enter)
+  - Add a platform (only shows unconfigured platforms)
+  - Update tokens (re-enter + re-verify for configured platforms)
+  - Change default backend (claude/codex auto-detected)
+  - Re-run full setup (with confirmation prompt, defaults to No, warns about data loss)
+  - Exit
+- TTY detection: non-interactive environments (piped, background) skip the menu and start directly
+- Next-steps guidance shown after bridge starts ("Ready on Slack! Use /project new or /project connect...")
+
+**`/project new` command (commit b5d9deb):**
+- `/project new my-app` — creates `{projects_root}/my-app/` directory and binds the channel
+- `/project new /absolute/path` — creates directory at absolute path and binds the channel
+- Errors: directory already exists (suggests `/project connect`), no projects root set (suggests setting one or using absolute path), directory creation failure
+- Both Slack and Discord supported, with proper help text in all error/help messages
+- Discord: registered as native subcommand with required `name` string option
+
+**New files:**
+- `slack-manifest.json` — Slack app manifest for one-click app creation (Socket Mode, 12 scopes, 3 slash commands, always_online: true)
+- `QUICKSTART.md` — simplified setup: just `npx openbridge start` + what the wizard does
+- `.env.example` — rewritten as reference doc (explains .env.local is auto-generated)
+
+**Updated docs:**
+- `SLASH-COMMANDS.md` — added `/project new` rows with Slack/Discord syntax
+- Help text in both adapters updated to include `/project new` in command listings
+
+**Test count:** 385 tests passing across 14 test files
+- Added 4 mergeEnvFile tests, 3 extractDiscordAppId tests
+- Updated cli.test.ts (removed init command tests)
+- Updated cli-init.test.ts (removed createFirstProject, added Discord App ID extraction)
