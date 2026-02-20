@@ -118,6 +118,11 @@ export class DiscordAdapter {
         .addSubcommand((sub) =>
           sub.setName('disconnect')
             .setDescription('Unbind this channel from its project')
+        )
+        .addSubcommand((sub) =>
+          sub.setName('new')
+            .setDescription('Create a new project and bind it to a channel')
+            .addStringOption((opt) => opt.setName('name').setDescription('Project name or absolute path').setRequired(true))
         ),
       new SlashCommandBuilder()
         .setName('new')
@@ -474,6 +479,53 @@ export class DiscordAdapter {
       return;
     }
 
+    // /project new <name|/absolute/path>
+    if (subcommand === 'new') {
+      const name = interaction.options?.getString?.('name') || '';
+      if (!name) {
+        await interaction.reply(':warning: Usage: `/project new name:my-app` or `/project new name:/absolute/path/my-app`');
+        return;
+      }
+
+      let targetDir: string;
+      if (path.isAbsolute(name)) {
+        targetDir = name;
+      } else {
+        const root = this.store.getSetting('projects_root');
+        if (!root) {
+          await interaction.reply([
+            ':warning: No projects root configured. Either:',
+            '- Set one with `/settings args:root /path` then use `/project new name:my-app`',
+            '- Or provide an absolute path: `/project new name:/home/user/my-app`',
+          ].join('\n'));
+          return;
+        }
+        targetDir = path.join(root, name);
+      }
+
+      if (fs.existsSync(targetDir)) {
+        await interaction.reply(`:warning: Directory already exists: \`${targetDir}\`\nUse \`/project connect path:${targetDir}\` to bind to it instead.`);
+        return;
+      }
+
+      try {
+        fs.mkdirSync(targetDir, { recursive: true });
+      } catch (err: any) {
+        await interaction.reply(`:warning: Failed to create directory: ${err.message}`);
+        return;
+      }
+
+      const existing = this.store.getProjectByChannelId(channelId);
+      if (existing) {
+        await this.handleProjectConnect(interaction, channelId, targetDir);
+      } else {
+        const backend = this.store.getSetting('default_backend') ?? 'claude';
+        this.store.createProject(channelId, targetDir, backend);
+        await interaction.reply(`Created \`${targetDir}\` and bound this channel to it (${backend})`);
+      }
+      return;
+    }
+
     // /project connect [path]
     if (subcommand === 'connect') {
       const projectPath = interaction.options?.getString?.('path') || '';
@@ -533,7 +585,8 @@ export class DiscordAdapter {
 
     await interaction.reply([
       ':warning: Unsupported command. Try one of these:',
-      '- `/project connect` — bind a project to a channel',
+      '- `/project new name:my-app` — create a new project and bind it to a channel',
+      '- `/project connect` — bind an existing project to a channel',
       '- `/project list` — show all project bindings',
       '- `/project disconnect` — unbind this channel',
     ].join('\n'));

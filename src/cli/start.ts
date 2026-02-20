@@ -351,7 +351,7 @@ export async function runStart(deps?: StartDeps): Promise<void> {
     `  Ready on ${platformNames.join(' and ')}!`,
     '',
     '  Next steps:',
-    '    1. Use /project connect /path/to/project in a channel to bind a project',
+    '    1. Use /project new my-app to create a project, or /project connect /path to bind an existing one',
     '    2. Send a message in that channel — the bot will respond via your coding backend',
     '',
     '  Press Ctrl+C to stop the bridge.',

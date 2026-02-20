@@ -454,8 +454,9 @@ export class SlackAdapter {
         channel: channelId,
         text: [
           '*`/project` commands:*',
+          '• `/project new my-app` — create a new project and bind it to a channel',
+          '• `/project connect /absolute/path` — bind an existing project to a channel',
           '• `/project list` — show all project bindings',
-          '• `/project connect /absolute/path` — bind a project to a channel',
           '• `/project disconnect` — unbind this channel',
         ].join('\n'),
       });
@@ -493,6 +494,69 @@ export class SlackAdapter {
         await client.chat.postMessage({
           channel: channelId,
           text: `Disconnected this channel from \`${project.project_dir}\`.`,
+        });
+      }
+      return;
+    }
+
+    // /project new <name|/absolute/path>
+    if (subcommand === 'new') {
+      const name = subArg;
+      if (!name) {
+        await client.chat.postMessage({
+          channel: channelId,
+          text: ':warning: Usage: `/project new my-app` or `/project new /absolute/path/my-app`',
+        });
+        return;
+      }
+
+      let targetDir: string;
+      if (path.isAbsolute(name)) {
+        targetDir = name;
+      } else {
+        const root = this.store.getSetting('projects_root');
+        if (!root) {
+          await client.chat.postMessage({
+            channel: channelId,
+            text: [
+              `:warning: No projects root configured. Either:`,
+              '• Set one with `/settings root /path` then use `/project new my-app`',
+              '• Or provide an absolute path: `/project new /home/user/my-app`',
+            ].join('\n'),
+          });
+          return;
+        }
+        targetDir = path.join(root, name);
+      }
+
+      if (fs.existsSync(targetDir)) {
+        await client.chat.postMessage({
+          channel: channelId,
+          text: `:warning: Directory already exists: \`${targetDir}\`\nUse \`/project connect ${targetDir}\` to bind to it instead.`,
+        });
+        return;
+      }
+
+      try {
+        fs.mkdirSync(targetDir, { recursive: true });
+      } catch (err: any) {
+        await client.chat.postMessage({
+          channel: channelId,
+          text: `:warning: Failed to create directory: ${err.message}`,
+        });
+        return;
+      }
+
+      // Bind to this channel (or create a new channel if already bound)
+      const existing = this.store.getProjectByChannelId(channelId);
+      if (existing) {
+        await this.handleProjectConnect(channelId, targetDir, command, client);
+      } else {
+        const backend = this.store.getSetting('default_backend') ?? 'claude';
+        this.store.createProject(channelId, targetDir, backend);
+        await client.chat.postMessage({
+          channel: channelId,
+          text: `Created \`${targetDir}\` and bound this channel to it (${backend})`,
         });
       }
       return;
@@ -580,8 +644,9 @@ export class SlackAdapter {
       channel: channelId,
       text: [
         `:warning: Unsupported command \`${subcommand}\`. Try one of these:`,
+        '• `/project new my-app` — create a new project and bind it to a channel',
+        '• `/project connect /absolute/path` — bind an existing project to a channel',
         '• `/project list` — show all project bindings',
-        '• `/project connect /absolute/path` — bind a project to a channel',
         '• `/project disconnect` — unbind this channel',
       ].join('\n'),
     });
