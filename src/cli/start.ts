@@ -342,6 +342,23 @@ export async function runStart(deps?: StartDeps): Promise<void> {
 
   console.log(`[start] bridge is running — listening on ${adapters.map((a) => a.name).join(', ')}`);
 
+  // Show next-steps guidance
+  const platformNames = adapters.map((a) =>
+    a.name === 'slack' ? 'Slack' : 'Discord',
+  );
+  const nextSteps = [
+    '',
+    `  Ready on ${platformNames.join(' and ')}!`,
+    '',
+    '  Next steps:',
+    '    1. Use /project connect /path/to/project in a channel to bind a project',
+    '    2. Send a message in that channel — the bot will respond via your coding backend',
+    '',
+    '  Press Ctrl+C to stop the bridge.',
+    '',
+  ];
+  console.log(nextSteps.join('\n'));
+
   // Handle graceful shutdown
   const shutdown = async () => {
     console.log('[start] shutting down...');
