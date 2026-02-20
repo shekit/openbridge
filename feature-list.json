@@ -1009,7 +1009,7 @@
             "Error message posted in thread explaining timeout",
             "Session state transitions to dead"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P7.9",

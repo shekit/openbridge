@@ -22,14 +22,42 @@ export interface RouteResult {
   session: Session;
 }
 
+/** Default timeout for backend.send() in milliseconds (5 minutes). */
+const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
+
+export interface RouterOptions {
+  /** Timeout for backend.send() in milliseconds. Default: 300000 (5 minutes). */
+  timeoutMs?: number;
+}
+
 export class Router {
   private store: Store;
   private backendFactory: BackendFactory;
   private activeBackends: Map<string, Backend> = new Map();
+  private timeoutMs: number;
 
-  constructor(store: Store, backendFactory: BackendFactory) {
+  constructor(store: Store, backendFactory: BackendFactory, options?: RouterOptions) {
     this.store = store;
     this.backendFactory = backendFactory;
+    this.timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  }
+
+  /** Send with timeout — races backend.send() against a timeout. */
+  private async sendWithTimeout(backend: Backend, text: string): Promise<SendResult> {
+    if (this.timeoutMs <= 0) {
+      return backend.send(text);
+    }
+    return Promise.race([
+      backend.send(text),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error(
+            `Backend timed out after ${Math.round(this.timeoutMs / 1000)} seconds. ` +
+            'The operation took too long and was killed.',
+          ));
+        }, this.timeoutMs);
+      }),
+    ]);
   }
 
   /**
@@ -83,12 +111,12 @@ export class Router {
 
     let result: SendResult;
     try {
-      result = await backend.send(text);
+      result = await this.sendWithTimeout(backend, text);
     } catch (err) {
-      // Backend crashed — transition to dead
+      // Backend crashed or timed out — transition to dead
       this.activeBackends.delete(session.thread_id);
       this.store.updateSessionState(session.id, 'dead');
-      console.log(`[router] backend crashed for session ${session.id}:`, err);
+      console.log(`[router] backend failed for session ${session.id}:`, err);
       throw err;
     }
 
@@ -150,7 +178,7 @@ export class Router {
 
     let result: SendResult;
     try {
-      result = await backend.send(text);
+      result = await this.sendWithTimeout(backend, text);
     } catch (err) {
       this.activeBackends.delete(session.thread_id);
       this.store.updateSessionState(session.id, 'dead');

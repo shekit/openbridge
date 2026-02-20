@@ -1009,3 +1009,126 @@ describe('P7.7: Error handling — missing CLI tool reported to user', () => {
     }
   });
 });
+
+describe('P7.8: Error handling — backend timeout reported to user', () => {
+  let tmpDir: string;
+  let store: Store;
+
+  beforeEach(() => {
+    tmpDir = createTempDir('openbridge-integration-');
+    store = createTestStore(tmpDir);
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    store.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('timeout kills the session and reports error', async () => {
+    store.createProject('C_TIMEOUT', '/home/user/project', 'claude');
+
+    // Backend that takes forever
+    const mockBackend: Backend = {
+      async start() {},
+      async send(): Promise<SendResult> {
+        // Never resolves within the timeout
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({
+              events: [{ type: 'assistant_text', text: 'too late' }, { type: 'turn_completed' }],
+              sessionId: 'session-late',
+            });
+          }, 5000);
+        });
+      },
+      getSessionId() { return null; },
+      async stop() {},
+    };
+
+    // Create router with very short timeout (50ms)
+    const router = new Router(store, () => mockBackend, { timeoutMs: 50 });
+    const mockApp = createMockBoltApp();
+    const adapter = new SlackAdapter({
+      botToken: 'xoxb-test',
+      appToken: 'xapp-test',
+      router,
+      store,
+      app: mockApp as any,
+    });
+
+    const messageHandler = mockApp._messageHandlers[0];
+    await messageHandler({
+      message: {
+        channel: 'C_TIMEOUT',
+        text: 'do something slow',
+        ts: '7777777777.777777',
+        user: 'U_USER1',
+      },
+      client: mockApp.client,
+    });
+
+    // Verify error was posted
+    const postCalls = mockApp.client.chat.postMessage.mock.calls;
+    const errorCall = postCalls.find(
+      (c: any) => c[0].text && c[0].text.includes('timed out'),
+    );
+    expect(errorCall).toBeDefined();
+    expect(errorCall[0].text).toContain('timed out');
+    expect(errorCall[0].thread_ts).toBe('7777777777.777777');
+
+    // Session should be dead
+    const session = store.getSessionByThreadId('7777777777.777777');
+    expect(session!.state).toBe('dead');
+  });
+
+  it('timeout error includes duration in seconds', async () => {
+    store.createProject('C_TIMEOUT2', '/home/user/project', 'codex');
+
+    const mockBackend: Backend = {
+      async start() {},
+      async send(): Promise<SendResult> {
+        return new Promise(() => {}); // Never resolves
+      },
+      getSessionId() { return null; },
+      async stop() {},
+    };
+
+    // 100ms timeout
+    const router = new Router(store, () => mockBackend, { timeoutMs: 100 });
+
+    try {
+      await router.send('C_TIMEOUT2', 'T_TO_2', 'Hello');
+      expect.fail('Should have thrown');
+    } catch (err: any) {
+      expect(err.message).toContain('timed out');
+      expect(err.message).toMatch(/\d+ seconds/);
+    }
+
+    // Session should be dead
+    const session = store.getSessionByThreadId('T_TO_2');
+    expect(session!.state).toBe('dead');
+  });
+
+  it('no timeout when timeoutMs is 0', async () => {
+    store.createProject('C_NO_TO', '/home/user/project', 'claude');
+
+    const mockBackend: Backend = {
+      async start() {},
+      async send(): Promise<SendResult> {
+        return {
+          events: [{ type: 'assistant_text', text: 'no timeout' }, { type: 'turn_completed' }],
+          sessionId: 'session-no-to',
+        };
+      },
+      getSessionId() { return 'session-no-to'; },
+      async stop() {},
+    };
+
+    // timeoutMs: 0 disables timeout
+    const router = new Router(store, () => mockBackend, { timeoutMs: 0 });
+    const result = await router.send('C_NO_TO', 'T_NO_TO', 'Hello');
+    expect(result.events.some(e => e.type === 'assistant_text')).toBe(true);
+  });
+});
