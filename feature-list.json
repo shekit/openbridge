@@ -935,7 +935,7 @@
             "Response appears in the Slack thread",
             "Session ID is stored for resume"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P7.2",
