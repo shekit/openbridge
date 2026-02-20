@@ -1168,7 +1168,7 @@
             "No duplicated event rendering logic remains in handleButtonInteraction",
             "Unit test verifies chained permission_denied events are rendered"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P9.6",

@@ -651,6 +651,65 @@ describe('DiscordAdapter', () => {
       const updatedSession = store.getSessionByThreadId('thread-123');
       expect(updatedSession!.state).toBe('idle');
     });
+
+    it('renders chained permission_denied events after Allow button', async () => {
+      // Backend returns another permission_denied after the first allow
+      const chainedPermBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => ({
+          events: [
+            {
+              type: 'permission_denied' as const,
+              toolName: 'Write',
+              toolInput: { file: 'bar.js' },
+            },
+          ],
+          sessionId: 'session-chained',
+        })),
+        getSessionId: vi.fn(() => 'session-chained'),
+        setSessionId: vi.fn(),
+        stop: vi.fn(async () => {}),
+      }));
+
+      // Need a fresh adapter with the chained backend
+      const chainedRouter = new Router(store, chainedPermBackend);
+      const chainedAdapter = new DiscordAdapter({
+        botToken: 'test-discord-token',
+        router: chainedRouter,
+        store,
+        client: mockClient as any,
+        clientId: 'test-client-id',
+      });
+
+      const project = store.createProject('C_CHAIN', '/test/chain', 'claude');
+      const session = store.createSession('thread-chain', project.id);
+      store.updateSessionState(session.id, 'running');
+      store.updateSessionState(session.id, 'waiting_for_input');
+      store.updateBackendSessionId(session.id, 'session-chained');
+
+      const { interaction, threadMessages } = createMockButtonInteraction({
+        customId: 'permission_allow',
+        channelId: 'C_CHAIN',
+        isThread: true,
+        parentId: 'C_CHAIN',
+      });
+      // Override channel ID to match our thread
+      interaction.channel.id = 'thread-chain';
+      interaction.channel.parentId = 'C_CHAIN';
+
+      await triggerInteraction(interaction);
+
+      // The chained permission_denied should be rendered (via renderEvents)
+      const permCall = threadMessages.find(
+        (m: any) => m.components && m.components.length > 0
+      );
+      expect(permCall).toBeDefined();
+      expect(permCall.content).toContain('Write');
+
+      // Session should be waiting_for_input again
+      const updatedSession = store.getSessionByThreadId('thread-chain');
+      expect(updatedSession!.state).toBe('waiting_for_input');
+    });
   });
 
   describe('P4.8: Discord — handle freeform text when waiting_for_input', () => {

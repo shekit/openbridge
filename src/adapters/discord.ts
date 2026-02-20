@@ -287,17 +287,8 @@ export class DiscordAdapter {
       return;
     }
 
-    // Render result events
-    for (const event of result.events) {
-      switch (event.type) {
-        case 'assistant_text':
-          await this.sendToThread(threadId, interaction, event.text);
-          break;
-        case 'error':
-          await this.sendToThread(threadId, interaction, `:warning: **Error:** ${event.message}`);
-          break;
-      }
-    }
+    // Delegate to renderEvents so chained permission_denied events are rendered
+    await this.renderEvents(channelId, threadId, result.events, interaction);
   }
 
   /** Handle "Use this channel" button for project binding. */
@@ -355,7 +346,7 @@ export class DiscordAdapter {
     channelId: string,
     threadId: string,
     events: NormalizedEvent[],
-    context: Message
+    context: any
   ): Promise<void> {
     for (const event of events) {
       switch (event.type) {
