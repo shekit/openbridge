@@ -13,7 +13,7 @@ That's it. The setup wizard runs automatically on first launch and walks you thr
 5. **Backend detection** — auto-detects Claude Code or Codex CLI
 6. **Optional: set a projects root** — enables the `/project connect` picker
 
-Tokens are saved to `.env.local` (gitignored). Config is stored in `.openbridge/`.
+All config and tokens are stored in `~/.openbridge-ai/`.
 
 ## After setup
 

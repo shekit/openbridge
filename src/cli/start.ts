@@ -28,6 +28,7 @@ import { createCallbackHandler, closeAllFileBrowsers } from '../mcp/callbacks.js
 import { closeAllTunnels } from '../mcp/tunnel.js';
 import { getMcpConfig } from '../mcp/server.js';
 import type { Adapter } from '../types/adapter.js';
+import { getDbPath, getEnvPath, getConfigDir } from '../utils.js';
 
 export interface StartDeps {
   /** Override the database path (for testing). */
@@ -285,11 +286,11 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
  * Launch the bridge process.
  */
 export async function runStart(deps?: StartDeps): Promise<void> {
-  const dbPath = deps?.dbPath ?? path.resolve('.openbridge', 'bridge.db');
-  const envPath = deps?.envPath ?? path.resolve('.env.local');
+  const dbPath = deps?.dbPath ?? getDbPath();
+  const envPath = deps?.envPath ?? getEnvPath();
   const dryRun = deps?.dryRun ?? false;
 
-  // Auto-run init if .openbridge/ doesn't exist yet (first run)
+  // Auto-run init if ~/.openbridge-ai/ doesn't exist yet (first run)
   if (!fs.existsSync(path.dirname(dbPath))) {
     console.log('[start] first run detected — running setup wizard...\n');
     await runInit();

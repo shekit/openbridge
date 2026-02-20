@@ -8,6 +8,7 @@
     "openbridge": "dist/cli.js"
   },
   "scripts": {
+    "prepublishOnly": "npm run build",
     "build": "./scripts/build.sh",
     "test": "vitest run",
     "dev": "node dist/index.js"
@@ -16,6 +17,7 @@
     "node": ">=18"
   },
   "private": true,
+  "files": ["dist"],
   "license": "MIT",
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

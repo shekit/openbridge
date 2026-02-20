@@ -11,6 +11,9 @@ dist/
 # Bridge state
 .openbridge/
 
+# MCP config (written by bridge at runtime)
+.mcp.json
+
 # OS files
 .DS_Store
 Thumbs.db

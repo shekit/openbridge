@@ -12,6 +12,7 @@ import { execSync } from 'node:child_process';
 import { Store } from '../store.js';
 import * as clack from '@clack/prompts';
 import { type PromptIO, createPromptIO, promptSelect, promptText, promptConfirm } from './prompt.js';
+import { getConfigDir, getEnvPath } from '../utils.js';
 
 export type Platform = 'slack' | 'discord';
 
@@ -500,7 +501,7 @@ export async function runInit(io?: PromptIO): Promise<void> {
     await setupFilePreviews(prompt);
 
     // Step 4: Initialize database
-    const dbDir = path.resolve('.openbridge');
+    const dbDir = getConfigDir();
     if (!fs.existsSync(dbDir)) {
       fs.mkdirSync(dbDir, { recursive: true });
     }
@@ -514,15 +515,20 @@ export async function runInit(io?: PromptIO): Promise<void> {
     await setProjectsRoot(prompt, store);
 
     // Step 6: Write .env.local
-    const envPath = path.resolve('.env.local');
+    const envPath = getEnvPath();
     writeEnvFile(envPath, tokens);
 
     store.close();
 
+    const configDir = getConfigDir();
     if (!io) {
+      clack.log.info(`Config saved to ${configDir}/`);
+      clack.log.info(`  Database: ${path.join(configDir, 'bridge.db')}`);
+      clack.log.info(`  Tokens:   ${envPath}`);
       clack.outro('Setup complete! The bridge will now start.');
     } else {
-      console.log('\n[init] setup complete!');
+      console.log(`\n[init] config saved to ${configDir}/`);
+      console.log('[init] setup complete!');
     }
   } finally {
     if (!io) {

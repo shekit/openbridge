@@ -33,7 +33,13 @@ Use the **Context7 MCP** to look up current library documentation before impleme
 
 ## Secrets Setup
 
-Copy `.env.example` to `.env.local` and fill in the values:
+Run `openbridge start` — the setup wizard handles token input and verification.
+
+All config is stored in `~/.openbridge-ai/`:
+- `~/.openbridge-ai/bridge.db` — SQLite database (settings, projects, sessions)
+- `~/.openbridge-ai/.env.local` — platform tokens
+
+**Required tokens:**
 
 **Slack (Socket Mode):**
 - `SLACK_BOT_TOKEN` — Bot User OAuth Token (xoxb-...)
@@ -41,8 +47,6 @@ Copy `.env.example` to `.env.local` and fill in the values:
 
 **Discord:**
 - `DISCORD_BOT_TOKEN` — Bot token from Discord Developer Portal
-
-Never commit `.env.local` — it's gitignored.
 
 ## Project Structure
 
