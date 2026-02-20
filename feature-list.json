@@ -375,7 +375,7 @@
             "Invalid transitions throw an error",
             "Unit tests verify all valid and invalid transitions"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P2.10",

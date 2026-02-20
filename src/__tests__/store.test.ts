@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { Store } from '../store.js';
+import { Store, validateTransition, type SessionState } from '../store.js';
 
 /** Create a temp directory for each test and return the db path. */
 function makeTempDbPath(): string {
@@ -311,6 +311,82 @@ describe('Store', () => {
     it('deleteSetting returns false for nonexistent key', () => {
       const deleted = store.deleteSetting('nope');
       expect(deleted).toBe(false);
+    });
+  });
+
+  describe('P2.9: Session state machine — valid transitions enforced', () => {
+    // Valid transitions
+    it('idle → running (on send)', () => {
+      expect(() => validateTransition('idle', 'running')).not.toThrow();
+    });
+
+    it('running → idle (on turn complete)', () => {
+      expect(() => validateTransition('running', 'idle')).not.toThrow();
+    });
+
+    it('running → waiting_for_input (on permission denied)', () => {
+      expect(() => validateTransition('running', 'waiting_for_input')).not.toThrow();
+    });
+
+    it('waiting_for_input → running (on user response)', () => {
+      expect(() => validateTransition('waiting_for_input', 'running')).not.toThrow();
+    });
+
+    it('running → dead (on crash/timeout)', () => {
+      expect(() => validateTransition('running', 'dead')).not.toThrow();
+    });
+
+    it('dead → idle (on restart)', () => {
+      expect(() => validateTransition('dead', 'idle')).not.toThrow();
+    });
+
+    // Invalid transitions
+    it('idle → dead is invalid', () => {
+      expect(() => validateTransition('idle', 'dead')).toThrow('Invalid session state transition');
+    });
+
+    it('idle → waiting_for_input is invalid', () => {
+      expect(() => validateTransition('idle', 'waiting_for_input')).toThrow('Invalid session state transition');
+    });
+
+    it('waiting_for_input → idle is invalid', () => {
+      expect(() => validateTransition('waiting_for_input', 'idle')).toThrow('Invalid session state transition');
+    });
+
+    it('waiting_for_input → dead is invalid', () => {
+      expect(() => validateTransition('waiting_for_input', 'dead')).toThrow('Invalid session state transition');
+    });
+
+    it('dead → running is invalid', () => {
+      expect(() => validateTransition('dead', 'running')).toThrow('Invalid session state transition');
+    });
+
+    it('same state → same state is invalid', () => {
+      const states: SessionState[] = ['idle', 'running', 'waiting_for_input', 'dead'];
+      for (const state of states) {
+        expect(() => validateTransition(state, state)).toThrow('Invalid session state transition');
+      }
+    });
+
+    // Integration with store.updateSessionState
+    it('store.updateSessionState enforces valid transitions', () => {
+      const project = store.createProject('CH_SM', '/proj', 'claude');
+      const session = store.createSession('T_SM', project.id);
+
+      // idle → running: valid
+      store.updateSessionState(session.id, 'running');
+      expect(store.getSessionById(session.id)!.state).toBe('running');
+
+      // running → waiting_for_input: valid
+      store.updateSessionState(session.id, 'waiting_for_input');
+      expect(store.getSessionById(session.id)!.state).toBe('waiting_for_input');
+
+      // waiting_for_input → idle: invalid
+      expect(() => store.updateSessionState(session.id, 'idle')).toThrow('Invalid session state transition');
+    });
+
+    it('store.updateSessionState throws for nonexistent session', () => {
+      expect(() => store.updateSessionState(9999, 'running')).toThrow('Session 9999 not found');
     });
   });
 });
