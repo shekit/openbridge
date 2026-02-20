@@ -1103,6 +1103,84 @@
           "status": "passing"
         }
       ]
+    },
+    {
+      "id": "P9",
+      "name": "Code Review Round 2 — Production Readiness Fixes",
+      "outcome": "Critical runtime bugs fixed, backend interface contract enforced, killable child processes, correct project directory handling",
+      "features": [
+        {
+          "id": "P9.1",
+          "description": "Fix /project slash command storing project name as project_dir — both Slack and Discord adapters now require an absolute directory path or use a configurable project root",
+          "verification": [
+            "Slack /project <name> from a bound channel stores an absolute project_dir (not the bare name)",
+            "Discord /project <name> from a bound channel stores an absolute project_dir (not the bare name)",
+            "Backend.start() receives a valid absolute path as projectDir",
+            "spawnCollect uses the absolute path as cwd without error",
+            "Unit tests verify project_dir is absolute for slash-command-created projects"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P9.2",
+          "description": "Fix .env.local parser to strip surrounding quotes from values — loadEnvFile now handles double-quoted and single-quoted values",
+          "verification": [
+            "loadEnvFile('KEY=\"value\"') returns { KEY: 'value' } (quotes stripped)",
+            "loadEnvFile(\"KEY='value'\") returns { KEY: 'value' } (quotes stripped)",
+            "loadEnvFile('KEY=value') still returns { KEY: 'value' } (unquoted unchanged)",
+            "loadEnvFile('KEY=value=with=equals') preserves internal equals signs",
+            "Unit tests verify all four cases"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P9.3",
+          "description": "Fix backend child processes unkillable on timeout — spawnCollect returns a kill handle, backend.stop() kills the child process",
+          "verification": [
+            "spawnCollect returns an object with both the result promise and a kill() function",
+            "ClaudeBackend.stop() calls kill() on the active child process if one is running",
+            "CodexBackend.stop() calls kill() on the active child process if one is running",
+            "When sendWithTimeout fires, backend.stop() actually terminates the child process",
+            "Unit test verifies that stop() during an active send kills the process"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P9.4",
+          "description": "Fix (backend as any).sessionId type bypass — Backend interface now has setSessionId() method, router uses it instead of unsafe cast",
+          "verification": [
+            "Backend interface in src/types/backend.ts includes setSessionId(id: string | null): void",
+            "ClaudeBackend implements setSessionId()",
+            "CodexBackend implements setSessionId()",
+            "Router calls backend.setSessionId() instead of (backend as any).sessionId",
+            "No (backend as any).sessionId casts remain in router.ts",
+            "TypeScript compiles with no errors"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P9.5",
+          "description": "Fix Discord button interaction dropping chained permission_denied events — handleButtonInteraction now uses renderEvents() instead of inline switch",
+          "verification": [
+            "handleButtonInteraction delegates to renderEvents() for event rendering",
+            "Chained permission_denied events (backend returns another denial after Allow) are rendered as new permission prompts",
+            "assistant_text and error events still render correctly after button click",
+            "No duplicated event rendering logic remains in handleButtonInteraction",
+            "Unit test verifies chained permission_denied events are rendered"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P9.6",
+          "description": "Fix false positive shutdown test — integration test P7.6 assertion now verifies stop() was actually called",
+          "verification": [
+            "integration.test.ts shutdown test asserts stopCalls.length > 0 (not >= 0)",
+            "Test fails if router.shutdown() does not call backend.stop()",
+            "All 374+ tests still pass"
+          ],
+          "status": "failing"
+        }
+      ]
     }
   ]
 }
