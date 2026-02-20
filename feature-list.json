@@ -568,7 +568,7 @@
             "Command handler routes to project creation flow",
             "TypeScript compiles with handler registered"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P3.13",
