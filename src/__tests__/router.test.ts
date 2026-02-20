@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -310,6 +310,69 @@ describe('Router', () => {
       expect(() => router.resetSession('UNKNOWN', 'T1')).toThrow(
         'Channel UNKNOWN is not bound to a project'
       );
+    });
+  });
+
+  describe('P10.8: mcpConfigFactory', () => {
+    it('passes mcpConfig to backend.start when factory is set', async () => {
+      const startSpy = vi.fn(async () => {});
+      const backend: Backend = {
+        start: startSpy,
+        async send() { return { events: [{ type: 'assistant_text' as const, text: 'ok' }], sessionId: null }; },
+        getSessionId() { return null; },
+        setSessionId() {},
+        async stop() {},
+      };
+      const factory: BackendFactory = () => backend;
+
+      const mcpFactory = vi.fn(() => ({
+        command: 'node',
+        args: ['entry.js', '--channel', 'CH_MCP', '--thread', 'T_MCP'],
+        env: { OPENBRIDGE_IPC_PORT: '9999' },
+      }));
+
+      const routerWithMcp = new Router(store, factory, { mcpConfigFactory: mcpFactory });
+      store.createProject('CH_MCP', '/tmp/proj', 'claude', 'slack');
+
+      await routerWithMcp.send('CH_MCP', 'T_MCP', 'hello');
+
+      expect(mcpFactory).toHaveBeenCalledWith({
+        channelId: 'CH_MCP',
+        threadId: 'T_MCP',
+        projectDir: '/tmp/proj',
+        platform: 'slack',
+      });
+
+      expect(startSpy).toHaveBeenCalledWith({
+        projectDir: '/tmp/proj',
+        mcpConfig: {
+          command: 'node',
+          args: ['entry.js', '--channel', 'CH_MCP', '--thread', 'T_MCP'],
+          env: { OPENBRIDGE_IPC_PORT: '9999' },
+        },
+      });
+    });
+
+    it('passes undefined mcpConfig when no factory is set', async () => {
+      const startSpy = vi.fn(async () => {});
+      const backend: Backend = {
+        start: startSpy,
+        async send() { return { events: [{ type: 'assistant_text' as const, text: 'ok' }], sessionId: null }; },
+        getSessionId() { return null; },
+        setSessionId() {},
+        async stop() {},
+      };
+      const factory: BackendFactory = () => backend;
+
+      const routerNoMcp = new Router(store, factory);
+      store.createProject('CH_NOMCP', '/tmp/proj2', 'claude', 'slack');
+
+      await routerNoMcp.send('CH_NOMCP', 'T_NOMCP', 'hello');
+
+      expect(startSpy).toHaveBeenCalledWith({
+        projectDir: '/tmp/proj2',
+        mcpConfig: undefined,
+      });
     });
   });
 });

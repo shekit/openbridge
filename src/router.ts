@@ -5,7 +5,7 @@
  * lifecycle, and enforces session state machine transitions.
  */
 
-import type { Backend, SendResult } from './types/backend.js';
+import type { Backend, SendResult, McpServerEntry } from './types/backend.js';
 import type { NormalizedEvent } from './types/events.js';
 import { Store, type Project, type Session } from './store.js';
 
@@ -25,9 +25,22 @@ export interface RouteResult {
 /** Default timeout for backend.send() in milliseconds (5 minutes). */
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 
+/** Context passed to mcpConfigFactory for generating per-session MCP config. */
+export interface McpConfigContext {
+  channelId: string;
+  threadId: string;
+  projectDir: string;
+  platform: string;
+}
+
+/** Factory that creates MCP config for a backend session. */
+export type McpConfigFactory = (ctx: McpConfigContext) => McpServerEntry;
+
 export interface RouterOptions {
   /** Timeout for backend.send() in milliseconds. Default: 300000 (5 minutes). */
   timeoutMs?: number;
+  /** Factory to generate MCP config for each backend session. */
+  mcpConfigFactory?: McpConfigFactory;
 }
 
 export class Router {
@@ -35,11 +48,13 @@ export class Router {
   private backendFactory: BackendFactory;
   private activeBackends: Map<string, Backend> = new Map();
   private timeoutMs: number;
+  private mcpConfigFactory?: McpConfigFactory;
 
   constructor(store: Store, backendFactory: BackendFactory, options?: RouterOptions) {
     this.store = store;
     this.backendFactory = backendFactory;
     this.timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.mcpConfigFactory = options?.mcpConfigFactory;
   }
 
   /** Send with timeout — races backend.send() against a timeout. */
@@ -118,8 +133,14 @@ export class Router {
 
     const backend = this.backendFactory(project.backend_name);
 
-    // Initialize the backend with the project dir
-    await backend.start({ projectDir: project.project_dir });
+    // Initialize the backend with the project dir and optional MCP config
+    const mcpConfig = this.mcpConfigFactory?.({
+      channelId,
+      threadId,
+      projectDir: project.project_dir,
+      platform: project.platform,
+    });
+    await backend.start({ projectDir: project.project_dir, mcpConfig });
 
     // Track as active for graceful shutdown
     this.activeBackends.set(session.thread_id, backend);
@@ -192,7 +213,13 @@ export class Router {
     this.store.updateSessionState(session.id, 'running');
 
     const backend = this.backendFactory(project.backend_name);
-    await backend.start({ projectDir: project.project_dir });
+    const mcpConfig = this.mcpConfigFactory?.({
+      channelId,
+      threadId,
+      projectDir: project.project_dir,
+      platform: project.platform,
+    });
+    await backend.start({ projectDir: project.project_dir, mcpConfig });
 
     // Track as active for graceful shutdown
     this.activeBackends.set(session.thread_id, backend);

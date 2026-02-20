@@ -1288,7 +1288,7 @@
             "getMcpConfig() includes --platform arg and IPC env vars in entry config",
             "Unit tests verify mcpConfig is passed through"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P10.9",
