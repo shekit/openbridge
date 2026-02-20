@@ -897,7 +897,7 @@
             "Creates project entry in SQLite",
             "Reports that project is ready"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P6.6",
