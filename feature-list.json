@@ -741,7 +741,7 @@
             "/project with no args lists bindings",
             "Same flows as Slack but with Discord UI"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P4.12",
