@@ -786,7 +786,7 @@
             "Server registers tools and handles requests",
             "TypeScript compiles with no errors"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P5.2",
