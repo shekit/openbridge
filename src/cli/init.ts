@@ -374,6 +374,75 @@ export function saveConfig(
   store.setSetting('default_backend', defaultBackend);
 }
 
+/** Detect available tunnel tools on PATH. */
+export function detectTunnelTools(): { hasCloudflared: boolean; hasNgrok: boolean } {
+  return {
+    hasCloudflared: detectCli('cloudflared'),
+    hasNgrok: detectCli('ngrok'),
+  };
+}
+
+/** Step: File previews setup (tunnel tool detection) */
+export async function setupFilePreviews(io: PromptIO | null): Promise<void> {
+  const wantPreviews = await promptConfirm(
+    io,
+    'Set up file previews? (lets the AI share live previews of web apps it builds)',
+    true,
+  );
+
+  if (!wantPreviews) {
+    if (!io) {
+      clack.log.info('You can set this up anytime by running `openbridge start`.');
+    } else {
+      console.log('[init] skipped file previews — set up later via `openbridge start`.');
+    }
+    return;
+  }
+
+  const { hasCloudflared, hasNgrok } = detectTunnelTools();
+
+  if (hasCloudflared && hasNgrok) {
+    const msg = 'cloudflared and ngrok detected — previews will work automatically. Will prefer cloudflared.';
+    if (!io) {
+      clack.log.success(msg);
+    } else {
+      console.log(`[init] ${msg}`);
+    }
+  } else if (hasCloudflared) {
+    const msg = 'cloudflared detected — previews will work automatically.';
+    if (!io) {
+      clack.log.success(msg);
+    } else {
+      console.log(`[init] ${msg}`);
+    }
+  } else if (hasNgrok) {
+    const msg = 'ngrok detected — previews will work automatically.';
+    if (!io) {
+      clack.log.success(msg);
+    } else {
+      console.log(`[init] ${msg}`);
+    }
+  } else {
+    const installSteps = [
+      'No tunnel tool found. Install one to enable previews:',
+      '',
+      '  cloudflared (recommended — free, no account needed):',
+      '    brew install cloudflared',
+      '',
+      '  ngrok:',
+      '    brew install ngrok',
+    ].join('\n');
+
+    if (!io) {
+      clack.note(installSteps, 'Install a tunnel tool');
+      clack.log.info('Install one of these before starting the bridge, and previews will work automatically.');
+    } else {
+      console.log(`[init] ${installSteps}`);
+      console.log('[init] install one before starting the bridge.');
+    }
+  }
+}
+
 /** Optional: Set projects root directory */
 export async function setProjectsRoot(
   io: PromptIO | null,
@@ -426,6 +495,9 @@ export async function runInit(io?: PromptIO): Promise<void> {
 
     // Step 3: Backend detection
     const defaultBackend = await detectBackend(prompt);
+
+    // Step 3b: File previews setup
+    await setupFilePreviews(prompt);
 
     // Step 4: Initialize database
     const dbDir = path.resolve('.openbridge');

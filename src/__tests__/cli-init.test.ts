@@ -12,6 +12,8 @@ import {
   validateDiscordToken,
   extractDiscordAppId,
   detectCli,
+  detectTunnelTools,
+  setupFilePreviews,
 } from '../cli/init.js';
 import { Store } from '../store.js';
 import * as fs from 'node:fs';
@@ -367,6 +369,52 @@ describe('CLI init — config writing (P6.6)', () => {
 
       store.close();
       fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+  });
+});
+
+describe('CLI init — file previews setup', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  describe('detectTunnelTools', () => {
+    it('returns an object with hasCloudflared and hasNgrok booleans', () => {
+      const result = detectTunnelTools();
+      expect(typeof result.hasCloudflared).toBe('boolean');
+      expect(typeof result.hasNgrok).toBe('boolean');
+    });
+
+    it('detects tools that exist on PATH', () => {
+      // 'node' exists, so detectCli('node') is true — verifying the underlying mechanism
+      expect(detectCli('node')).toBe(true);
+    });
+  });
+
+  describe('setupFilePreviews', () => {
+    it('skips setup when user declines', async () => {
+      const io = mockIO(['n']); // decline
+      const logSpy = vi.spyOn(console, 'log');
+
+      await setupFilePreviews(io);
+
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('skipped file previews'),
+      );
+    });
+
+    it('shows detection results when user accepts', async () => {
+      const io = mockIO(['y']); // accept
+      const logSpy = vi.spyOn(console, 'log');
+
+      await setupFilePreviews(io);
+
+      // Should log something about detection (detected or not found)
+      const calls = logSpy.mock.calls.map((c) => c.join(' '));
+      const hasDetectionMsg = calls.some(
+        (c) => c.includes('detected') || c.includes('No tunnel tool found'),
+      );
+      expect(hasDetectionMsg).toBe(true);
     });
   });
 });

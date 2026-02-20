@@ -21,6 +21,7 @@ import {
   inputTokens,
   detectBackend,
   mergeEnvFile,
+  detectTunnelTools,
 } from './init.js';
 
 export interface StartDeps {
@@ -75,7 +76,7 @@ export function createBackendFactory(): BackendFactory {
   };
 }
 
-type StartMenuAction = 'start' | 'add_platform' | 'update_tokens' | 'change_backend' | 'rerun_setup' | 'exit';
+type StartMenuAction = 'start' | 'add_platform' | 'update_tokens' | 'change_backend' | 'setup_previews' | 'rerun_setup' | 'exit';
 
 /**
  * Show the settings menu on subsequent interactive runs.
@@ -121,6 +122,17 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
       label: 'Change default backend',
       value: 'change_backend',
       hint: `current: ${defaultBackend}`,
+    });
+
+    // Show tunnel tool status
+    const { hasCloudflared, hasNgrok } = detectTunnelTools();
+    const previewHint = hasCloudflared || hasNgrok
+      ? `${hasCloudflared ? 'cloudflared' : ''}${hasCloudflared && hasNgrok ? ', ' : ''}${hasNgrok ? 'ngrok' : ''} detected`
+      : 'not configured';
+    options.push({
+      label: 'Set up file sharing',
+      value: 'setup_previews',
+      hint: previewHint,
     });
 
     options.push({ label: 'Re-run full setup', value: 'rerun_setup' });
@@ -210,6 +222,31 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
         const newBackend = await detectBackend(null);
         store.setSetting('default_backend', newBackend);
         clack.log.success(`Default backend changed to ${newBackend}. Starting the bridge...`);
+        return;
+      }
+
+      case 'setup_previews': {
+        const tunnels = detectTunnelTools();
+        if (tunnels.hasCloudflared && tunnels.hasNgrok) {
+          clack.log.success('cloudflared and ngrok detected — previews will work automatically. Will prefer cloudflared.');
+        } else if (tunnels.hasCloudflared) {
+          clack.log.success('cloudflared detected — previews will work automatically.');
+        } else if (tunnels.hasNgrok) {
+          clack.log.success('ngrok detected — previews will work automatically.');
+        } else {
+          const installSteps = [
+            'No tunnel tool found. Install one to enable previews:',
+            '',
+            '  cloudflared (recommended — free, no account needed):',
+            '    brew install cloudflared',
+            '',
+            '  ngrok:',
+            '    brew install ngrok',
+          ].join('\n');
+          clack.note(installSteps, 'Install a tunnel tool');
+          clack.log.info('Install one of these, then start the bridge — previews will work automatically.');
+        }
+        clack.log.info('Starting the bridge...');
         return;
       }
 
