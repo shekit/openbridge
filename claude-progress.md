@@ -4,6 +4,7 @@
 Phase 0 — Project Setup (complete)
 Phase 1 — Normalized Event Types and Backend Interface (complete)
 Phase 2 — SQLite Persistence and Router (complete)
+Phase 3 — Slack Adapter (complete)
 
 ## Session Log
 
@@ -76,3 +77,26 @@ Phase 2 — SQLite Persistence and Router (complete)
 - Created `src/__tests__/router.test.ts` — 34 tests covering P2.10–P2.15
 - 153 tests passing across 7 test files
 - All 15 features (P2.1–P2.15) committed individually, all marked passing
+
+### Session 6 — Phase 3: Slack Adapter
+- Installed `@slack/bolt` and `@slack/web-api`
+- Created `src/types/adapter.ts` — shared Adapter interface (start, stop, postText, postPermissionPrompt, postError)
+- Created `src/adapters/slack.ts` — Slack adapter:
+  - `createBoltApp()` factory for Socket Mode connection with bot/app tokens
+  - `SlackAdapter` class with DI-friendly constructor (accepts optional pre-created App for testing)
+  - Message handler: filters bots/self, routes bound channels, ignores unbound
+  - Auto-threading: top-level messages use their ts as thread_ts, posts "Processing..." indicator
+  - Thread-to-session routing via router.send() with thread_ts as session key
+  - `renderEvents()` dispatches AssistantText, PermissionDenied, and Error events
+  - `postText()` with splitText() utility for messages exceeding 4000 char limit
+  - `postPermissionPrompt()` renders Block Kit: section with tool name/input, actions with Allow/Deny buttons, context with "or type a custom response"
+  - `handlePermissionAction()` for Allow/Deny buttons: updates message, routes via router.respond()
+  - Freeform text routing: checks session.state before routing, uses router.respond() when waiting_for_input
+  - `postError()` for backend failures and Error events
+  - `/project` command: no-args lists bindings, from bound channel creates new channel, from unbound offers bind options
+  - `/new` command: resets session via router.resetSession(), warns if not in thread
+  - `/settings` command: shows backend/directory, supports "backend <name>" to switch
+  - `handleFileUpload()` combines file descriptions with message text and routes through backend
+- Created `src/__tests__/slack.test.ts` — 52 tests using mock Bolt App injection
+- 205 tests passing across 8 test files
+- All 18 features (P3.1–P3.18) committed individually, all marked passing
