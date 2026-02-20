@@ -1251,7 +1251,7 @@
             "close() shuts down the server",
             "Unit tests verify directory listing and file serving"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P10.6",
