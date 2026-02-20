@@ -134,4 +134,41 @@ describe('Store', () => {
       expect(keyCol!.pk).toBe(1);
     });
   });
+
+  describe('P2.5: schema migrations via version table', () => {
+    it('schema_version table tracks current version', () => {
+      const db = (store as any).db;
+      const table = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
+      ).get();
+      expect(table).toBeDefined();
+
+      const row = db.prepare('SELECT MAX(version) as v FROM schema_version').get() as { v: number };
+      expect(row.v).toBe(1);
+    });
+
+    it('migrations run sequentially on startup', () => {
+      const db = (store as any).db;
+      const versions = db.prepare('SELECT version FROM schema_version ORDER BY version').all() as Array<{ version: number }>;
+      expect(versions.length).toBe(1);
+      expect(versions[0].version).toBe(1);
+    });
+
+    it('re-running init does not duplicate tables (idempotent)', () => {
+      // Close and reopen the store on the same db path
+      store.close();
+      store = new Store(dbPath);
+
+      const db = (store as any).db;
+      // Version should still be 1, not 2
+      const row = db.prepare('SELECT MAX(version) as v FROM schema_version').get() as { v: number };
+      expect(row.v).toBe(1);
+
+      // Tables should exist exactly once
+      const tables = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('projects', 'sessions', 'settings') ORDER BY name"
+      ).all() as Array<{ name: string }>;
+      expect(tables.length).toBe(3);
+    });
+  });
 });

@@ -325,7 +325,7 @@
             "Re-running init does not duplicate tables",
             "Unit test verifies idempotent initialization"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P2.6",
