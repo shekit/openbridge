@@ -360,7 +360,7 @@
             "deleteSetting removes by key",
             "Unit tests verify all operations"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P2.9",

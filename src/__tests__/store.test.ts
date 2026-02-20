@@ -282,4 +282,35 @@ describe('Store', () => {
       expect(() => store.createSession('T_DUP', projectId)).toThrow();
     });
   });
+
+  describe('P2.8: CRUD for settings', () => {
+    it('setSetting upserts a key-value pair', () => {
+      store.setSetting('default_backend', 'claude');
+      const value = store.getSetting('default_backend');
+      expect(value).toBe('claude');
+    });
+
+    it('setSetting overwrites existing value', () => {
+      store.setSetting('key1', 'value1');
+      store.setSetting('key1', 'value2');
+      expect(store.getSetting('key1')).toBe('value2');
+    });
+
+    it('getSetting returns null for missing key', () => {
+      const value = store.getSetting('nonexistent');
+      expect(value).toBeNull();
+    });
+
+    it('deleteSetting removes by key', () => {
+      store.setSetting('to_delete', 'val');
+      const deleted = store.deleteSetting('to_delete');
+      expect(deleted).toBe(true);
+      expect(store.getSetting('to_delete')).toBeNull();
+    });
+
+    it('deleteSetting returns false for nonexistent key', () => {
+      const deleted = store.deleteSetting('nope');
+      expect(deleted).toBe(false);
+    });
+  });
 });
