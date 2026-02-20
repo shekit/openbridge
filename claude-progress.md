@@ -3,7 +3,7 @@
 ## Current Status
 Phase 0 — Project Setup (complete)
 Phase 1 — Normalized Event Types and Backend Interface (complete)
-Phase 2 — SQLite Persistence and Router (not started)
+Phase 2 — SQLite Persistence and Router (complete)
 
 ## Session Log
 
@@ -59,3 +59,20 @@ Phase 2 — SQLite Persistence and Router (not started)
 - Created test files: `events.test.ts`, `backend.test.ts`, `claude.test.ts`, `codex.test.ts`
 - 71 tests passing across 5 test files
 - All 16 features (P1.1–P1.16) committed individually, all marked passing
+
+### Session 5 — Phase 2: SQLite Persistence and Router
+- Installed `better-sqlite3` and `@types/better-sqlite3`
+- Created `src/store.ts` — SQLite persistence layer:
+  - Store class with WAL mode, foreign keys, migration system
+  - Schema v1: projects table (channel_id UNIQUE), sessions table (thread_id UNIQUE, state machine), settings table (key-value)
+  - `validateTransition()` enforces state machine: idle→running, running→idle/waiting_for_input/dead, waiting_for_input→running, dead→idle
+  - Full CRUD for projects, sessions, settings
+- Created `src/router.ts` — Channel/thread routing:
+  - `resolve()` — maps channel_id + thread_id to project + session, auto-creates session for unknown thread
+  - `send()` — routes message through backend, manages state transitions, persists backend_session_id
+  - `respond()` — handles user response when session is waiting_for_input (permission denial resume flow)
+  - `resetSession()` — clears backend_session_id and transitions to idle for /new command
+- Created `src/__tests__/store.test.ts` — 48 tests covering P2.1–P2.9
+- Created `src/__tests__/router.test.ts` — 34 tests covering P2.10–P2.15
+- 153 tests passing across 7 test files
+- All 15 features (P2.1–P2.15) committed individually, all marked passing
