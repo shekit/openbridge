@@ -75,7 +75,7 @@ export function createBackendFactory(): BackendFactory {
   };
 }
 
-type StartMenuAction = 'start' | 'add_platform' | 'update_tokens' | 'change_backend' | 'rerun_setup';
+type StartMenuAction = 'start' | 'add_platform' | 'update_tokens' | 'change_backend' | 'rerun_setup' | 'exit';
 
 /**
  * Show the settings menu on subsequent interactive runs.
@@ -124,6 +124,7 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
     });
 
     options.push({ label: 'Re-run full setup', value: 'rerun_setup' });
+    options.push({ label: 'Exit', value: 'exit' });
 
     const action = await clack.select({
       message: 'What would you like to do?',
@@ -138,6 +139,11 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
 
     switch (action) {
       case 'start':
+        return;
+
+      case 'exit':
+        clack.outro('Goodbye!');
+        process.exit(0);
         return;
 
       case 'add_platform': {
