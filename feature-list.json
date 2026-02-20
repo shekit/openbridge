@@ -907,7 +907,7 @@
             "SQLite database is initialized",
             "Settings are persisted"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P6.7",
