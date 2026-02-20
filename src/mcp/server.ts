@@ -212,15 +212,23 @@ export async function startMcpServer(
  *
  * Returns the config object for the MCP server entry.
  */
-export function getMcpConfig(bridgeScriptPath: string, context: McpSessionContext): Record<string, unknown> {
+export function getMcpConfig(
+  entryScriptPath: string,
+  context: McpSessionContext & { platform: string },
+  ipc: { port: number; secret: string },
+): Record<string, unknown> {
   return {
     command: 'node',
     args: [
-      bridgeScriptPath,
-      '--mcp',
+      entryScriptPath,
       '--channel', context.channelId,
       '--thread', context.threadId,
       '--project-dir', context.projectDir,
+      '--platform', context.platform,
     ],
+    env: {
+      OPENBRIDGE_IPC_PORT: String(ipc.port),
+      OPENBRIDGE_IPC_SECRET: ipc.secret,
+    },
   };
 }

@@ -147,34 +147,43 @@ describe('P5.2: MCP config injection', () => {
     projectDir = makeTempProjectDir();
   });
 
-  it('getMcpConfig returns correct command and args', () => {
-    const context: McpSessionContext = {
+  it('getMcpConfig returns correct command, args, and env', () => {
+    const context = {
       channelId: 'CH1',
       threadId: 'T1',
       projectDir: '/home/user/myapp',
+      platform: 'slack',
     };
-    const config = getMcpConfig('/usr/local/bin/openbridge-mcp', context);
+    const ipc = { port: 12345, secret: 'sec123' };
+    const config = getMcpConfig('/usr/local/bin/openbridge-mcp', context, ipc);
     expect(config.command).toBe('node');
     expect(config.args).toEqual([
       '/usr/local/bin/openbridge-mcp',
-      '--mcp',
       '--channel', 'CH1',
       '--thread', 'T1',
       '--project-dir', '/home/user/myapp',
+      '--platform', 'slack',
     ]);
+    expect(config.env).toEqual({
+      OPENBRIDGE_IPC_PORT: '12345',
+      OPENBRIDGE_IPC_SECRET: 'sec123',
+    });
   });
 
   it('config includes all session context fields', () => {
-    const context: McpSessionContext = {
+    const context = {
       channelId: 'CH_DISCORD',
       threadId: 'T_DISCORD',
       projectDir: '/projects/webapp',
+      platform: 'discord',
     };
-    const config = getMcpConfig('/path/to/script.js', context);
+    const ipc = { port: 9999, secret: 'abc' };
+    const config = getMcpConfig('/path/to/script.js', context, ipc);
     const args = config.args as string[];
     expect(args).toContain('CH_DISCORD');
     expect(args).toContain('T_DISCORD');
     expect(args).toContain('/projects/webapp');
+    expect(args).toContain('discord');
   });
 
   describe('Claude Code MCP config file', () => {

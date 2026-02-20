@@ -1,0 +1,111 @@
+/**
+ * MCP entry point — spawned by the backend (Claude Code / Codex) as a
+ * grandchild process. Connects via stdio transport and uses fetch() to
+ * call back to the bridge's IPC server for side-effects.
+ *
+ * Usage:
+ *   node dist/mcp/entry.js --channel C123 --thread T456 --project-dir /path --platform slack
+ *
+ * Environment:
+ *   OPENBRIDGE_IPC_PORT   — port of the bridge's IPC server
+ *   OPENBRIDGE_IPC_SECRET — auth secret for IPC requests
+ */
+
+import { startMcpServer, type BridgeCallbacks, type McpSessionContext } from './server.js';
+
+/** Parse --key value pairs from argv. */
+function parseArgs(argv: string[]): Record<string, string> {
+  const args: Record<string, string> = {};
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i].startsWith('--') && i + 1 < argv.length) {
+      args[argv[i].slice(2)] = argv[i + 1];
+      i++; // skip value
+    }
+  }
+  return args;
+}
+
+/** POST JSON to the IPC server and return the parsed response. */
+async function ipcPost(
+  port: number,
+  secret: string,
+  path: string,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const res = await fetch(`http://127.0.0.1:${port}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-openbridge-secret': secret,
+    },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json() as Record<string, unknown>;
+  if (!res.ok) {
+    throw new Error(`IPC ${path} failed (${res.status}): ${json.error ?? 'unknown'}`);
+  }
+  return json;
+}
+
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
+
+  const channelId = args['channel'];
+  const threadId = args['thread'];
+  const projectDir = args['project-dir'];
+  const platform = args['platform'];
+
+  if (!channelId || !threadId || !projectDir || !platform) {
+    console.error('[mcp-entry] missing required args: --channel, --thread, --project-dir, --platform');
+    process.exit(1);
+  }
+
+  const ipcPort = parseInt(process.env.OPENBRIDGE_IPC_PORT ?? '', 10);
+  const ipcSecret = process.env.OPENBRIDGE_IPC_SECRET ?? '';
+
+  if (!ipcPort || !ipcSecret) {
+    console.error('[mcp-entry] missing env: OPENBRIDGE_IPC_PORT, OPENBRIDGE_IPC_SECRET');
+    process.exit(1);
+  }
+
+  const context: McpSessionContext = { channelId, threadId, projectDir };
+
+  const callbacks: BridgeCallbacks = {
+    async uploadFile(filePath, chId, thId) {
+      await ipcPost(ipcPort, ipcSecret, '/upload-file', {
+        channelId: chId,
+        threadId: thId,
+        filePath,
+        platform,
+      });
+    },
+
+    async openTunnel(port, ttl) {
+      const result = await ipcPost(ipcPort, ipcSecret, '/open-tunnel', { port, ttl });
+      return result.url as string;
+    },
+
+    async serveFileBrowser(directory) {
+      const result = await ipcPost(ipcPort, ipcSecret, '/serve-file-browser', { directory });
+      return result.url as string;
+    },
+
+    async postMessage(chId, thId, text) {
+      await ipcPost(ipcPort, ipcSecret, '/post-message', {
+        channelId: chId,
+        threadId: thId,
+        text,
+        platform,
+      });
+    },
+  };
+
+  console.error('[mcp-entry] starting MCP server for', { channelId, threadId, projectDir, platform });
+  await startMcpServer(context, callbacks);
+  console.error('[mcp-entry] MCP server connected via stdio');
+}
+
+main().catch((err) => {
+  console.error('[mcp-entry] fatal:', err);
+  process.exit(1);
+});

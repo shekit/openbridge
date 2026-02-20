@@ -1224,7 +1224,7 @@
             "Calls startMcpServer() with context and callbacks",
             "TypeScript compiles as standalone entry point"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P10.4",
