@@ -304,7 +304,7 @@
             "state defaults to 'idle'",
             "Unit test verifies table creation"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P2.4",

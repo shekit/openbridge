@@ -72,4 +72,44 @@ describe('Store', () => {
       expect(colNames).toContain('created_at');
     });
   });
+
+  describe('P2.3: sessions table schema', () => {
+    it('sessions table is created on init', () => {
+      const db = (store as any).db;
+      const table = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'"
+      ).get();
+      expect(table).toBeDefined();
+      expect(table.name).toBe('sessions');
+    });
+
+    it('thread_id has a unique index', () => {
+      const db = (store as any).db;
+      const index = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_sessions_thread_id'"
+      ).get();
+      expect(index).toBeDefined();
+    });
+
+    it('sessions table has expected columns', () => {
+      const db = (store as any).db;
+      const columns = db.prepare("PRAGMA table_info('sessions')").all() as Array<{ name: string }>;
+      const colNames = columns.map((c) => c.name);
+      expect(colNames).toContain('id');
+      expect(colNames).toContain('thread_id');
+      expect(colNames).toContain('project_id');
+      expect(colNames).toContain('backend_session_id');
+      expect(colNames).toContain('state');
+      expect(colNames).toContain('created_at');
+      expect(colNames).toContain('updated_at');
+    });
+
+    it('state defaults to idle', () => {
+      // Create a project first (needed for FK), then a session
+      store.createProject('ch1', '/tmp/proj', 'claude');
+      const project = store.getProjectByChannelId('ch1')!;
+      const session = store.createSession('thread1', project.id);
+      expect(session.state).toBe('idle');
+    });
+  });
 });
