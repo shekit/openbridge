@@ -112,4 +112,26 @@ describe('Store', () => {
       expect(session.state).toBe('idle');
     });
   });
+
+  describe('P2.4: settings table schema', () => {
+    it('settings table is created on init', () => {
+      const db = (store as any).db;
+      const table = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='settings'"
+      ).get();
+      expect(table).toBeDefined();
+      expect(table.name).toBe('settings');
+    });
+
+    it('key is the primary key', () => {
+      const db = (store as any).db;
+      const columns = db.prepare("PRAGMA table_info('settings')").all() as Array<{
+        name: string;
+        pk: number;
+      }>;
+      const keyCol = columns.find((c) => c.name === 'key');
+      expect(keyCol).toBeDefined();
+      expect(keyCol!.pk).toBe(1);
+    });
+  });
 });

@@ -314,7 +314,7 @@
             "key is the primary key",
             "Unit test verifies table creation"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P2.5",
