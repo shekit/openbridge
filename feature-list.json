@@ -597,7 +597,7 @@
             "Unbound project directories are also listed",
             "User can select one to link"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P3.16",
