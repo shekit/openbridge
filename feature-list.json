@@ -607,7 +607,7 @@
             "Next message starts a fresh conversation",
             "Confirmation message posted in thread"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P3.17",
