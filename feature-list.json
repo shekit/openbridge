@@ -1276,7 +1276,7 @@
             "serveFileBrowser starts file browser + opens tunnel, returns URL",
             "Unit tests verify routing logic"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P10.8",
