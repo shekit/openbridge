@@ -396,7 +396,7 @@
             "Router returns the new session",
             "Unit test verifies session creation"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P2.12",

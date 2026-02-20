@@ -81,4 +81,34 @@ describe('Router', () => {
       expect(result!.session.thread_id).toBe('T2');
     });
   });
+
+  describe('P2.11: create new session for unknown thread in bound channel', () => {
+    it('first message in a new thread creates a session row', () => {
+      store.createProject('CH3', '/proj3', 'claude');
+
+      // Thread T_NEW doesn't exist yet
+      expect(store.getSessionByThreadId('T_NEW')).toBeUndefined();
+
+      const result = router.resolve('CH3', 'T_NEW');
+      expect(result).not.toBeNull();
+      expect(result!.session.thread_id).toBe('T_NEW');
+
+      // Session should now exist in the database
+      const session = store.getSessionByThreadId('T_NEW');
+      expect(session).toBeDefined();
+    });
+
+    it('session state starts as idle', () => {
+      store.createProject('CH4', '/proj4', 'codex');
+      const result = router.resolve('CH4', 'T_IDLE');
+      expect(result!.session.state).toBe('idle');
+    });
+
+    it('returns the new session on subsequent calls', () => {
+      store.createProject('CH5', '/proj5', 'claude');
+      const first = router.resolve('CH5', 'T_REPEAT');
+      const second = router.resolve('CH5', 'T_REPEAT');
+      expect(first!.session.id).toBe(second!.session.id);
+    });
+  });
 });
