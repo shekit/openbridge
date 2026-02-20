@@ -538,7 +538,7 @@
             "Backend session is informed of denial",
             "Button message is updated to show denial was selected"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P3.10",
