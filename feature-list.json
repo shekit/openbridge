@@ -349,7 +349,7 @@
             "updateBackendSessionId sets backend_session_id for resume",
             "Unit tests verify all operations"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P2.8",

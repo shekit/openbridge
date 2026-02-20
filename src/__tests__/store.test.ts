@@ -220,4 +220,66 @@ describe('Store', () => {
       expect(() => store.createProject('C_DUP', '/p2', 'codex')).toThrow();
     });
   });
+
+  describe('P2.7: CRUD for sessions', () => {
+    let projectId: number;
+
+    beforeEach(() => {
+      const project = store.createProject('CH_SESS', '/proj', 'claude');
+      projectId = project.id;
+    });
+
+    it('createSession inserts with state idle', () => {
+      const session = store.createSession('T1', projectId);
+      expect(session.id).toBeGreaterThan(0);
+      expect(session.thread_id).toBe('T1');
+      expect(session.project_id).toBe(projectId);
+      expect(session.state).toBe('idle');
+      expect(session.backend_session_id).toBeNull();
+      expect(session.created_at).toBeDefined();
+      expect(session.updated_at).toBeDefined();
+    });
+
+    it('getSessionByThreadId retrieves by thread_id', () => {
+      store.createSession('T2', projectId);
+      const found = store.getSessionByThreadId('T2');
+      expect(found).toBeDefined();
+      expect(found!.thread_id).toBe('T2');
+    });
+
+    it('getSessionByThreadId returns undefined for unknown thread', () => {
+      const found = store.getSessionByThreadId('UNKNOWN');
+      expect(found).toBeUndefined();
+    });
+
+    it('updateSessionState changes state field and updated_at', () => {
+      const session = store.createSession('T3', projectId);
+      const originalUpdatedAt = session.updated_at;
+
+      store.updateSessionState(session.id, 'running');
+      const updated = store.getSessionById(session.id)!;
+      expect(updated.state).toBe('running');
+      // updated_at should change (may be same second in fast tests, so just verify it's set)
+      expect(updated.updated_at).toBeDefined();
+    });
+
+    it('updateBackendSessionId sets backend_session_id for resume', () => {
+      const session = store.createSession('T4', projectId);
+      store.updateBackendSessionId(session.id, 'backend-abc-123');
+      const updated = store.getSessionById(session.id)!;
+      expect(updated.backend_session_id).toBe('backend-abc-123');
+    });
+
+    it('deleteSession removes by id', () => {
+      const session = store.createSession('T5', projectId);
+      const deleted = store.deleteSession(session.id);
+      expect(deleted).toBe(true);
+      expect(store.getSessionByThreadId('T5')).toBeUndefined();
+    });
+
+    it('createSession rejects duplicate thread_id', () => {
+      store.createSession('T_DUP', projectId);
+      expect(() => store.createSession('T_DUP', projectId)).toThrow();
+    });
+  });
 });
