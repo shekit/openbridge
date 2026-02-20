@@ -13,23 +13,34 @@ describe('Claude Code backend', () => {
     });
 
     it('spawnCollect collects stdout from a process', async () => {
-      const result = await spawnCollect('echo', ['hello world'], process.cwd());
+      const handle = spawnCollect('echo', ['hello world'], process.cwd());
+      const result = await handle.result;
       expect(result.stdout.trim()).toBe('hello world');
       expect(result.exitCode).toBe(0);
     });
 
     it('spawnCollect captures exit code', async () => {
-      const result = await spawnCollect('node', ['-e', 'process.exit(42)'], process.cwd());
+      const handle = spawnCollect('node', ['-e', 'process.exit(42)'], process.cwd());
+      const result = await handle.result;
       expect(result.exitCode).toBe(42);
     });
 
     it('spawnCollect captures stderr', async () => {
-      const result = await spawnCollect(
+      const handle = spawnCollect(
         'node',
         ['-e', 'process.stderr.write("err output")'],
         process.cwd(),
       );
+      const result = await handle.result;
       expect(result.stderr).toContain('err output');
+    });
+
+    it('spawnCollect kill() terminates the child process', async () => {
+      const handle = spawnCollect('node', ['-e', 'setTimeout(() => {}, 30000)'], process.cwd());
+      handle.kill();
+      const result = await handle.result;
+      // Process was killed, so exit code is non-zero (null → 1)
+      expect(result.exitCode).not.toBe(0);
     });
 
     it('send() spawns claude with correct args (--output-format stream-json)', async () => {

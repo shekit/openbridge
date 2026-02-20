@@ -22,13 +22,15 @@ describe('Codex CLI backend', () => {
     });
 
     it('spawnCollect collects stdout from a process', async () => {
-      const result = await spawnCollect('echo', ['codex output'], process.cwd());
+      const handle = spawnCollect('echo', ['codex output'], process.cwd());
+      const result = await handle.result;
       expect(result.stdout.trim()).toBe('codex output');
       expect(result.exitCode).toBe(0);
     });
 
     it('exit code is captured', async () => {
-      const result = await spawnCollect('node', ['-e', 'process.exit(7)'], process.cwd());
+      const handle = spawnCollect('node', ['-e', 'process.exit(7)'], process.cwd());
+      const result = await handle.result;
       expect(result.exitCode).toBe(7);
     });
 

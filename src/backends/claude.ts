@@ -13,39 +13,51 @@ import * as path from 'node:path';
 import type { Backend, BackendOptions, McpServerEntry, SendResult } from '../types/backend.js';
 import type { NormalizedEvent } from '../types/events.js';
 
-interface SpawnResult {
+export interface SpawnResult {
   stdout: string;
   stderr: string;
   exitCode: number;
 }
 
-/** Spawn a process and collect stdout/stderr until exit. */
+export interface SpawnHandle {
+  result: Promise<SpawnResult>;
+  kill(): void;
+}
+
+/** Spawn a process and collect stdout/stderr until exit. Returns a handle with kill(). */
 export function spawnCollect(
   command: string,
   args: string[],
   cwd: string,
-): Promise<SpawnResult> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(command, args, {
-      cwd,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+): SpawnHandle {
+  const proc = spawn(command, args, {
+    cwd,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
 
-    let stdout = '';
-    let stderr = '';
+  let stdout = '';
+  let stderr = '';
 
-    proc.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString('utf8');
-    });
-    proc.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString('utf8');
-    });
+  proc.stdout.on('data', (chunk: Buffer) => {
+    stdout += chunk.toString('utf8');
+  });
+  proc.stderr.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString('utf8');
+  });
 
+  const result = new Promise<SpawnResult>((resolve, reject) => {
     proc.on('error', (err) => reject(err));
     proc.on('close', (code) => {
       resolve({ stdout, stderr, exitCode: code ?? 1 });
     });
   });
+
+  return {
+    result,
+    kill() {
+      try { proc.kill('SIGTERM'); } catch { /* already exited */ }
+    },
+  };
 }
 
 function parseJsonLine(line: string): Record<string, unknown> | null {
@@ -213,6 +225,7 @@ export class ClaudeBackend implements Backend {
   private sessionId: string | null = null;
   private projectDir: string = '';
   private mcpConfig: McpServerEntry | undefined;
+  private activeHandle: SpawnHandle | null = null;
 
   async start(options: BackendOptions): Promise<void> {
     this.projectDir = options.projectDir;
@@ -230,10 +243,14 @@ export class ClaudeBackend implements Backend {
     const args = buildClaudeArgs(text, this.sessionId);
 
     console.log(`[claude] spawning: claude ${args.join(' ').slice(0, 120)}...`);
-    let result;
+    const handle = spawnCollect('claude', args, this.projectDir);
+    this.activeHandle = handle;
+
+    let result: SpawnResult;
     try {
-      result = await spawnCollect('claude', args, this.projectDir);
+      result = await handle.result;
     } catch (err: any) {
+      this.activeHandle = null;
       if (err?.code === 'ENOENT') {
         throw new Error(
           'Claude Code CLI not found. Install it with: npm install -g @anthropic-ai/claude-code',
@@ -241,6 +258,7 @@ export class ClaudeBackend implements Backend {
       }
       throw err;
     }
+    this.activeHandle = null;
     console.log(`[claude] process exited with code ${result.exitCode}`);
 
     const parsed = parseClaudeOutput(result.stdout, result.stderr, result.exitCode);
@@ -259,8 +277,16 @@ export class ClaudeBackend implements Backend {
     return this.sessionId;
   }
 
+  setSessionId(id: string | null): void {
+    this.sessionId = id;
+  }
+
   async stop(): Promise<void> {
     console.log('[claude] stopping');
+    if (this.activeHandle) {
+      this.activeHandle.kill();
+      this.activeHandle = null;
+    }
     this.sessionId = null;
   }
 }

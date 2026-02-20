@@ -1143,7 +1143,7 @@
             "When sendWithTimeout fires, backend.stop() actually terminates the child process",
             "Unit test verifies that stop() during an active send kills the process"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P9.4",

@@ -1002,7 +1002,8 @@ describe('P7.7: Error handling — missing CLI tool reported to user', () => {
     try {
       // Use a definitely non-existent command path
       const { spawnCollect } = await import('../backends/claude.js');
-      await spawnCollect('__nonexistent_cli_tool__', [], '/tmp');
+      const handle = spawnCollect('__nonexistent_cli_tool__', [], '/tmp');
+      await handle.result;
       expect.fail('Should have thrown');
     } catch (err: any) {
       expect(err.code).toBe('ENOENT');

@@ -12,7 +12,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Backend, BackendOptions, McpServerEntry, SendResult } from '../types/backend.js';
 import type { NormalizedEvent } from '../types/events.js';
-import { spawnCollect } from './claude.js';
+import { spawnCollect, type SpawnHandle, type SpawnResult } from './claude.js';
 
 export type SandboxMode = 'workspace-write' | 'read-only' | 'danger-full-access';
 
@@ -212,6 +212,7 @@ export class CodexBackend implements Backend {
   private projectDir: string = '';
   private sandbox: SandboxMode;
   private mcpConfig: McpServerEntry | undefined;
+  private activeHandle: SpawnHandle | null = null;
 
   constructor(config: CodexBackendConfig = {}) {
     this.sandbox = config.sandbox || 'workspace-write';
@@ -233,10 +234,14 @@ export class CodexBackend implements Backend {
     const args = buildCodexArgs(text, this.sessionId, this.sandbox);
 
     console.log(`[codex] spawning: codex ${args.join(' ').slice(0, 120)}...`);
-    let result;
+    const handle = spawnCollect('codex', args, this.projectDir);
+    this.activeHandle = handle;
+
+    let result: SpawnResult;
     try {
-      result = await spawnCollect('codex', args, this.projectDir);
+      result = await handle.result;
     } catch (err: any) {
+      this.activeHandle = null;
       if (err?.code === 'ENOENT') {
         throw new Error(
           'Codex CLI not found. Install it with: npm install -g @openai/codex',
@@ -244,6 +249,7 @@ export class CodexBackend implements Backend {
       }
       throw err;
     }
+    this.activeHandle = null;
     console.log(`[codex] process exited with code ${result.exitCode}`);
 
     const parsed = parseCodexOutput(result.stdout, result.stderr, result.exitCode);
@@ -262,8 +268,16 @@ export class CodexBackend implements Backend {
     return this.sessionId;
   }
 
+  setSessionId(id: string | null): void {
+    this.sessionId = id;
+  }
+
   async stop(): Promise<void> {
     console.log('[codex] stopping');
+    if (this.activeHandle) {
+      this.activeHandle.kill();
+      this.activeHandle = null;
+    }
     this.sessionId = null;
   }
 }
