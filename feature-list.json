@@ -887,7 +887,7 @@
             "Reports which backends were found",
             "User can select default backend"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P6.5",
