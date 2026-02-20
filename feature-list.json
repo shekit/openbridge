@@ -1178,7 +1178,7 @@
             "Test fails if router.shutdown() does not call backend.stop()",
             "All 374+ tests still pass"
           ],
-          "status": "failing"
+          "status": "passing"
         }
       ]
     }

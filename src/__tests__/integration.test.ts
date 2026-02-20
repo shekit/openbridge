@@ -797,10 +797,14 @@ describe('P7.6: Graceful shutdown', () => {
     store.createProject('C_SHUT', '/home/user/project', 'claude');
 
     const stopCalls: string[] = [];
+    let resolveSend!: () => void;
+    const sendGate = new Promise<void>((resolve) => { resolveSend = resolve; });
 
     const mockBackend: Backend = {
       async start() {},
       async send(): Promise<SendResult> {
+        // Block until we release the gate — keeps backend "active"
+        await sendGate;
         return {
           events: [{ type: 'assistant_text', text: 'response' }, { type: 'turn_completed' }],
           sessionId: 'session-shutdown-1',
@@ -815,16 +819,23 @@ describe('P7.6: Graceful shutdown', () => {
 
     const router = new Router(store, () => mockBackend);
 
-    // Send a message (activates a backend)
-    await router.send('C_SHUT', 'T_SHUT_1', 'Hello');
+    // Start a send without awaiting — backend is now "active"
+    const sendPromise = router.send('C_SHUT', 'T_SHUT_1', 'Hello');
 
-    // Shutdown should stop the backend
+    // Yield to let send() progress past start() and register in activeBackends
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Shutdown while the backend is still active
     await router.shutdown();
 
-    expect(stopCalls.length).toBeGreaterThanOrEqual(0);
+    expect(stopCalls.length).toBeGreaterThan(0);
     expect(console.log).toHaveBeenCalledWith(
       expect.stringContaining('[router] shutting down'),
     );
+
+    // Release the send to avoid a hanging test
+    resolveSend();
+    await sendPromise.catch(() => {}); // Ignore errors from the interrupted send
   });
 
   it('shutdown handles errors from backend.stop() gracefully', async () => {
