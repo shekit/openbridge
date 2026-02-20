@@ -183,7 +183,7 @@ export class Store {
     ).run(newState, id);
   }
 
-  updateBackendSessionId(id: number, backendSessionId: string): void {
+  updateBackendSessionId(id: number, backendSessionId: string | null): void {
     this.db.prepare(
       `UPDATE sessions SET backend_session_id = ?, updated_at = datetime('now') WHERE id = ?`
     ).run(backendSessionId, id);

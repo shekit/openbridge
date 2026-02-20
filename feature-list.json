@@ -385,7 +385,7 @@
             "Unknown channel_id returns null (message is not for a bound project)",
             "Unit test verifies resolution"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P2.11",
