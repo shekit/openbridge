@@ -946,7 +946,7 @@
             "User clicks Allow",
             "Backend resumes and completes the task"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P7.3",
