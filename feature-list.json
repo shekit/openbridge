@@ -578,7 +578,7 @@
             "New channel is bound to a project directory",
             "Confirmation message posted"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P3.14",
