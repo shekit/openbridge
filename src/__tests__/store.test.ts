@@ -171,4 +171,53 @@ describe('Store', () => {
       expect(tables.length).toBe(3);
     });
   });
+
+  describe('P2.6: CRUD for projects', () => {
+    it('createProject inserts a row and returns it', () => {
+      const project = store.createProject('C123', '/home/user/myapp', 'claude');
+      expect(project.id).toBeGreaterThan(0);
+      expect(project.channel_id).toBe('C123');
+      expect(project.project_dir).toBe('/home/user/myapp');
+      expect(project.backend_name).toBe('claude');
+      expect(project.created_at).toBeDefined();
+    });
+
+    it('getProjectByChannelId retrieves by channel_id', () => {
+      store.createProject('C456', '/home/user/proj', 'codex');
+      const found = store.getProjectByChannelId('C456');
+      expect(found).toBeDefined();
+      expect(found!.channel_id).toBe('C456');
+      expect(found!.backend_name).toBe('codex');
+    });
+
+    it('getProjectByChannelId returns undefined for unknown channel', () => {
+      const found = store.getProjectByChannelId('UNKNOWN');
+      expect(found).toBeUndefined();
+    });
+
+    it('listProjects returns all projects', () => {
+      store.createProject('C1', '/p1', 'claude');
+      store.createProject('C2', '/p2', 'codex');
+      store.createProject('C3', '/p3', 'claude');
+      const projects = store.listProjects();
+      expect(projects.length).toBe(3);
+    });
+
+    it('deleteProject removes by id', () => {
+      const project = store.createProject('C789', '/p', 'claude');
+      const deleted = store.deleteProject(project.id);
+      expect(deleted).toBe(true);
+      expect(store.getProjectByChannelId('C789')).toBeUndefined();
+    });
+
+    it('deleteProject returns false for nonexistent id', () => {
+      const deleted = store.deleteProject(9999);
+      expect(deleted).toBe(false);
+    });
+
+    it('createProject rejects duplicate channel_id', () => {
+      store.createProject('C_DUP', '/p1', 'claude');
+      expect(() => store.createProject('C_DUP', '/p2', 'codex')).toThrow();
+    });
+  });
 });

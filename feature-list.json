@@ -337,7 +337,7 @@
             "deleteProject removes by id",
             "Unit tests verify all four operations"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P2.7",
