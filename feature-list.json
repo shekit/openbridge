@@ -558,7 +558,7 @@
             "Backend crash posts a message explaining what happened",
             "Message includes suggested fix when possible"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P3.12",
