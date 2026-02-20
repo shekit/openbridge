@@ -19,6 +19,11 @@ function createMockDiscordClient() {
 
   const mockUser = { id: 'BOT_USER_123', tag: 'TestBot#1234' };
 
+  const mockSendableChannel = {
+    send: vi.fn(async () => ({ id: 'msg_123' })),
+    isThread: () => true,
+  };
+
   const mockClient = {
     user: mockUser,
     on: vi.fn((event: string, handler: Function) => {
@@ -33,7 +38,11 @@ function createMockDiscordClient() {
     }),
     login: vi.fn(async () => 'token'),
     destroy: vi.fn(),
+    channels: {
+      fetch: vi.fn(async () => mockSendableChannel),
+    },
     _eventHandlers: eventHandlers,
+    _mockSendableChannel: mockSendableChannel,
   };
 
   return mockClient;
@@ -1179,6 +1188,36 @@ describe('DiscordAdapter', () => {
 
     it('returns empty array for empty string', () => {
       expect(splitText('', 2000)).toEqual([]);
+    });
+  });
+
+  describe('uploadFile', () => {
+    it('calls channel.send with file attachment', async () => {
+      createAdapter();
+      const tmpFile = path.join(tmpDir, 'test-upload.txt');
+      fs.writeFileSync(tmpFile, 'test content');
+
+      await adapter.uploadFile('C_CHAN', 'T_THREAD', tmpFile);
+
+      expect(mockClient.channels.fetch).toHaveBeenCalledWith('T_THREAD');
+      expect(mockClient._mockSendableChannel.send).toHaveBeenCalledWith({
+        files: [{ attachment: tmpFile, name: 'test-upload.txt' }],
+      });
+    });
+  });
+
+  describe('sendMessage', () => {
+    it('calls channel.send with text content', async () => {
+      createAdapter();
+      mockClient._mockSendableChannel.send.mockClear();
+      mockClient.channels.fetch.mockClear();
+
+      await adapter.sendMessage('C_CHAN', 'T_THREAD', 'Hello from MCP');
+
+      expect(mockClient.channels.fetch).toHaveBeenCalledWith('T_THREAD');
+      expect(mockClient._mockSendableChannel.send).toHaveBeenCalledWith({
+        content: 'Hello from MCP',
+      });
     });
   });
 });

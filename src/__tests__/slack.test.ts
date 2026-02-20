@@ -30,6 +30,7 @@ function createMockBoltApp() {
     conversations: {
       create: vi.fn(async () => ({ ok: true, channel: { id: 'C_NEW123' } })),
     },
+    filesUploadV2: vi.fn(async () => ({ ok: true })),
   };
 
   const mockApp = {
@@ -1015,6 +1016,38 @@ describe('SlackAdapter', () => {
 
     it('returns empty array for empty string', () => {
       expect(splitText('', 4000)).toEqual([]);
+    });
+  });
+
+  describe('uploadFile', () => {
+    it('calls filesUploadV2 with correct params', async () => {
+      createAdapter();
+      const tmpFile = path.join(tmpDir, 'test-upload.txt');
+      fs.writeFileSync(tmpFile, 'test content');
+
+      await adapter.uploadFile('C_CHAN', 'T_THREAD', tmpFile);
+
+      expect(mockApp.client.filesUploadV2).toHaveBeenCalledWith({
+        channel_id: 'C_CHAN',
+        thread_ts: 'T_THREAD',
+        file: tmpFile,
+        filename: 'test-upload.txt',
+      });
+    });
+  });
+
+  describe('sendMessage', () => {
+    it('calls chat.postMessage with correct params', async () => {
+      createAdapter();
+      mockApp.client.chat.postMessage.mockClear();
+
+      await adapter.sendMessage('C_CHAN', 'T_THREAD', 'Hello from MCP');
+
+      expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith({
+        channel: 'C_CHAN',
+        thread_ts: 'T_THREAD',
+        text: 'Hello from MCP',
+      });
     });
   });
 });

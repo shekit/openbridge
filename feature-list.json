@@ -1263,7 +1263,7 @@
             "Discord calls channel.send with files attachment",
             "Unit tests verify method calls with mocked SDK clients"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P10.7",

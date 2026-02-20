@@ -912,6 +912,27 @@ export class SlackAdapter {
 
     await this.renderEvents(channelId, threadTs, result.events, client);
   }
+
+  /** Upload a file to a Slack thread. Called by MCP callback handler. */
+  async uploadFile(channelId: string, threadId: string, filePath: string): Promise<void> {
+    const filename = path.basename(filePath);
+    await this.app.client.filesUploadV2({
+      channel_id: channelId,
+      thread_ts: threadId,
+      file: filePath,
+      filename,
+    });
+    console.log(`[slack] uploaded file ${filename} to ${channelId}/${threadId}`);
+  }
+
+  /** Post a plain text message to a Slack thread. Called by MCP callback handler. */
+  async sendMessage(channelId: string, threadId: string, text: string): Promise<void> {
+    await this.app.client.chat.postMessage({
+      channel: channelId,
+      thread_ts: threadId,
+      text,
+    });
+  }
 }
 
 // splitText is imported from ../utils.js

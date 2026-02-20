@@ -28,4 +28,10 @@ export interface Adapter {
 
   /** Post an error message. */
   postError(channelId: string, threadTs: string, message: string, client: any): Promise<void>;
+
+  /** Upload a file as an attachment in a thread. Called by MCP callbacks. */
+  uploadFile(channelId: string, threadId: string, filePath: string): Promise<void>;
+
+  /** Post a plain text message to a thread. Called by MCP callbacks (no context object needed). */
+  sendMessage(channelId: string, threadId: string, text: string): Promise<void>;
 }

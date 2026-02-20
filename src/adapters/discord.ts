@@ -805,6 +805,30 @@ export class DiscordAdapter {
     }
     return interaction.message?.id ?? null;
   }
+
+  /** Upload a file to a Discord thread. Called by MCP callback handler. */
+  async uploadFile(channelId: string, threadId: string, filePath: string): Promise<void> {
+    const filename = path.basename(filePath);
+    const channel = await this.client.channels.fetch(threadId).catch(() => null)
+      ?? await this.client.channels.fetch(channelId).catch(() => null);
+    if (!channel || !('send' in channel)) {
+      throw new Error(`Cannot find sendable channel for ${channelId}/${threadId}`);
+    }
+    await (channel as TextChannel).send({
+      files: [{ attachment: filePath, name: filename }],
+    });
+    console.log(`[discord] uploaded file ${filename} to ${channelId}/${threadId}`);
+  }
+
+  /** Post a plain text message to a Discord thread. Called by MCP callback handler. */
+  async sendMessage(channelId: string, threadId: string, text: string): Promise<void> {
+    const channel = await this.client.channels.fetch(threadId).catch(() => null)
+      ?? await this.client.channels.fetch(channelId).catch(() => null);
+    if (!channel || !('send' in channel)) {
+      throw new Error(`Cannot find sendable channel for ${channelId}/${threadId}`);
+    }
+    await (channel as TextChannel).send({ content: text });
+  }
 }
 
 // splitText is imported from ../utils.js
