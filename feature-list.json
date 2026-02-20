@@ -528,7 +528,7 @@
             "Button message is updated to show the selection (ephemeral or edit)",
             "Session transitions from waiting_for_input → running → idle"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P3.9",
