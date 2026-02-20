@@ -1,0 +1,79 @@
+#!/usr/bin/env node
+
+/**
+ * OpenBridge CLI entry point.
+ *
+ * Handles 'init' and 'start' subcommands.
+ * Usage: openbridge <command>
+ */
+
+import { runInit } from './cli/init.js';
+import { runStart } from './cli/start.js';
+
+const USAGE = `
+openbridge — Remote control for coding agents via Slack/Discord
+
+Usage:
+  openbridge init     Set up OpenBridge (platforms, tokens, backend, first project)
+  openbridge start    Launch the bridge process
+  openbridge --help   Show this help message
+
+Commands:
+  init    Interactive setup wizard — configure platforms, tokens, and create first project
+  start   Start the bridge and connect to messaging platforms
+`.trim();
+
+export function parseArgs(argv: string[]): { command: string | null; args: string[] } {
+  // argv[0] = node, argv[1] = script path, argv[2..] = user args
+  const userArgs = argv.slice(2);
+
+  if (userArgs.length === 0) {
+    return { command: null, args: [] };
+  }
+
+  const first = userArgs[0];
+
+  if (first === '--help' || first === '-h') {
+    return { command: 'help', args: [] };
+  }
+
+  if (first === '--version' || first === '-v') {
+    return { command: 'version', args: [] };
+  }
+
+  return { command: first, args: userArgs.slice(1) };
+}
+
+export async function cli(argv: string[]): Promise<void> {
+  const { command } = parseArgs(argv);
+
+  switch (command) {
+    case null:
+    case 'help':
+      console.log(USAGE);
+      break;
+
+    case 'version':
+      console.log('openbridge 0.1.0');
+      break;
+
+    case 'init':
+      await runInit();
+      break;
+
+    case 'start':
+      await runStart();
+      break;
+
+    default:
+      console.error(`Unknown command: ${command}`);
+      console.error('Run "openbridge --help" for usage.');
+      process.exit(1);
+  }
+}
+
+// Run when invoked directly
+cli(process.argv).catch((err) => {
+  console.error('[openbridge] fatal error:', err);
+  process.exit(1);
+});

@@ -856,7 +856,7 @@
             "npm install -g . makes 'openbridge' available globally",
             "openbridge --help shows usage"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P6.2",
