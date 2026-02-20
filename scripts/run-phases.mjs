@@ -13,7 +13,7 @@
  *   node scripts/run-phases.mjs --phase P2         # run only a specific phase
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,9 +27,15 @@ const FEATURE_LIST = resolve(PROJECT_DIR, 'feature-list.json');
 // ---------------------------------------------------------------------------
 const args = process.argv.slice(2);
 const skipPermissions = args.includes('--skip-permissions');
-const phaseOnly = args.includes('--phase')
-  ? args[args.indexOf('--phase') + 1]
-  : null;
+let phaseOnly = null;
+if (args.includes('--phase')) {
+  const idx = args.indexOf('--phase');
+  phaseOnly = args[idx + 1];
+  if (!phaseOnly || phaseOnly.startsWith('--')) {
+    console.error('Error: --phase requires a phase ID (e.g., --phase P2)');
+    process.exit(1);
+  }
+}
 
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`
@@ -104,12 +110,10 @@ for (const phase of phases) {
     claudeArgs.push('--dangerously-skip-permissions');
   }
 
-  claudeArgs.push(JSON.stringify(prompt));
-
-  const command = claudeArgs.join(' ');
+  claudeArgs.push(prompt);
 
   try {
-    execSync(command, {
+    execFileSync(claudeArgs[0], claudeArgs.slice(1), {
       cwd: PROJECT_DIR,
       stdio: 'inherit',
     });
