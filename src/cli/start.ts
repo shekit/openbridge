@@ -208,6 +208,14 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
       }
 
       case 'rerun_setup': {
+        const confirm = await clack.confirm({
+          message: 'This will erase all settings, tokens, and project bindings. Continue?',
+          initialValue: false,
+        });
+        if (clack.isCancel(confirm) || !confirm) {
+          clack.log.info('Cancelled. Starting the bridge...');
+          return;
+        }
         store.close();
         const dbDir = path.dirname(dbPath);
         fs.rmSync(dbDir, { recursive: true, force: true });
