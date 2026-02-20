@@ -839,7 +839,7 @@
             "serve_file_browser only serves project directory contents",
             "Out-of-project paths require explicit confirmation"
           ],
-          "status": "failing"
+          "status": "passing"
         }
       ]
     },
