@@ -230,7 +230,17 @@ export class ClaudeBackend implements Backend {
     const args = buildClaudeArgs(text, this.sessionId);
 
     console.log(`[claude] spawning: claude ${args.join(' ').slice(0, 120)}...`);
-    const result = await spawnCollect('claude', args, this.projectDir);
+    let result;
+    try {
+      result = await spawnCollect('claude', args, this.projectDir);
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        throw new Error(
+          'Claude Code CLI not found. Install it with: npm install -g @anthropic-ai/claude-code',
+        );
+      }
+      throw err;
+    }
     console.log(`[claude] process exited with code ${result.exitCode}`);
 
     const parsed = parseClaudeOutput(result.stdout, result.stderr, result.exitCode);

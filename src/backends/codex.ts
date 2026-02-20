@@ -233,7 +233,17 @@ export class CodexBackend implements Backend {
     const args = buildCodexArgs(text, this.sessionId, this.sandbox);
 
     console.log(`[codex] spawning: codex ${args.join(' ').slice(0, 120)}...`);
-    const result = await spawnCollect('codex', args, this.projectDir);
+    let result;
+    try {
+      result = await spawnCollect('codex', args, this.projectDir);
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        throw new Error(
+          'Codex CLI not found. Install it with: npm install -g @openai/codex',
+        );
+      }
+      throw err;
+    }
     console.log(`[codex] process exited with code ${result.exitCode}`);
 
     const parsed = parseCodexOutput(result.stdout, result.stderr, result.exitCode);

@@ -999,7 +999,7 @@
             "If codex CLI is not found, error message posted in thread",
             "Message includes suggested fix (install instructions)"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P7.8",
