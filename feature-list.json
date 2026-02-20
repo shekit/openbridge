@@ -506,7 +506,7 @@
             "Long responses are not truncated (Slack's limit is ~4000 chars per message)",
             "Responses longer than limit are split into multiple messages"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P3.7",
