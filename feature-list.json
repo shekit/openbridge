@@ -408,7 +408,7 @@
             "Normalized events are returned to the caller",
             "Unit test with mock backend verifies the flow"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P2.13",

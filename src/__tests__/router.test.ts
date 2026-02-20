@@ -111,4 +111,40 @@ describe('Router', () => {
       expect(first!.session.id).toBe(second!.session.id);
     });
   });
+
+  describe('P2.12: send message through backend and return normalized events', () => {
+    it('calls backend.send() with the message text and returns events', async () => {
+      store.createProject('CH_SEND', '/proj', 'claude');
+      const result = await router.send('CH_SEND', 'T_SEND', 'Hello world');
+      expect(result.events).toHaveLength(2);
+      expect(result.events[0]).toEqual({ type: 'assistant_text', text: 'Hello!' });
+      expect(result.events[1]).toEqual({ type: 'turn_completed' });
+    });
+
+    it('session transitions to running during send, back to idle on completion', async () => {
+      store.createProject('CH_STATE', '/proj', 'claude');
+      const result = await router.send('CH_STATE', 'T_STATE', 'test');
+      // After completion, session should be idle
+      expect(result.session.state).toBe('idle');
+    });
+
+    it('backend session_id is stored in SQLite for resume', async () => {
+      store.createProject('CH_RESUME', '/proj', 'claude');
+      await router.send('CH_RESUME', 'T_RESUME', 'test');
+      const session = store.getSessionByThreadId('T_RESUME');
+      expect(session!.backend_session_id).toBe('mock-session-1');
+    });
+
+    it('uses the correct backend name from project config', async () => {
+      store.createProject('CH_BACKEND', '/proj', 'codex');
+      await router.send('CH_BACKEND', 'T_BACKEND', 'test');
+      expect(lastBackendName).toBe('codex');
+    });
+
+    it('throws for unbound channel', async () => {
+      await expect(router.send('UNKNOWN', 'T1', 'test')).rejects.toThrow(
+        'Channel UNKNOWN is not bound to a project'
+      );
+    });
+  });
 });
