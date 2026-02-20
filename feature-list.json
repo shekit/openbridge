@@ -829,7 +829,7 @@
             "File browser is accessible via tunnel URL",
             "URL is posted in the originating thread"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P5.6",
