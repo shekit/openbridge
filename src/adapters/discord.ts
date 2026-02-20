@@ -276,7 +276,7 @@ export class DiscordAdapter {
       } else {
         const backend = this.store.getSetting('default_backend') ?? 'claude';
         try {
-          this.store.createProject(channelId, projectDir, backend);
+          this.store.createProject(channelId, projectDir, backend, 'discord');
           await interaction.update({
             content: `Bound this channel to project \`${projectDir}\` (${backend})`,
             components: [],
@@ -333,7 +333,7 @@ export class DiscordAdapter {
     const defaultBackend = this.store.getSetting('default_backend') ?? 'claude';
 
     try {
-      this.store.createProject(channelId, projectPath, defaultBackend);
+      this.store.createProject(channelId, projectPath, defaultBackend, 'discord');
       await interaction.update({
         content: `Bound this channel to project \`${projectPath}\` (${defaultBackend})`,
         components: [],
@@ -364,7 +364,7 @@ export class DiscordAdapter {
         name: channelName,
         type: ChannelType.GuildText,
       });
-      this.store.createProject(newChannel.id, projectPath, defaultBackend);
+      this.store.createProject(newChannel.id, projectPath, defaultBackend, 'discord');
       await interaction.update({
         content: `Created and bound <#${newChannel.id}> to project \`${projectPath}\` (${defaultBackend})`,
         components: [],
@@ -520,7 +520,7 @@ export class DiscordAdapter {
         await this.handleProjectConnect(interaction, channelId, targetDir);
       } else {
         const backend = this.store.getSetting('default_backend') ?? 'claude';
-        this.store.createProject(channelId, targetDir, backend);
+        this.store.createProject(channelId, targetDir, backend, 'discord');
         await interaction.reply(`Created \`${targetDir}\` and bound this channel to it (${backend})`);
       }
       return;
@@ -609,7 +609,7 @@ export class DiscordAdapter {
           name: channelName,
           type: ChannelType.GuildText,
         });
-        this.store.createProject(newChannel.id, projectPath, existing.backend_name);
+        this.store.createProject(newChannel.id, projectPath, existing.backend_name, 'discord');
         await interaction.reply(
           `Created and bound <#${newChannel.id}> to project \`${projectPath}\` (${existing.backend_name})`
         );

@@ -101,7 +101,7 @@ export class SlackAdapter {
       if (!projectDir || !channelId) return;
       try {
         const channelName = path.basename(projectDir);
-        this.store.createProject(channelId, projectDir, this.store.getSetting('default_backend') ?? 'claude');
+        this.store.createProject(channelId, projectDir, this.store.getSetting('default_backend') ?? 'claude', 'slack');
         await (client as any).chat.postMessage({
           channel: channelId,
           text: `Bound this channel to project \`${projectDir}\` (${channelName})`,
@@ -124,7 +124,7 @@ export class SlackAdapter {
         const channelName = path.basename(projectDir);
         const result = await (client as any).conversations.create({ name: channelName });
         const newChannelId = result.channel.id;
-        this.store.createProject(newChannelId, projectDir, this.store.getSetting('default_backend') ?? 'claude');
+        this.store.createProject(newChannelId, projectDir, this.store.getSetting('default_backend') ?? 'claude', 'slack');
         // Invite the user who clicked the button
         const userId = (body as any).user?.id;
         if (userId) {
@@ -150,7 +150,7 @@ export class SlackAdapter {
       try {
         const { channelId: targetChannelId, projectDir } = JSON.parse(action.value);
         const backend = this.store.getSetting('default_backend') ?? 'claude';
-        this.store.createProject(targetChannelId, projectDir, backend);
+        this.store.createProject(targetChannelId, projectDir, backend, 'slack');
         await (client as any).chat.postMessage({
           channel: sourceChannelId,
           text: `Bound <#${targetChannelId}> to project \`${projectDir}\` (${backend})`,
@@ -177,7 +177,7 @@ export class SlackAdapter {
       } else {
         const backend = this.store.getSetting('default_backend') ?? 'claude';
         try {
-          this.store.createProject(channelId, projectDir, backend);
+          this.store.createProject(channelId, projectDir, backend, 'slack');
           await (client as any).chat.postMessage({
             channel: channelId,
             text: `Bound this channel to project \`${projectDir}\` (${backend})`,
@@ -553,7 +553,7 @@ export class SlackAdapter {
         await this.handleProjectConnect(channelId, targetDir, command, client);
       } else {
         const backend = this.store.getSetting('default_backend') ?? 'claude';
-        this.store.createProject(channelId, targetDir, backend);
+        this.store.createProject(channelId, targetDir, backend, 'slack');
         await client.chat.postMessage({
           channel: channelId,
           text: `Created \`${targetDir}\` and bound this channel to it (${backend})`,
@@ -663,7 +663,7 @@ export class SlackAdapter {
         const result = await client.conversations.create({ name: channelName });
         const newChannelId = result.channel?.id;
         if (newChannelId) {
-          this.store.createProject(newChannelId, projectDir, existing.backend_name);
+          this.store.createProject(newChannelId, projectDir, existing.backend_name, 'slack');
           const userId = command.user_id;
           if (userId) {
             await client.conversations.invite({ channel: newChannelId, users: userId }).catch(() => {});

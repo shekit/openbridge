@@ -14,6 +14,7 @@ export interface Project {
   channel_id: string;
   project_dir: string;
   backend_name: string;
+  platform: string;
   created_at: string;
 }
 
@@ -55,13 +56,14 @@ export function validateTransition(from: SessionState, to: SessionState): void {
 
 /** Schema migrations — each entry is a SQL string applied in order. */
 const MIGRATIONS: string[] = [
-  // Version 1: initial schema
+  // Version 1: full schema
   `
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     channel_id TEXT NOT NULL UNIQUE,
     project_dir TEXT NOT NULL,
     backend_name TEXT NOT NULL,
+    platform TEXT NOT NULL DEFAULT 'unknown',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_channel_id ON projects(channel_id);
@@ -125,11 +127,11 @@ export class Store {
 
   // --- Projects CRUD ---
 
-  createProject(channelId: string, projectDir: string, backendName: string): Project {
+  createProject(channelId: string, projectDir: string, backendName: string, platform: string = 'unknown'): Project {
     const stmt = this.db.prepare(
-      `INSERT INTO projects (channel_id, project_dir, backend_name) VALUES (?, ?, ?)`
+      `INSERT INTO projects (channel_id, project_dir, backend_name, platform) VALUES (?, ?, ?, ?)`
     );
-    const info = stmt.run(channelId, projectDir, backendName);
+    const info = stmt.run(channelId, projectDir, backendName, platform);
     return this.getProjectById(info.lastInsertRowid as number)!;
   }
 

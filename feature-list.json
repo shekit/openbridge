@@ -1181,6 +1181,141 @@
           "status": "passing"
         }
       ]
+    },
+    {
+      "id": "P10",
+      "name": "MCP Wiring — Connect MCP Server to Runtime",
+      "outcome": "MCP tools (upload_file, open_tunnel, serve_file_browser) are fully wired so backends can invoke them and results flow back through adapters",
+      "features": [
+        {
+          "id": "P10.1",
+          "description": "Schema migration: add platform column to projects table — migration v2 adds platform TEXT NOT NULL DEFAULT 'unknown', adapters pass 'slack' or 'discord' on createProject",
+          "verification": [
+            "Project interface includes platform: string",
+            "createProject() accepts platform parameter",
+            "Slack adapter passes 'slack' to createProject",
+            "Discord adapter passes 'discord' to createProject",
+            "Existing databases migrate cleanly (default 'unknown')",
+            "Unit tests verify migration and platform persistence"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P10.2",
+          "description": "IPC server for MCP callbacks — localhost HTTP server on random port with auth, routes for upload-file, open-tunnel, serve-file-browser, post-message",
+          "verification": [
+            "startIpcServer() returns { port, secret, close() }",
+            "Server listens on 127.0.0.1 only (not exposed externally)",
+            "Requests without valid OPENBRIDGE_IPC_SECRET header are rejected (401)",
+            "POST /upload-file, /open-tunnel, /serve-file-browser, /post-message route to handler",
+            "Unknown routes return 404",
+            "close() shuts down the server",
+            "Unit tests verify all routes and auth"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P10.3",
+          "description": "MCP entry point script — entry.ts parses CLI args, reads IPC env vars, creates fetch-based BridgeCallbacks, starts MCP server on stdio",
+          "verification": [
+            "entry.ts parses --channel, --thread, --project-dir, --platform args",
+            "Reads OPENBRIDGE_IPC_PORT and OPENBRIDGE_IPC_SECRET from environment",
+            "Creates BridgeCallbacks that POST to localhost IPC server",
+            "Calls startMcpServer() with context and callbacks",
+            "TypeScript compiles as standalone entry point"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P10.4",
+          "description": "Tunnel manager — spawns cloudflared or ngrok, returns public URL, enforces TTL, tracks active tunnels for cleanup",
+          "verification": [
+            "openTunnel(port, ttl) returns { url, close() }",
+            "Prefers cloudflared over ngrok when both available",
+            "Cloudflared: parses URL from stderr output",
+            "Ngrok: queries localhost:4040/api/tunnels for URL",
+            "TTL enforcement: tunnel auto-closes after TTL seconds",
+            "shutdownAllTunnels() stops all active tunnels",
+            "Unit tests with mocked child_process verify spawn and URL parsing"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P10.5",
+          "description": "File browser HTTP server — serves directory listings and file content on localhost, port 0 for auto-assignment",
+          "verification": [
+            "startFileBrowser(directory) returns { port, close() }",
+            "Directory requests return HTML listing with links to files/subdirs",
+            "File requests stream content with appropriate Content-Type",
+            "Path traversal attacks (../) are rejected",
+            "close() shuts down the server",
+            "Unit tests verify directory listing and file serving"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P10.6",
+          "description": "Adapter uploadFile() methods — Slack uses files.uploadV2, Discord uses channel.send with attachment",
+          "verification": [
+            "Slack adapter has uploadFile(channelId, threadId, filePath, filename) method",
+            "Discord adapter has uploadFile(channelId, threadId, filePath, filename) method",
+            "Slack calls client.files.uploadV2 with correct parameters",
+            "Discord calls channel.send with files attachment",
+            "Unit tests verify method calls with mocked SDK clients"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P10.7",
+          "description": "Callback handler glue layer — routes IPC requests to correct adapter (by platform), tunnel manager, and file browser",
+          "verification": [
+            "createCallbackHandler() returns handler with uploadFile, openTunnel, serveFileBrowser, postMessage",
+            "uploadFile routes to correct adapter based on platform in request",
+            "postMessage routes to correct adapter based on platform",
+            "openTunnel delegates to tunnel manager",
+            "serveFileBrowser starts file browser + opens tunnel, returns URL",
+            "Unit tests verify routing logic"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P10.8",
+          "description": "Router passes mcpConfig to backend.start() — mcpConfigFactory in RouterOptions generates MCP config with IPC env vars",
+          "verification": [
+            "RouterOptions accepts optional mcpConfigFactory",
+            "send() passes mcpConfig from factory to backend.start()",
+            "respond() passes mcpConfig from factory to backend.start()",
+            "getMcpConfig() includes --platform arg and IPC env vars in entry config",
+            "Unit tests verify mcpConfig is passed through"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P10.9",
+          "description": "Wire everything in start.ts — IPC server started before adapters, mcpConfigFactory created, callback handler registered, shutdown cleans up all resources",
+          "verification": [
+            "IPC server starts on bridge launch",
+            "mcpConfigFactory uses getMcpConfig() with IPC port and secret",
+            "Adapters registered with callback handler for uploadFile/postMessage routing",
+            "Shutdown sequence: close IPC server, stop tunnels, stop file browsers, stop adapters",
+            "Build succeeds, all tests pass"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P10.10",
+          "description": "Integration test — mock backend triggers MCP tool call, IPC routes to adapter method",
+          "verification": [
+            "Test creates IPC server + callback handler with mock adapter",
+            "Simulates MCP entry.ts making HTTP calls to IPC server",
+            "upload-file IPC call triggers adapter.uploadFile()",
+            "post-message IPC call triggers adapter.postText()",
+            "Auth rejection tested (missing/wrong secret)",
+            "All existing tests still pass"
+          ],
+          "status": "failing"
+        }
+      ]
     }
   ]
 }
