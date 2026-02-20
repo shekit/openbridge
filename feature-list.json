@@ -617,7 +617,7 @@
             "User can change backend for the current project",
             "Changes are persisted to SQLite"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P3.18",
