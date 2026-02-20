@@ -439,7 +439,7 @@
             "Session state returns to idle",
             "Unit test verifies reset"
           ],
-          "status": "failing"
+          "status": "passing"
         }
       ]
     },

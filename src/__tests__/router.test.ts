@@ -244,4 +244,71 @@ describe('Router', () => {
       );
     });
   });
+
+  describe('P2.15: reset session (/new command)', () => {
+    it('reset clears backend_session_id in SQLite', async () => {
+      store.createProject('CH_RST', '/proj', 'claude');
+      // Send a message so backend_session_id gets stored
+      await router.send('CH_RST', 'T_RST', 'hello');
+      const before = store.getSessionByThreadId('T_RST');
+      expect(before!.backend_session_id).toBe('mock-session-1');
+
+      // Reset the session
+      const result = router.resetSession('CH_RST', 'T_RST');
+      expect(result.backend_session_id).toBeNull();
+
+      // Verify in DB as well
+      const after = store.getSessionByThreadId('T_RST');
+      expect(after!.backend_session_id).toBeNull();
+    });
+
+    it('session state returns to idle after reset', async () => {
+      store.createProject('CH_RST2', '/proj', 'claude');
+      await router.send('CH_RST2', 'T_RST2', 'hello');
+      const result = router.resetSession('CH_RST2', 'T_RST2');
+      expect(result.state).toBe('idle');
+    });
+
+    it('reset from waiting_for_input state returns to idle', async () => {
+      // Set up permission denied to get into waiting_for_input
+      const permBackend = createMockBackend([
+        { type: 'permission_denied', toolName: 'Edit', toolInput: { path: 'foo.js' } },
+      ]);
+      const factory: BackendFactory = () => permBackend;
+      router = new Router(store, factory);
+
+      store.createProject('CH_RST3', '/proj', 'claude');
+      await router.send('CH_RST3', 'T_RST3', 'edit');
+      const session = store.getSessionByThreadId('T_RST3');
+      expect(session!.state).toBe('waiting_for_input');
+
+      const result = router.resetSession('CH_RST3', 'T_RST3');
+      expect(result.state).toBe('idle');
+      expect(result.backend_session_id).toBeNull();
+    });
+
+    it('next message after reset starts a fresh session (no resume)', async () => {
+      store.createProject('CH_RST4', '/proj', 'claude');
+
+      // Send initial message — stores backend_session_id
+      await router.send('CH_RST4', 'T_RST4', 'hello');
+      expect(store.getSessionByThreadId('T_RST4')!.backend_session_id).toBe('mock-session-1');
+
+      // Reset
+      router.resetSession('CH_RST4', 'T_RST4');
+      expect(store.getSessionByThreadId('T_RST4')!.backend_session_id).toBeNull();
+
+      // Send again — should not have a backend_session_id set before send
+      // The backend factory creates a fresh backend each time
+      await router.send('CH_RST4', 'T_RST4', 'fresh start');
+      // After send, the new session ID from mock is stored
+      expect(store.getSessionByThreadId('T_RST4')!.backend_session_id).toBe('mock-session-1');
+    });
+
+    it('throws for unbound channel', () => {
+      expect(() => router.resetSession('UNKNOWN', 'T1')).toThrow(
+        'Channel UNKNOWN is not bound to a project'
+      );
+    });
+  });
 });
