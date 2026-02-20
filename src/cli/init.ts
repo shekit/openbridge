@@ -90,17 +90,17 @@ export async function inputTokens(
   const result: Pick<InitConfig, 'slackBotToken' | 'slackAppToken' | 'discordBotToken'> = {};
 
   if (platforms.includes('slack')) {
-    console.log('\n--- Slack Setup ---');
-    console.log('You need a Slack app with Socket Mode enabled.');
-    console.log('Create one at: https://api.slack.com/apps');
+    console.log('\n[init] --- Slack Setup ---');
+    console.log('[init] You need a Slack app with Socket Mode enabled.');
+    console.log('[init] Create one at: https://api.slack.com/apps');
     result.slackBotToken = await promptText(io, 'Slack Bot Token (xoxb-...)', validateSlackBotToken);
     result.slackAppToken = await promptText(io, 'Slack App Token (xapp-...)', validateSlackAppToken);
   }
 
   if (platforms.includes('discord')) {
-    console.log('\n--- Discord Setup ---');
-    console.log('You need a Discord bot application.');
-    console.log('Create one at: https://discord.com/developers/applications');
+    console.log('\n[init] --- Discord Setup ---');
+    console.log('[init] You need a Discord bot application.');
+    console.log('[init] Create one at: https://discord.com/developers/applications');
     result.discordBotToken = await promptText(io, 'Discord Bot Token', validateDiscordToken);
   }
 
@@ -109,16 +109,16 @@ export async function inputTokens(
 
 /** Step 3: Backend auto-detection (P6.4) */
 export async function detectBackend(io: PromptIO): Promise<string> {
-  console.log('\n--- Backend Detection ---');
+  console.log('\n[init] --- Backend Detection ---');
 
   const hasClaude = detectCli('claude');
   const hasCodex = detectCli('codex');
 
-  if (hasClaude) console.log('  Found: claude CLI');
-  if (hasCodex) console.log('  Found: codex CLI');
+  if (hasClaude) console.log('[init] found: claude CLI');
+  if (hasCodex) console.log('[init] found: codex CLI');
   if (!hasClaude && !hasCodex) {
-    console.log('  No coding backends found. Install Claude Code or Codex CLI first.');
-    console.log('  Defaulting to "claude" — you can change this later with /settings.');
+    console.log('[init] no coding backends found. Install Claude Code or Codex CLI first.');
+    console.log('[init] defaulting to "claude" — you can change this later with /settings.');
     return 'claude';
   }
 
@@ -127,7 +127,7 @@ export async function detectBackend(io: PromptIO): Promise<string> {
   if (hasCodex) available.push({ label: 'Codex CLI', value: 'codex' });
 
   if (available.length === 1) {
-    console.log(`  Using ${available[0].label} as default backend.`);
+    console.log(`[init] using ${available[0].label} as default backend.`);
     return available[0].value;
   }
 
@@ -141,7 +141,7 @@ export async function createFirstProject(
   store: Store,
   defaultBackend: string,
 ): Promise<{ name: string; dir: string }> {
-  console.log('\n--- First Project ---');
+  console.log('\n[init] --- First Project ---');
 
   const name = await promptText(io, 'Project name');
   const dirInput = await promptText(io, 'Project directory (absolute path)', (input) => {
@@ -157,7 +157,7 @@ export async function createFirstProject(
   // Create a placeholder channel_id — the actual channel binding happens via /project
   const channelId = `pending:${name}`;
   store.createProject(channelId, dir, defaultBackend);
-  console.log(`  Project "${name}" created → ${dir} (backend: ${defaultBackend})`);
+  console.log(`[init] project "${name}" created → ${dir} (backend: ${defaultBackend})`);
 
   return { name, dir };
 }
@@ -205,11 +205,11 @@ export async function runInit(io?: PromptIO): Promise<void> {
   const prompt = io ?? createPromptIO();
 
   try {
-    console.log('\nOpenBridge Setup Wizard\n======================\n');
+    console.log('\n[init] OpenBridge Setup Wizard\n[init] ======================\n');
 
     // Step 1: Platform selection (P6.2)
     const platforms = await selectPlatforms(prompt);
-    console.log(`Selected: ${platforms.join(', ')}`);
+    console.log(`[init] selected: ${platforms.join(', ')}`);
 
     // Step 2: Token input (P6.3)
     const tokens = await inputTokens(prompt, platforms);
@@ -234,11 +234,11 @@ export async function runInit(io?: PromptIO): Promise<void> {
     // Step 6: Write .env.local (P6.6)
     const envPath = path.resolve('.env.local');
     writeEnvFile(envPath, tokens);
-    console.log(`\nTokens saved to ${envPath}`);
+    console.log(`\n[init] tokens saved to ${envPath}`);
 
     store.close();
 
-    console.log('\nSetup complete! Run "openbridge start" to launch the bridge.');
+    console.log('\n[init] setup complete! Run "openbridge start" to launch the bridge.');
   } finally {
     if (!io) {
       prompt.close();

@@ -66,8 +66,8 @@ export async function cli(argv: string[]): Promise<void> {
       break;
 
     default:
-      console.error(`Unknown command: ${command}`);
-      console.error('Run "openbridge --help" for usage.');
+      console.error(`[cli] unknown command: ${command}`);
+      console.error('[cli] run "openbridge --help" for usage.');
       process.exit(1);
   }
 }

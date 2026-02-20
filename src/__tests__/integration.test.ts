@@ -1318,3 +1318,170 @@ describe('P7.9: Error handling — backend crash reported to user', () => {
     expect(errorCall).toBeDefined();
   });
 });
+
+describe('P7.10: Logging — consistent prefixes for all bridge components', () => {
+  let tmpDir: string;
+  let store: Store;
+
+  beforeEach(() => {
+    tmpDir = createTempDir('openbridge-integration-');
+    store = createTestStore(tmpDir);
+  });
+
+  afterEach(() => {
+    store.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('[store] prefix used in store initialization', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    // Store constructor should log with [store] prefix
+    const tmpDir2 = createTempDir('openbridge-log-test-');
+    const store2 = new Store(path.join(tmpDir2, '.openbridge', 'bridge.db'));
+
+    const storeLogs = logSpy.mock.calls
+      .map(c => c[0])
+      .filter((msg: string) => typeof msg === 'string' && msg.includes('[store]'));
+    expect(storeLogs.length).toBeGreaterThan(0);
+
+    store2.close();
+    fs.rmSync(tmpDir2, { recursive: true, force: true });
+  });
+
+  it('[router] prefix used in router operations', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    store.createProject('C_LOG', '/home/user/project', 'claude');
+
+    const mockBackend: Backend = {
+      async start() {},
+      async send(): Promise<SendResult> {
+        return {
+          events: [{ type: 'assistant_text', text: 'ok' }, { type: 'turn_completed' }],
+          sessionId: 'session-log',
+        };
+      },
+      getSessionId() { return 'session-log'; },
+      async stop() {},
+    };
+
+    const router = new Router(store, () => mockBackend);
+    await router.send('C_LOG', 'T_LOG', 'Hello');
+
+    const routerLogs = logSpy.mock.calls
+      .map(c => c[0])
+      .filter((msg: string) => typeof msg === 'string' && msg.includes('[router]'));
+    expect(routerLogs.length).toBeGreaterThan(0);
+  });
+
+  it('[slack] prefix used in Slack adapter', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const mockApp = createMockBoltApp();
+    const router = new Router(store, () => ({
+      async start() {},
+      async send(): Promise<SendResult> {
+        return { events: [{ type: 'turn_completed' }], sessionId: null };
+      },
+      getSessionId() { return null; },
+      async stop() {},
+    }));
+
+    const adapter = new SlackAdapter({
+      botToken: 'xoxb-test',
+      appToken: 'xapp-test',
+      router,
+      store,
+      app: mockApp as any,
+    });
+
+    await adapter.start();
+    await adapter.stop();
+
+    const slackLogs = logSpy.mock.calls
+      .map(c => c[0])
+      .filter((msg: string) => typeof msg === 'string' && msg.includes('[slack]'));
+    expect(slackLogs.length).toBeGreaterThan(0);
+    expect(slackLogs).toContain('[slack] connected via Socket Mode');
+    expect(slackLogs).toContain('[slack] disconnected');
+  });
+
+  it('[discord] prefix used in Discord adapter', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const mockClient = createMockDiscordClient();
+    const router = new Router(store, () => ({
+      async start() {},
+      async send(): Promise<SendResult> {
+        return { events: [{ type: 'turn_completed' }], sessionId: null };
+      },
+      getSessionId() { return null; },
+      async stop() {},
+    }));
+
+    const adapter = new DiscordAdapter({
+      botToken: 'discord-test-token',
+      router,
+      store,
+      client: mockClient as any,
+    });
+
+    await adapter.start();
+    await adapter.stop();
+
+    const discordLogs = logSpy.mock.calls
+      .map(c => c[0])
+      .filter((msg: string) => typeof msg === 'string' && msg.includes('[discord]'));
+    expect(discordLogs.length).toBeGreaterThan(0);
+    expect(discordLogs).toContain('[discord] connected via gateway');
+    expect(discordLogs).toContain('[discord] disconnected');
+  });
+
+  it('[start] prefix used in startup messages', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    // Set up a valid store with config
+    store.setSetting('platforms', '["slack"]');
+    store.setSetting('default_backend', 'claude');
+    const envPath = path.join(tmpDir, '.env.local');
+    fs.writeFileSync(envPath, 'SLACK_BOT_TOKEN=xoxb-test\nSLACK_APP_TOKEN=xapp-test\n');
+
+    const { runStart } = await import('../cli/start.js');
+    const dbPath = path.join(tmpDir, '.openbridge', 'bridge.db');
+
+    // Use the existing store's db path
+    await runStart({ dbPath: store['db'].name, envPath, dryRun: true });
+
+    const startLogs = logSpy.mock.calls
+      .map(c => c[0])
+      .filter((msg: string) => typeof msg === 'string' && msg.includes('[start]'));
+    expect(startLogs.length).toBeGreaterThan(0);
+  });
+
+  it('startup logs show which platforms and backends are active', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    store.setSetting('platforms', '["slack","discord"]');
+    store.setSetting('default_backend', 'codex');
+    const envPath = path.join(tmpDir, '.env.local');
+    fs.writeFileSync(
+      envPath,
+      'SLACK_BOT_TOKEN=xoxb-test\nSLACK_APP_TOKEN=xapp-test\nDISCORD_BOT_TOKEN=discord-test\n',
+    );
+
+    const { runStart } = await import('../cli/start.js');
+
+    await runStart({ dbPath: store['db'].name, envPath, dryRun: true });
+
+    const allLogs = logSpy.mock.calls.map(c => c[0]).filter(msg => typeof msg === 'string');
+
+    // Should log platforms
+    expect(allLogs.some((l: string) => l.includes('slack') && l.includes('discord'))).toBe(true);
+    // Should log backend
+    expect(allLogs.some((l: string) => l.includes('codex'))).toBe(true);
+  });
+});

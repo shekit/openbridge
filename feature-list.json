@@ -1030,7 +1030,7 @@
             "Log levels used appropriately (info, warn, error)",
             "Startup logs show which platforms and backends are active"
           ],
-          "status": "failing"
+          "status": "passing"
         }
       ]
     }

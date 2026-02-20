@@ -93,7 +93,7 @@ describe('CLI entry point (P6.1)', () => {
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
       await cli(['node', 'cli.js', 'foobar']);
-      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown command: foobar'));
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('unknown command: foobar'));
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
