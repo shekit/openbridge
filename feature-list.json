@@ -1238,7 +1238,7 @@
             "shutdownAllTunnels() stops all active tunnels",
             "Unit tests with mocked child_process verify spawn and URL parsing"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P10.5",
