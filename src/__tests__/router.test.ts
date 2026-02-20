@@ -147,4 +147,42 @@ describe('Router', () => {
       );
     });
   });
+
+  describe('P2.13: detect permission denial and transition to waiting_for_input', () => {
+    it('PermissionDenied events cause session to become waiting_for_input', async () => {
+      // Reconfigure mock backend to return PermissionDenied
+      mockBackend = createMockBackend([
+        { type: 'assistant_text', text: 'I need to edit a file.' },
+        { type: 'permission_denied', toolName: 'Edit', toolInput: { path: 'foo.js' } },
+        { type: 'turn_completed' },
+      ]);
+      const factory: BackendFactory = () => mockBackend;
+      router = new Router(store, factory);
+
+      store.createProject('CH_PERM', '/proj', 'claude');
+      const result = await router.send('CH_PERM', 'T_PERM', 'edit foo.js');
+      expect(result.session.state).toBe('waiting_for_input');
+    });
+
+    it('PermissionDenied events are returned to the caller for rendering', async () => {
+      mockBackend = createMockBackend([
+        { type: 'permission_denied', toolName: 'Bash', toolInput: { command: 'rm -rf /' } },
+        { type: 'turn_completed' },
+      ]);
+      const factory: BackendFactory = () => mockBackend;
+      router = new Router(store, factory);
+
+      store.createProject('CH_PERM2', '/proj', 'claude');
+      const result = await router.send('CH_PERM2', 'T_PERM2', 'do stuff');
+      const permEvents = result.events.filter((e) => e.type === 'permission_denied');
+      expect(permEvents).toHaveLength(1);
+      expect(permEvents[0].type).toBe('permission_denied');
+    });
+
+    it('no PermissionDenied events keeps session idle', async () => {
+      store.createProject('CH_NOPERM', '/proj', 'claude');
+      const result = await router.send('CH_NOPERM', 'T_NOPERM', 'hello');
+      expect(result.session.state).toBe('idle');
+    });
+  });
 });

@@ -418,7 +418,7 @@
             "Router returns the PermissionDenied events to the caller for rendering",
             "Unit test with mock backend returning PermissionDenied verifies state transition"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P2.14",
