@@ -876,7 +876,7 @@
             "Validates token format before saving",
             "Tokens saved to .env.local"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P6.4",
