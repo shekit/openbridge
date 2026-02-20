@@ -967,7 +967,7 @@
             "Codex CLI processes it and responds",
             "Response appears in Discord thread"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P7.5",
