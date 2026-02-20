@@ -8,6 +8,7 @@ Phase 3 — Slack Adapter (complete)
 Phase 4 — Discord Adapter (complete)
 Phase 5 — Bridge MCP Server (complete)
 Phase 6 — CLI Setup Wizard (complete)
+Phase 7 — Integration and Polish (complete)
 
 ## Session Log
 
@@ -185,3 +186,36 @@ Phase 6 — CLI Setup Wizard (complete)
 - Created test files: `cli.test.ts` (15 tests), `cli-init.test.ts` (20 tests), `cli-start.test.ts` (12 tests)
 - 347 tests passing across 13 test files
 - All 7 features (P6.1–P6.7) committed individually, all marked passing
+
+### Session 10 — Phase 7: Integration and Polish
+- Created `src/__tests__/integration.test.ts` — 27 integration tests covering all P7 features:
+  - P7.1: End-to-end Slack → Claude Code → response in thread (2 tests)
+  - P7.2: Slack permission denial → Allow button → resume (1 test)
+  - P7.3: Slack permission denial → freeform text → resume (1 test)
+  - P7.4: Discord → Codex CLI → response in thread (2 tests)
+  - P7.5: Session persistence across bridge restart (3 tests)
+  - P7.6: Graceful shutdown (3 tests)
+  - P7.7: Missing CLI tool error handling (3 tests)
+  - P7.8: Backend timeout error handling (3 tests)
+  - P7.9: Backend crash error handling (3 tests)
+  - P7.10: Consistent logging prefixes (6 tests)
+- Modified `src/router.ts`:
+  - Added `activeBackends` map to track backends during send/respond
+  - Added `shutdown()` method to stop all active backends
+  - Added `sendWithTimeout()` with configurable timeout (default 5 min)
+  - Added `RouterOptions` interface with `timeoutMs` option
+  - Auto-recovery from dead sessions: dead → idle with cleared backend_session_id
+- Modified `src/backends/claude.ts`:
+  - ENOENT detection in send() with user-friendly install instructions
+- Modified `src/backends/codex.ts`:
+  - ENOENT detection in send() with user-friendly install instructions
+- Modified `src/cli/start.ts`:
+  - Shutdown handler now calls `router.shutdown()` before stopping adapters
+  - Added per-adapter stop logging during shutdown
+- Modified `src/cli.ts`:
+  - Added `[cli]` prefix to error messages
+- Modified `src/cli/init.ts`:
+  - Added `[init]` prefix to all log messages
+- 374 tests passing across 14 test files
+- All 10 features (P7.1–P7.10) committed individually, all marked passing
+- All 76 features across all 8 phases (P0–P7) are now passing
