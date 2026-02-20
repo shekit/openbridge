@@ -25,6 +25,7 @@ export interface RouteResult {
 export class Router {
   private store: Store;
   private backendFactory: BackendFactory;
+  private activeBackends: Map<string, Backend> = new Map();
 
   constructor(store: Store, backendFactory: BackendFactory) {
     this.store = store;
@@ -71,6 +72,9 @@ export class Router {
     // Initialize the backend with the project dir
     await backend.start({ projectDir: project.project_dir });
 
+    // Track as active for graceful shutdown
+    this.activeBackends.set(session.thread_id, backend);
+
     // If there's a stored backend session ID, set it on the backend for resume
     if (session.backend_session_id) {
       // The backend's internal session ID must be set for resume
@@ -82,6 +86,7 @@ export class Router {
       result = await backend.send(text);
     } catch (err) {
       // Backend crashed — transition to dead
+      this.activeBackends.delete(session.thread_id);
       this.store.updateSessionState(session.id, 'dead');
       console.log(`[router] backend crashed for session ${session.id}:`, err);
       throw err;
@@ -135,6 +140,9 @@ export class Router {
     const backend = this.backendFactory(project.backend_name);
     await backend.start({ projectDir: project.project_dir });
 
+    // Track as active for graceful shutdown
+    this.activeBackends.set(session.thread_id, backend);
+
     // Must have a backend session ID for resume
     if (session.backend_session_id) {
       (backend as any).sessionId = session.backend_session_id;
@@ -144,6 +152,7 @@ export class Router {
     try {
       result = await backend.send(text);
     } catch (err) {
+      this.activeBackends.delete(session.thread_id);
       this.store.updateSessionState(session.id, 'dead');
       throw err;
     }
@@ -204,5 +213,21 @@ export class Router {
     const updatedSession = this.store.getSessionById(session.id)!;
     console.log(`[router] session ${session.id} reset`);
     return updatedSession;
+  }
+
+  /**
+   * Graceful shutdown — stop all active backend sessions.
+   */
+  async shutdown(): Promise<void> {
+    console.log(`[router] shutting down ${this.activeBackends.size} active backend(s)`);
+    for (const [threadId, backend] of this.activeBackends) {
+      try {
+        await backend.stop();
+        console.log(`[router] stopped backend for thread ${threadId}`);
+      } catch (err) {
+        console.error(`[router] error stopping backend for thread ${threadId}:`, err);
+      }
+    }
+    this.activeBackends.clear();
   }
 }

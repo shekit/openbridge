@@ -163,14 +163,19 @@ export async function runStart(deps?: StartDeps): Promise<void> {
   // Handle graceful shutdown
   const shutdown = async () => {
     console.log('[start] shutting down...');
+    // Stop all active backend sessions
+    await router.shutdown();
+    // Disconnect all messaging platform adapters
     for (const adapter of adapters) {
       try {
         await adapter.stop();
+        console.log(`[start] ${adapter.name} adapter stopped`);
       } catch {
         // ignore errors during shutdown
       }
     }
     store.close();
+    console.log('[start] shutdown complete');
     process.exit(0);
   };
 

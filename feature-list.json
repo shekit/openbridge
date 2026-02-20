@@ -989,7 +989,7 @@
             "Messaging platform connections are closed",
             "Process exits cleanly"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P7.7",
