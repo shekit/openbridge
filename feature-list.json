@@ -283,7 +283,7 @@
             "Database is opened with WAL journal mode",
             "Unit test verifies database file is created"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P2.2",
