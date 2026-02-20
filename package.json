@@ -24,6 +24,8 @@
     "vitest": "^4.0.18"
   },
   "dependencies": {
+    "@slack/bolt": "^4.6.0",
+    "@slack/web-api": "^7.14.1",
     "better-sqlite3": "^12.6.2"
   }
 }

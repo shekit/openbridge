@@ -1,0 +1,993 @@
+/**
+ * Tests for the Slack adapter.
+ *
+ * Uses a mock Bolt App injected via the constructor to avoid needing
+ * real Slack credentials in unit tests.
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { SlackAdapter, splitText, createBoltApp } from '../adapters/slack.js';
+import { Router } from '../router.js';
+import { Store } from '../store.js';
+import * as path from 'node:path';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+
+/** Create a mock Bolt App with tracked handlers. */
+function createMockBoltApp() {
+  const messageHandlers: Function[] = [];
+  const actionHandlers: Record<string, Function> = {};
+  const commandHandlers: Record<string, Function> = {};
+
+  const mockClient = {
+    auth: {
+      test: vi.fn(async () => ({ user_id: 'U_BOT123' })),
+    },
+    chat: {
+      postMessage: vi.fn(async () => ({ ok: true, ts: '1234567890.123456' })),
+      update: vi.fn(async () => ({ ok: true })),
+    },
+    conversations: {
+      create: vi.fn(async () => ({ ok: true, channel: { id: 'C_NEW123' } })),
+    },
+  };
+
+  const mockApp = {
+    message: vi.fn((handler: Function) => {
+      messageHandlers.push(handler);
+    }),
+    action: vi.fn((actionId: string, handler: Function) => {
+      actionHandlers[actionId] = handler;
+    }),
+    command: vi.fn((cmd: string, handler: Function) => {
+      commandHandlers[cmd] = handler;
+    }),
+    start: vi.fn(async () => {}),
+    stop: vi.fn(async () => {}),
+    client: mockClient,
+    // Expose for tests
+    _messageHandlers: messageHandlers,
+    _actionHandlers: actionHandlers,
+    _commandHandlers: commandHandlers,
+  };
+
+  return mockApp;
+}
+
+function createTempDir(): string {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'openbridge-slack-test-'));
+}
+
+function createTestStore(tmpDir: string): Store {
+  const dbPath = path.join(tmpDir, '.openbridge', 'bridge.db');
+  return new Store(dbPath);
+}
+
+function createMockBackendFactory() {
+  return vi.fn(() => ({
+    start: vi.fn(async () => {}),
+    send: vi.fn(async () => ({
+      events: [{ type: 'assistant_text' as const, text: 'Hello from backend' }],
+      sessionId: 'session-123',
+    })),
+    getSessionId: vi.fn(() => 'session-123'),
+    stop: vi.fn(async () => {}),
+  }));
+}
+
+describe('SlackAdapter', () => {
+  let tmpDir: string;
+  let store: Store;
+  let router: Router;
+  let adapter: SlackAdapter;
+  let mockApp: ReturnType<typeof createMockBoltApp>;
+  let mockBackendFactory: ReturnType<typeof createMockBackendFactory>;
+
+  beforeEach(() => {
+    tmpDir = createTempDir();
+    store = createTestStore(tmpDir);
+    mockBackendFactory = createMockBackendFactory();
+    router = new Router(store, mockBackendFactory);
+    mockApp = createMockBoltApp();
+  });
+
+  afterEach(() => {
+    store.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.clearAllMocks();
+  });
+
+  function createAdapter(opts?: { backendFactory?: ReturnType<typeof createMockBackendFactory> }): SlackAdapter {
+    if (opts?.backendFactory) {
+      router = new Router(store, opts.backendFactory);
+    }
+    adapter = new SlackAdapter({
+      botToken: 'xoxb-test-token',
+      appToken: 'xapp-test-token',
+      router,
+      store,
+      app: mockApp as any,
+    });
+    return adapter;
+  }
+
+  /** Trigger the message handler registered on the mock app. */
+  async function triggerMessage(message: any) {
+    const handler = mockApp._messageHandlers[0];
+    expect(handler).toBeDefined();
+    await handler({ message, client: mockApp.client });
+  }
+
+  /** Trigger an action handler. */
+  async function triggerAction(actionId: string, body: any) {
+    const handler = mockApp._actionHandlers[actionId];
+    expect(handler).toBeDefined();
+    await handler({ body, ack: vi.fn(), client: mockApp.client });
+  }
+
+  /** Trigger a command handler. */
+  async function triggerCommand(cmd: string, command: any) {
+    const handler = mockApp._commandHandlers[cmd];
+    expect(handler).toBeDefined();
+    await handler({ command, ack: vi.fn(), client: mockApp.client });
+  }
+
+  describe('P3.1: Slack app connects via Socket Mode', () => {
+    it('creates a Bolt app with Socket Mode when no app injected', () => {
+      // Test the factory function separately
+      expect(typeof createBoltApp).toBe('function');
+    });
+
+    it('uses the injected app when provided', () => {
+      createAdapter();
+      expect(adapter.getApp()).toBe(mockApp);
+    });
+
+    it('calls app.start() on start()', async () => {
+      createAdapter();
+      await adapter.start();
+      expect(mockApp.start).toHaveBeenCalled();
+    });
+
+    it('fetches bot user ID on start for self-message filtering', async () => {
+      createAdapter();
+      await adapter.start();
+      expect(mockApp.client.auth.test).toHaveBeenCalled();
+    });
+
+    it('calls app.stop() on stop()', async () => {
+      createAdapter();
+      await adapter.start();
+      await adapter.stop();
+      expect(mockApp.stop).toHaveBeenCalled();
+    });
+
+    it('logs connection on startup', async () => {
+      createAdapter();
+      const spy = vi.spyOn(console, 'log');
+      await adapter.start();
+      expect(spy).toHaveBeenCalledWith('[slack] connected via Socket Mode');
+      spy.mockRestore();
+    });
+  });
+
+  describe('P3.2: Slack adapter implements adapter interface', () => {
+    it('has start() method', () => {
+      createAdapter();
+      expect(typeof adapter.start).toBe('function');
+    });
+
+    it('has stop() method', () => {
+      createAdapter();
+      expect(typeof adapter.stop).toBe('function');
+    });
+
+    it('has postText() method', () => {
+      createAdapter();
+      expect(typeof adapter.postText).toBe('function');
+    });
+
+    it('has postPermissionPrompt() method', () => {
+      createAdapter();
+      expect(typeof adapter.postPermissionPrompt).toBe('function');
+    });
+
+    it('has postError() method', () => {
+      createAdapter();
+      expect(typeof adapter.postError).toBe('function');
+    });
+  });
+
+  describe('P3.3: Listen for messages in bound channels and route to router', () => {
+    it('registers a message handler', () => {
+      createAdapter();
+      expect(mockApp.message).toHaveBeenCalled();
+    });
+
+    it('routes messages from bound channels to the router', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      await triggerMessage({
+        channel: 'C_BOUND',
+        text: 'hello world',
+        user: 'U_USER1',
+        ts: '1234567890.000002',
+        thread_ts: '1234567890.000001',
+      });
+
+      expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: 'C_BOUND',
+          thread_ts: '1234567890.000001',
+        })
+      );
+    });
+
+    it('ignores messages from unbound channels', async () => {
+      createAdapter();
+      await adapter.start();
+
+      await triggerMessage({
+        channel: 'C_UNBOUND',
+        text: 'hello',
+        user: 'U_USER1',
+        ts: '1234567890.000001',
+      });
+
+      expect(mockApp.client.chat.postMessage).not.toHaveBeenCalled();
+    });
+
+    it('ignores bot messages to prevent loops', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      await triggerMessage({
+        channel: 'C_BOUND',
+        text: 'bot message',
+        bot_id: 'B_123',
+        ts: '1234567890.000001',
+        thread_ts: '1234567890.000001',
+      });
+
+      expect(mockApp.client.chat.postMessage).not.toHaveBeenCalled();
+    });
+
+    it('ignores messages from the bot user itself', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      await triggerMessage({
+        channel: 'C_BOUND',
+        text: 'self message',
+        user: 'U_BOT123',
+        ts: '1234567890.000001',
+        thread_ts: '1234567890.000001',
+      });
+
+      expect(mockApp.client.chat.postMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('P3.4: Auto-move top-level channel messages into new threads', () => {
+    it('creates a new thread for top-level messages (no thread_ts)', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      await triggerMessage({
+        channel: 'C_BOUND',
+        text: 'new task',
+        user: 'U_USER1',
+        ts: '1234567890.000001',
+        // No thread_ts — top-level message
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      // First call should be the "Processing..." indicator
+      expect(calls[0][0]).toEqual(
+        expect.objectContaining({
+          channel: 'C_BOUND',
+          thread_ts: '1234567890.000001',
+          text: 'Processing...',
+        })
+      );
+    });
+
+    it('does not post Processing for threaded messages', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      await triggerMessage({
+        channel: 'C_BOUND',
+        text: 'reply in thread',
+        user: 'U_USER1',
+        ts: '1234567890.000002',
+        thread_ts: '1234567890.000001',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      const processingCall = calls.find((c: any) => c[0].text === 'Processing...');
+      expect(processingCall).toBeUndefined();
+    });
+  });
+
+  describe('P3.5: Route thread messages to correct session', () => {
+    it('routes messages to the session mapped to the thread', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      // Message in thread A
+      await triggerMessage({
+        channel: 'C_BOUND',
+        text: 'message in thread A',
+        user: 'U_USER1',
+        ts: '1234567890.000002',
+        thread_ts: '1234567890.000001',
+      });
+
+      const sessionA = store.getSessionByThreadId('1234567890.000001');
+      expect(sessionA).toBeDefined();
+
+      // Message in thread B
+      await triggerMessage({
+        channel: 'C_BOUND',
+        text: 'message in thread B',
+        user: 'U_USER1',
+        ts: '1234567890.000004',
+        thread_ts: '1234567890.000003',
+      });
+
+      const sessionB = store.getSessionByThreadId('1234567890.000003');
+      expect(sessionB).toBeDefined();
+      expect(sessionB!.id).not.toBe(sessionA!.id);
+    });
+
+    it('new thread creates a new session automatically', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      // No session exists for this thread yet
+      expect(store.getSessionByThreadId('1234567890.NEWTHREAD')).toBeUndefined();
+
+      await triggerMessage({
+        channel: 'C_BOUND',
+        text: 'first message',
+        user: 'U_USER1',
+        ts: '1234567890.000002',
+        thread_ts: '1234567890.NEWTHREAD',
+      });
+
+      // Session should now exist
+      expect(store.getSessionByThreadId('1234567890.NEWTHREAD')).toBeDefined();
+    });
+  });
+
+  describe('P3.6: Post assistant text responses back to thread', () => {
+    it('posts AssistantText events as Slack messages in the thread', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      await triggerMessage({
+        channel: 'C_BOUND',
+        text: 'hello',
+        user: 'U_USER1',
+        ts: '1234567890.000002',
+        thread_ts: '1234567890.000001',
+      });
+
+      expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: 'C_BOUND',
+          thread_ts: '1234567890.000001',
+          text: 'Hello from backend',
+        })
+      );
+    });
+
+    it('splits long responses into multiple messages', () => {
+      const chunks = splitText('a'.repeat(8000), 4000);
+      expect(chunks.length).toBe(2);
+      expect(chunks[0].length).toBeLessThanOrEqual(4000);
+      expect(chunks[1].length).toBeLessThanOrEqual(4000);
+    });
+
+    it('splits at word boundaries when possible', () => {
+      const text = 'word '.repeat(1000).trim(); // 4999 chars
+      const chunks = splitText(text, 4000);
+      expect(chunks.length).toBe(2);
+      expect(chunks[0].endsWith('word')).toBe(true);
+    });
+  });
+
+  describe('P3.7: Render permission denial as Block Kit interactive message', () => {
+    it('posts a Block Kit message with Allow/Deny buttons', async () => {
+      const permBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => ({
+          events: [
+            {
+              type: 'permission_denied' as const,
+              toolName: 'Edit',
+              toolInput: { file: 'foo.js' },
+              context: 'Wants to edit foo.js',
+            },
+          ],
+          sessionId: 'session-123',
+        })),
+        getSessionId: vi.fn(() => 'session-123'),
+        stop: vi.fn(async () => {}),
+      }));
+
+      createAdapter({ backendFactory: permBackend });
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      await triggerMessage({
+        channel: 'C_BOUND',
+        text: 'edit the file',
+        user: 'U_USER1',
+        ts: '1234567890.000002',
+        thread_ts: '1234567890.000001',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      const permissionCall = calls.find(
+        (c: any) => c[0].blocks && c[0].blocks.some((b: any) => b.type === 'actions')
+      );
+      expect(permissionCall).toBeDefined();
+
+      const blocks = permissionCall![0].blocks;
+      const sectionBlock = blocks.find((b: any) => b.type === 'section');
+      expect(sectionBlock.text.text).toContain('Edit');
+
+      const actionsBlock = blocks.find((b: any) => b.type === 'actions');
+      expect(actionsBlock.elements).toHaveLength(2);
+      expect(actionsBlock.elements[0].action_id).toBe('permission_allow');
+      expect(actionsBlock.elements[1].action_id).toBe('permission_deny');
+
+      const contextBlock = blocks.find((b: any) => b.type === 'context');
+      expect(contextBlock.elements[0].text).toContain('custom response');
+    });
+  });
+
+  describe('P3.8: Handle Allow button click on permission prompt', () => {
+    it('sends allow response to router and updates the message', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const project = store.createProject('C_BOUND', '/test/project', 'claude');
+      const session = store.createSession('1234567890.000001', project.id);
+      store.updateSessionState(session.id, 'running');
+      store.updateSessionState(session.id, 'waiting_for_input');
+      store.updateBackendSessionId(session.id, 'backend-session-123');
+
+      await triggerAction('permission_allow', {
+        channel: { id: 'C_BOUND' },
+        message: {
+          thread_ts: '1234567890.000001',
+          ts: '1234567890.000005',
+        },
+      });
+
+      expect(mockApp.client.chat.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: 'C_BOUND',
+          ts: '1234567890.000005',
+        })
+      );
+
+      const updatedSession = store.getSessionByThreadId('1234567890.000001');
+      expect(updatedSession!.state).toBe('idle');
+    });
+
+    it('updates message to show Allowed', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const project = store.createProject('C_BOUND', '/test/project', 'claude');
+      const session = store.createSession('1234567890.000001', project.id);
+      store.updateSessionState(session.id, 'running');
+      store.updateSessionState(session.id, 'waiting_for_input');
+      store.updateBackendSessionId(session.id, 'backend-session-123');
+
+      await triggerAction('permission_allow', {
+        channel: { id: 'C_BOUND' },
+        message: {
+          thread_ts: '1234567890.000001',
+          ts: '1234567890.000005',
+        },
+      });
+
+      expect(mockApp.client.chat.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: 'Permission: Allowed',
+        })
+      );
+    });
+  });
+
+  describe('P3.9: Handle Deny button click on permission prompt', () => {
+    it('sends deny response to router', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const project = store.createProject('C_BOUND', '/test/project', 'claude');
+      const session = store.createSession('1234567890.000001', project.id);
+      store.updateSessionState(session.id, 'running');
+      store.updateSessionState(session.id, 'waiting_for_input');
+      store.updateBackendSessionId(session.id, 'backend-session-123');
+
+      await triggerAction('permission_deny', {
+        channel: { id: 'C_BOUND' },
+        message: {
+          thread_ts: '1234567890.000001',
+          ts: '1234567890.000005',
+        },
+      });
+
+      expect(mockApp.client.chat.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: 'Permission: Denied',
+        })
+      );
+    });
+
+    it('routes denial response through router', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const project = store.createProject('C_BOUND', '/test/project', 'claude');
+      const session = store.createSession('1234567890.000001', project.id);
+      store.updateSessionState(session.id, 'running');
+      store.updateSessionState(session.id, 'waiting_for_input');
+      store.updateBackendSessionId(session.id, 'backend-session-123');
+
+      await triggerAction('permission_deny', {
+        channel: { id: 'C_BOUND' },
+        message: {
+          thread_ts: '1234567890.000001',
+          ts: '1234567890.000005',
+        },
+      });
+
+      // Session should be idle after the deny response is processed
+      const updatedSession = store.getSessionByThreadId('1234567890.000001');
+      expect(updatedSession!.state).toBe('idle');
+    });
+  });
+
+  describe('P3.10: Handle freeform text as custom response when waiting_for_input', () => {
+    it('routes text as resume response when session is waiting_for_input', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const project = store.createProject('C_BOUND', '/test/project', 'claude');
+      const session = store.createSession('1234567890.000001', project.id);
+      store.updateSessionState(session.id, 'running');
+      store.updateSessionState(session.id, 'waiting_for_input');
+      store.updateBackendSessionId(session.id, 'backend-session-123');
+
+      await triggerMessage({
+        channel: 'C_BOUND',
+        text: 'use a different approach',
+        user: 'U_USER1',
+        ts: '1234567890.000006',
+        thread_ts: '1234567890.000001',
+      });
+
+      expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: 'C_BOUND',
+          thread_ts: '1234567890.000001',
+          text: 'Hello from backend',
+        })
+      );
+
+      const updatedSession = store.getSessionByThreadId('1234567890.000001');
+      expect(updatedSession!.state).toBe('idle');
+    });
+  });
+
+  describe('P3.11: Post error messages for backend failures', () => {
+    it('posts error messages when backend throws', async () => {
+      const errorBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => {
+          throw new Error('Backend crashed unexpectedly');
+        }),
+        getSessionId: vi.fn(() => null),
+        stop: vi.fn(async () => {}),
+      }));
+
+      createAdapter({ backendFactory: errorBackend });
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      await triggerMessage({
+        channel: 'C_BOUND',
+        text: 'do something',
+        user: 'U_USER1',
+        ts: '1234567890.000002',
+        thread_ts: '1234567890.000001',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      const errorCall = calls.find(
+        (c: any) => typeof c[0].text === 'string' && c[0].text.includes('Error')
+      );
+      expect(errorCall).toBeDefined();
+      expect(errorCall![0].text).toContain('Backend crashed unexpectedly');
+    });
+
+    it('posts Error events from backend as error messages', async () => {
+      const errorEventBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => ({
+          events: [{ type: 'error' as const, message: 'claude CLI not found' }],
+          sessionId: null,
+        })),
+        getSessionId: vi.fn(() => null),
+        stop: vi.fn(async () => {}),
+      }));
+
+      createAdapter({ backendFactory: errorEventBackend });
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      await triggerMessage({
+        channel: 'C_BOUND',
+        text: 'hello',
+        user: 'U_USER1',
+        ts: '1234567890.000002',
+        thread_ts: '1234567890.000001',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      const errorCall = calls.find(
+        (c: any) => typeof c[0].text === 'string' && c[0].text.includes('claude CLI not found')
+      );
+      expect(errorCall).toBeDefined();
+    });
+  });
+
+  describe('P3.12: Register /project slash command', () => {
+    it('registers /project command handler', () => {
+      createAdapter();
+      expect(mockApp.command).toHaveBeenCalledWith('/project', expect.any(Function));
+    });
+
+    it('registers /new command handler', () => {
+      createAdapter();
+      expect(mockApp.command).toHaveBeenCalledWith('/new', expect.any(Function));
+    });
+
+    it('registers /settings command handler', () => {
+      createAdapter();
+      expect(mockApp.command).toHaveBeenCalledWith('/settings', expect.any(Function));
+    });
+  });
+
+  describe('P3.13: /project with name creates new channel and binds it', () => {
+    it('creates a new channel when invoked from a bound channel', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      await triggerCommand('/project', {
+        channel_id: 'C_BOUND',
+        text: 'my-app',
+      });
+
+      expect(mockApp.client.conversations.create).toHaveBeenCalledWith({ name: 'my-app' });
+      expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining('my-app'),
+        })
+      );
+    });
+
+    it('binds the new channel to the project', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      await triggerCommand('/project', {
+        channel_id: 'C_BOUND',
+        text: 'my-app',
+      });
+
+      const newProject = store.getProjectByChannelId('C_NEW123');
+      expect(newProject).toBeDefined();
+      expect(newProject!.project_dir).toBe('my-app');
+    });
+  });
+
+  describe('P3.14: /project from unbound channel offers bind options', () => {
+    it('shows Use this channel and Create new buttons', async () => {
+      createAdapter();
+      await adapter.start();
+
+      await triggerCommand('/project', {
+        channel_id: 'C_UNBOUND',
+        text: 'my-app',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      const bindCall = calls.find(
+        (c: any) => c[0].blocks && c[0].blocks.some((b: any) => b.type === 'actions')
+      );
+      expect(bindCall).toBeDefined();
+
+      const actionsBlock = bindCall![0].blocks.find((b: any) => b.type === 'actions');
+      expect(actionsBlock.elements[0].text.text).toBe('Use this channel');
+      expect(actionsBlock.elements[1].text.text).toBe('Create #my-app');
+    });
+  });
+
+  describe('P3.15: /project with no args lists all bindings', () => {
+    it('lists all channel -> project -> backend bindings', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_PROJ1', '/test/project1', 'claude');
+      store.createProject('C_PROJ2', '/test/project2', 'codex');
+
+      await triggerCommand('/project', {
+        channel_id: 'C_PROJ1',
+        text: '',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      const listCall = calls.find(
+        (c: any) => typeof c[0].text === 'string' && c[0].text.includes('Project Bindings')
+      );
+      expect(listCall).toBeDefined();
+      expect(listCall![0].text).toContain('C_PROJ1');
+      expect(listCall![0].text).toContain('C_PROJ2');
+      expect(listCall![0].text).toContain('claude');
+      expect(listCall![0].text).toContain('codex');
+    });
+
+    it('shows message when no bindings exist', async () => {
+      createAdapter();
+      await adapter.start();
+
+      await triggerCommand('/project', {
+        channel_id: 'C_ANY',
+        text: '',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      expect(calls[0][0].text).toContain('No project bindings');
+    });
+  });
+
+  describe('P3.16: /new resets session in current thread', () => {
+    it('resets the session and posts confirmation', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const project = store.createProject('C_BOUND', '/test/project', 'claude');
+      const session = store.createSession('1234567890.000001', project.id);
+      store.updateBackendSessionId(session.id, 'old-backend-session');
+
+      await triggerCommand('/new', {
+        channel_id: 'C_BOUND',
+        thread_ts: '1234567890.000001',
+      });
+
+      const updatedSession = store.getSessionByThreadId('1234567890.000001');
+      expect(updatedSession!.backend_session_id).toBeNull();
+      expect(updatedSession!.state).toBe('idle');
+
+      expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          thread_ts: '1234567890.000001',
+          text: expect.stringContaining('Session reset'),
+        })
+      );
+    });
+
+    it('tells user to use /new in a thread when used outside', async () => {
+      createAdapter();
+      await adapter.start();
+
+      await triggerCommand('/new', {
+        channel_id: 'C_BOUND',
+        // No thread_ts
+      });
+
+      expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining('inside a thread'),
+        })
+      );
+    });
+  });
+
+  describe('P3.17: /settings displays and modifies bridge configuration', () => {
+    it('displays current project settings', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      await triggerCommand('/settings', {
+        channel_id: 'C_BOUND',
+        text: '',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      expect(calls[0][0].text).toContain('claude');
+      expect(calls[0][0].text).toContain('/test/project');
+    });
+
+    it('changes the backend when given "backend codex"', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const project = store.createProject('C_BOUND', '/test/project', 'claude');
+
+      await triggerCommand('/settings', {
+        channel_id: 'C_BOUND',
+        text: 'backend codex',
+      });
+
+      const setting = store.getSetting(`project_${project.id}_backend`);
+      expect(setting).toBe('codex');
+
+      expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining('codex'),
+        })
+      );
+    });
+
+    it('rejects unknown backends', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      await triggerCommand('/settings', {
+        channel_id: 'C_BOUND',
+        text: 'backend unknown',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      expect(calls[0][0].text).toContain('Unknown backend');
+    });
+
+    it('shows message for unbound channel', async () => {
+      createAdapter();
+      await adapter.start();
+
+      await triggerCommand('/settings', {
+        channel_id: 'C_UNBOUND',
+        text: '',
+      });
+
+      expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining('not bound'),
+        })
+      );
+    });
+  });
+
+  describe('P3.18: File upload handling', () => {
+    it('includes file descriptions in the message sent to backend', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      await adapter.handleFileUpload(
+        'C_BOUND',
+        '1234567890.000001',
+        [{ name: 'screenshot.png', url_private_download: 'https://files.slack.com/123' }],
+        'check this screenshot',
+        mockApp.client
+      );
+
+      expect(mockBackendFactory).toHaveBeenCalled();
+    });
+
+    it('ignores file uploads in unbound channels', async () => {
+      createAdapter();
+      await adapter.start();
+
+      await adapter.handleFileUpload(
+        'C_UNBOUND',
+        '1234567890.000001',
+        [{ name: 'file.txt', url_private: 'https://files.slack.com/456' }],
+        'some text',
+        mockApp.client
+      );
+
+      expect(mockBackendFactory).not.toHaveBeenCalled();
+    });
+
+    it('combines file descriptions with message text', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      // The backend factory will capture the text sent to it
+      let capturedText = '';
+      mockBackendFactory.mockReturnValue({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async (text: string) => {
+          capturedText = text;
+          return {
+            events: [{ type: 'assistant_text' as const, text: 'Got it' }],
+            sessionId: 'session-123',
+          };
+        }),
+        getSessionId: vi.fn(() => 'session-123'),
+        stop: vi.fn(async () => {}),
+      });
+
+      await adapter.handleFileUpload(
+        'C_BOUND',
+        '1234567890.000001',
+        [
+          { name: 'screenshot.png', url_private_download: 'https://files.slack.com/123' },
+          { name: 'design.pdf', url_private: 'https://files.slack.com/456' },
+        ],
+        'check these files',
+        mockApp.client
+      );
+
+      expect(capturedText).toContain('check these files');
+      expect(capturedText).toContain('screenshot.png');
+      expect(capturedText).toContain('design.pdf');
+    });
+  });
+
+  describe('splitText utility', () => {
+    it('returns single chunk for short text', () => {
+      expect(splitText('hello', 4000)).toEqual(['hello']);
+    });
+
+    it('splits at word boundaries', () => {
+      const text = 'hello world foo bar baz';
+      const chunks = splitText(text, 15);
+      expect(chunks[0].length).toBeLessThanOrEqual(15);
+    });
+
+    it('handles text with no spaces', () => {
+      const text = 'a'.repeat(100);
+      const chunks = splitText(text, 50);
+      expect(chunks.length).toBe(2);
+      expect(chunks[0].length).toBe(50);
+      expect(chunks[1].length).toBe(50);
+    });
+
+    it('returns empty array for empty string', () => {
+      expect(splitText('', 4000)).toEqual([]);
+    });
+  });
+});

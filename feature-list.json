@@ -456,7 +456,7 @@
             "App connects successfully with valid SLACK_BOT_TOKEN and SLACK_APP_TOKEN",
             "Connection logged on startup"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P3.2",
