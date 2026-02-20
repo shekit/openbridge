@@ -759,7 +759,7 @@ describe('DiscordAdapter', () => {
 
       const { interaction } = createMockInteraction({
         commandName: 'project',
-        options: { name: '' },
+        options: { path: '' },
       });
 
       // Should not throw
@@ -795,7 +795,7 @@ describe('DiscordAdapter', () => {
   });
 
   describe('P4.11: Discord — /project command flow (create, list, bind)', () => {
-    it('lists all bindings when no name provided', async () => {
+    it('lists all bindings when no path provided', async () => {
       createAdapter();
       await adapter.start();
 
@@ -804,7 +804,7 @@ describe('DiscordAdapter', () => {
 
       const { interaction, replies } = createMockInteraction({
         commandName: 'project',
-        options: { name: null },
+        options: { path: null },
       });
 
       await triggerInteraction(interaction);
@@ -822,7 +822,7 @@ describe('DiscordAdapter', () => {
 
       const { interaction, replies } = createMockInteraction({
         commandName: 'project',
-        options: { name: null },
+        options: { path: null },
       });
 
       await triggerInteraction(interaction);
@@ -831,7 +831,7 @@ describe('DiscordAdapter', () => {
       expect(text).toContain('No project bindings');
     });
 
-    it('creates new channel when invoked from bound channel', async () => {
+    it('creates new channel when invoked from bound channel with absolute path', async () => {
       createAdapter();
       await adapter.start();
 
@@ -840,7 +840,7 @@ describe('DiscordAdapter', () => {
       const { interaction, createdChannels, mockGuild } = createMockInteraction({
         commandName: 'project',
         channelId: 'C_BOUND',
-        options: { name: 'my-app' },
+        options: { path: '/test/my-app' },
       });
 
       await triggerInteraction(interaction);
@@ -849,10 +849,29 @@ describe('DiscordAdapter', () => {
         expect.objectContaining({ name: 'my-app' })
       );
 
-      // Check project was bound
+      // Check project was bound with absolute path
       const newProject = store.getProjectByChannelId('NEW_CHANNEL_123');
       expect(newProject).toBeDefined();
-      expect(newProject!.project_dir).toBe('my-app');
+      expect(newProject!.project_dir).toBe('/test/my-app');
+    });
+
+    it('rejects non-absolute paths with an error message', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      const { interaction, replies, mockGuild } = createMockInteraction({
+        commandName: 'project',
+        channelId: 'C_BOUND',
+        options: { path: 'my-app' },
+      });
+
+      await triggerInteraction(interaction);
+
+      expect(mockGuild.channels.create).not.toHaveBeenCalled();
+      const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
+      expect(text).toContain('absolute directory path');
     });
 
     it('offers bind options from unbound channel', async () => {
@@ -862,14 +881,14 @@ describe('DiscordAdapter', () => {
       const { interaction, replies } = createMockInteraction({
         commandName: 'project',
         channelId: 'C_UNBOUND',
-        options: { name: 'my-app' },
+        options: { path: '/test/my-app' },
       });
 
       await triggerInteraction(interaction);
 
       expect(replies.length).toBe(1);
       const reply = replies[0];
-      expect(reply.content).toContain('my-app');
+      expect(reply.content).toContain('/test/my-app');
       expect(reply.components).toBeDefined();
       expect(reply.components.length).toBe(1); // One ActionRow
     });

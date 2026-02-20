@@ -1119,7 +1119,7 @@
             "spawnCollect uses the absolute path as cwd without error",
             "Unit tests verify project_dir is absolute for slash-command-created projects"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P9.2",

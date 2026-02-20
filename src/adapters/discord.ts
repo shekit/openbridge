@@ -22,6 +22,7 @@ import {
   type TextChannel,
   type ThreadChannel,
 } from 'discord.js';
+import * as path from 'node:path';
 import type { Router, RouteResult } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
@@ -105,7 +106,7 @@ export class DiscordAdapter {
         .setName('project')
         .setDescription('Manage project bindings')
         .addStringOption((option) =>
-          option.setName('name').setDescription('Project name').setRequired(false)
+          option.setName('path').setDescription('Absolute path to the project directory').setRequired(false)
         ),
       new SlashCommandBuilder()
         .setName('new')
@@ -300,14 +301,14 @@ export class DiscordAdapter {
   }
 
   /** Handle "Use this channel" button for project binding. */
-  private async handleProjectBindHere(interaction: any, name: string): Promise<void> {
+  private async handleProjectBindHere(interaction: any, projectPath: string): Promise<void> {
     const channelId = interaction.channelId;
     const defaultBackend = this.store.getSetting('default_backend') ?? 'claude';
 
     try {
-      this.store.createProject(channelId, name, defaultBackend);
+      this.store.createProject(channelId, projectPath, defaultBackend);
       await interaction.update({
-        content: `Bound this channel to project \`${name}\` (${defaultBackend})`,
+        content: `Bound this channel to project \`${projectPath}\` (${defaultBackend})`,
         components: [],
       });
     } catch (err: any) {
@@ -319,8 +320,9 @@ export class DiscordAdapter {
   }
 
   /** Handle "Create #name" button for project creation. */
-  private async handleProjectCreateNew(interaction: any, name: string): Promise<void> {
+  private async handleProjectCreateNew(interaction: any, projectPath: string): Promise<void> {
     const defaultBackend = this.store.getSetting('default_backend') ?? 'claude';
+    const channelName = path.basename(projectPath);
 
     try {
       const guild = interaction.guild;
@@ -332,12 +334,12 @@ export class DiscordAdapter {
         return;
       }
       const newChannel = await guild.channels.create({
-        name,
+        name: channelName,
         type: ChannelType.GuildText,
       });
-      this.store.createProject(newChannel.id, name, defaultBackend);
+      this.store.createProject(newChannel.id, projectPath, defaultBackend);
       await interaction.update({
-        content: `Created and bound <#${newChannel.id}> to project \`${name}\` (${defaultBackend})`,
+        content: `Created and bound <#${newChannel.id}> to project \`${projectPath}\` (${defaultBackend})`,
         components: [],
       });
     } catch (err: any) {
@@ -421,13 +423,13 @@ export class DiscordAdapter {
   /** Handle /project slash command. */
   private async handleProjectCommand(interaction: any): Promise<void> {
     const channelId = interaction.channelId;
-    const name = interaction.options?.getString?.('name') || '';
+    const projectPath = interaction.options?.getString?.('path') || '';
 
-    if (!name) {
+    if (!projectPath) {
       // List all bindings
       const projects = this.store.listProjects();
       if (projects.length === 0) {
-        await interaction.reply('No project bindings found. Use `/project name:<name>` to create one.');
+        await interaction.reply('No project bindings found. Use `/project path:/absolute/path/to/dir` to create one.');
         return;
       }
 
@@ -439,11 +441,19 @@ export class DiscordAdapter {
       return;
     }
 
+    // Validate that the argument is an absolute directory path
+    if (!path.isAbsolute(projectPath)) {
+      await interaction.reply(':warning: Please provide an absolute directory path. Example: `/project path:/home/user/my-app`');
+      return;
+    }
+
+    const channelName = path.basename(projectPath);
+
     // Check if current channel is bound
     const existing = this.store.getProjectByChannelId(channelId);
 
     if (existing) {
-      // Channel already bound — create a new channel with the given name
+      // Channel already bound — create a new channel with derived name
       try {
         const guild = interaction.guild;
         if (!guild) {
@@ -451,12 +461,12 @@ export class DiscordAdapter {
           return;
         }
         const newChannel = await guild.channels.create({
-          name,
+          name: channelName,
           type: ChannelType.GuildText,
         });
-        this.store.createProject(newChannel.id, name, existing.backend_name);
+        this.store.createProject(newChannel.id, projectPath, existing.backend_name);
         await interaction.reply(
-          `Created and bound <#${newChannel.id}> to project \`${name}\` (${existing.backend_name})`
+          `Created and bound <#${newChannel.id}> to project \`${projectPath}\` (${existing.backend_name})`
         );
       } catch (err: any) {
         await interaction.reply(`:warning: Failed to create channel: ${err.message}`);
@@ -465,17 +475,17 @@ export class DiscordAdapter {
       // Channel is unbound — offer bind options
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
-          .setCustomId(`project_bind_here:${name}`)
+          .setCustomId(`project_bind_here:${projectPath}`)
           .setLabel('Use this channel')
           .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
-          .setCustomId(`project_create_new:${name}`)
-          .setLabel(`Create #${name}`)
+          .setCustomId(`project_create_new:${projectPath}`)
+          .setLabel(`Create #${channelName}`)
           .setStyle(ButtonStyle.Secondary)
       );
 
       await interaction.reply({
-        content: `Bind project \`${name}\`?`,
+        content: `Bind project directory \`${projectPath}\`?`,
         components: [row],
       });
     }

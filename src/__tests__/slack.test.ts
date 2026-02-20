@@ -686,7 +686,7 @@ describe('SlackAdapter', () => {
     });
   });
 
-  describe('P3.13: /project with name creates new channel and binds it', () => {
+  describe('P3.13: /project with path creates new channel and binds it', () => {
     it('creates a new channel when invoked from a bound channel', async () => {
       createAdapter();
       await adapter.start();
@@ -695,18 +695,34 @@ describe('SlackAdapter', () => {
 
       await triggerCommand('/project', {
         channel_id: 'C_BOUND',
-        text: 'my-app',
+        text: '/test/my-app',
       });
 
       expect(mockApp.client.conversations.create).toHaveBeenCalledWith({ name: 'my-app' });
       expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
-          text: expect.stringContaining('my-app'),
+          text: expect.stringContaining('/test/my-app'),
         })
       );
     });
 
-    it('binds the new channel to the project', async () => {
+    it('binds the new channel with an absolute project_dir', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      await triggerCommand('/project', {
+        channel_id: 'C_BOUND',
+        text: '/test/my-app',
+      });
+
+      const newProject = store.getProjectByChannelId('C_NEW123');
+      expect(newProject).toBeDefined();
+      expect(newProject!.project_dir).toBe('/test/my-app');
+    });
+
+    it('rejects non-absolute paths with an error message', async () => {
       createAdapter();
       await adapter.start();
 
@@ -717,9 +733,12 @@ describe('SlackAdapter', () => {
         text: 'my-app',
       });
 
-      const newProject = store.getProjectByChannelId('C_NEW123');
-      expect(newProject).toBeDefined();
-      expect(newProject!.project_dir).toBe('my-app');
+      expect(mockApp.client.conversations.create).not.toHaveBeenCalled();
+      expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining('absolute directory path'),
+        })
+      );
     });
   });
 
@@ -730,7 +749,7 @@ describe('SlackAdapter', () => {
 
       await triggerCommand('/project', {
         channel_id: 'C_UNBOUND',
-        text: 'my-app',
+        text: '/test/my-app',
       });
 
       const calls = mockApp.client.chat.postMessage.mock.calls;
@@ -742,6 +761,9 @@ describe('SlackAdapter', () => {
       const actionsBlock = bindCall![0].blocks.find((b: any) => b.type === 'actions');
       expect(actionsBlock.elements[0].text.text).toBe('Use this channel');
       expect(actionsBlock.elements[1].text.text).toBe('Create #my-app');
+      // Button values should contain the full absolute path
+      expect(actionsBlock.elements[0].value).toBe('/test/my-app');
+      expect(actionsBlock.elements[1].value).toBe('/test/my-app');
     });
   });
 

@@ -6,6 +6,7 @@
  * and posts responses back to the appropriate threads.
  */
 
+import * as path from 'node:path';
 import { App, type LogLevel } from '@slack/bolt';
 import type { Router, RouteResult } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
@@ -350,7 +351,7 @@ export class SlackAdapter {
       if (projects.length === 0) {
         await client.chat.postMessage({
           channel: channelId,
-          text: 'No project bindings found. Use `/project <name>` to create one.',
+          text: 'No project bindings found. Use `/project /absolute/path/to/dir` to create one.',
         });
         return;
       }
@@ -363,16 +364,27 @@ export class SlackAdapter {
       return;
     }
 
+    // Validate that the argument is an absolute directory path
+    if (!path.isAbsolute(args)) {
+      await client.chat.postMessage({
+        channel: channelId,
+        text: ':warning: Please provide an absolute directory path. Example: `/project /home/user/my-app`',
+      });
+      return;
+    }
+
+    const channelName = path.basename(args);
+
     // Check if current channel is bound
     const existing = this.store.getProjectByChannelId(channelId);
 
     if (existing) {
-      // Channel already bound — create a new channel with the given name
+      // Channel already bound — create a new channel with derived name
       try {
-        const result = await client.conversations.create({ name: args });
+        const result = await client.conversations.create({ name: channelName });
         const newChannelId = result.channel?.id;
         if (newChannelId) {
-          // Bind the new channel — use same project dir pattern and backend
+          // Bind the new channel with the absolute directory path
           this.store.createProject(newChannelId, args, existing.backend_name);
           await client.chat.postMessage({
             channel: channelId,
@@ -395,7 +407,7 @@ export class SlackAdapter {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `Bind project \`${args}\`?`,
+              text: `Bind project directory \`${args}\`?`,
             },
           },
           {
@@ -409,7 +421,7 @@ export class SlackAdapter {
               },
               {
                 type: 'button',
-                text: { type: 'plain_text', text: `Create #${args}` },
+                text: { type: 'plain_text', text: `Create #${channelName}` },
                 action_id: 'project_create_new',
                 value: args,
               },
