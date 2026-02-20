@@ -8,7 +8,9 @@
  * Reference: prototype/io-harness/run.js (parseCodexJson)
  */
 
-import type { Backend, BackendOptions, SendResult } from '../types/backend.js';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import type { Backend, BackendOptions, McpServerEntry, SendResult } from '../types/backend.js';
 import type { NormalizedEvent } from '../types/events.js';
 import { spawnCollect } from './claude.js';
 
@@ -146,10 +148,70 @@ export function buildCodexArgs(
   return ['exec', '--skip-git-repo-check', '--json', '--sandbox', sandbox, text];
 }
 
+/**
+ * Write a .codex/config.toml file with the bridge MCP server config.
+ * Codex CLI reads project-scoped .codex/config.toml for MCP servers.
+ * Uses a minimal TOML serializer (no dependency needed for simple structures).
+ */
+export function writeCodexMcpConfig(projectDir: string, mcpConfig: McpServerEntry): void {
+  const codexDir = path.join(projectDir, '.codex');
+  if (!fs.existsSync(codexDir)) {
+    fs.mkdirSync(codexDir, { recursive: true });
+  }
+
+  const configPath = path.join(codexDir, 'config.toml');
+
+  // Read existing config lines (preserve non-MCP settings)
+  let existingLines: string[] = [];
+  try {
+    existingLines = fs.readFileSync(configPath, 'utf8').split('\n');
+  } catch {
+    // File doesn't exist — start fresh
+  }
+
+  // Remove any existing openbridge MCP server block
+  const filtered: string[] = [];
+  let inOpenbridgeBlock = false;
+  for (const line of existingLines) {
+    if (line.trim() === '[mcp_servers.openbridge]') {
+      inOpenbridgeBlock = true;
+      continue;
+    }
+    if (inOpenbridgeBlock && line.startsWith('[')) {
+      inOpenbridgeBlock = false;
+    }
+    if (!inOpenbridgeBlock) {
+      filtered.push(line);
+    }
+  }
+
+  // Build the openbridge MCP server TOML block
+  const argsToml = mcpConfig.args.map((a) => `"${a}"`).join(', ');
+  const lines = [
+    ...filtered.filter((l) => l.trim() !== ''), // Remove trailing blank lines
+    '',
+    '[mcp_servers.openbridge]',
+    `command = "${mcpConfig.command}"`,
+    `args = [${argsToml}]`,
+  ];
+
+  if (mcpConfig.env && Object.keys(mcpConfig.env).length > 0) {
+    const envEntries = Object.entries(mcpConfig.env)
+      .map(([k, v]) => `${k} = "${v}"`)
+      .join(', ');
+    lines.push(`env = { ${envEntries} }`);
+  }
+
+  lines.push('');
+  fs.writeFileSync(configPath, lines.join('\n'));
+  console.log(`[codex] wrote MCP config to ${configPath}`);
+}
+
 export class CodexBackend implements Backend {
   private sessionId: string | null = null;
   private projectDir: string = '';
   private sandbox: SandboxMode;
+  private mcpConfig: McpServerEntry | undefined;
 
   constructor(config: CodexBackendConfig = {}) {
     this.sandbox = config.sandbox || 'workspace-write';
@@ -157,6 +219,13 @@ export class CodexBackend implements Backend {
 
   async start(options: BackendOptions): Promise<void> {
     this.projectDir = options.projectDir;
+    this.mcpConfig = options.mcpConfig;
+
+    // Write MCP config if provided so Codex discovers the bridge tools
+    if (this.mcpConfig) {
+      writeCodexMcpConfig(this.projectDir, this.mcpConfig);
+    }
+
     console.log(`[codex] initialized for project: ${this.projectDir} (sandbox: ${this.sandbox})`);
   }
 

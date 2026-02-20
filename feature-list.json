@@ -796,7 +796,7 @@
             "Claude Code receives MCP server config via its native MCP support",
             "Codex CLI receives MCP server config via its native MCP support"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P5.3",

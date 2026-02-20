@@ -8,7 +8,9 @@
  */
 
 import { spawn } from 'node:child_process';
-import type { Backend, BackendOptions, SendResult } from '../types/backend.js';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import type { Backend, BackendOptions, McpServerEntry, SendResult } from '../types/backend.js';
 import type { NormalizedEvent } from '../types/events.js';
 
 interface SpawnResult {
@@ -177,12 +179,50 @@ export function buildClaudeArgs(
   return args;
 }
 
+/**
+ * Write a .mcp.json file to the project directory with the bridge MCP server config.
+ * Claude Code reads this file automatically for project-scoped MCP servers.
+ */
+export function writeClaudeMcpConfig(projectDir: string, mcpConfig: McpServerEntry): void {
+  const mcpJsonPath = path.join(projectDir, '.mcp.json');
+
+  // Read existing config if present, to avoid clobbering user's other MCP servers
+  let existing: Record<string, unknown> = {};
+  try {
+    const content = fs.readFileSync(mcpJsonPath, 'utf8');
+    existing = JSON.parse(content) as Record<string, unknown>;
+  } catch {
+    // File doesn't exist or is invalid — start fresh
+  }
+
+  // Ensure mcpServers object exists
+  const mcpServers = (existing.mcpServers as Record<string, unknown>) || {};
+  mcpServers['openbridge'] = {
+    type: 'stdio',
+    command: mcpConfig.command,
+    args: mcpConfig.args,
+    ...(mcpConfig.env ? { env: mcpConfig.env } : {}),
+  };
+  existing.mcpServers = mcpServers;
+
+  fs.writeFileSync(mcpJsonPath, JSON.stringify(existing, null, 2) + '\n');
+  console.log(`[claude] wrote MCP config to ${mcpJsonPath}`);
+}
+
 export class ClaudeBackend implements Backend {
   private sessionId: string | null = null;
   private projectDir: string = '';
+  private mcpConfig: McpServerEntry | undefined;
 
   async start(options: BackendOptions): Promise<void> {
     this.projectDir = options.projectDir;
+    this.mcpConfig = options.mcpConfig;
+
+    // Write MCP config if provided so Claude discovers the bridge tools
+    if (this.mcpConfig) {
+      writeClaudeMcpConfig(this.projectDir, this.mcpConfig);
+    }
+
     console.log(`[claude] initialized for project: ${this.projectDir}`);
   }
 

@@ -12,8 +12,17 @@ export interface SendResult {
   sessionId: string | null;
 }
 
+/** MCP server configuration for injection into backend CLI. */
+export interface McpServerEntry {
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+}
+
 export interface BackendOptions {
   projectDir: string;
+  /** Optional MCP server config to inject so the backend agent gets bridge tools. */
+  mcpConfig?: McpServerEntry;
 }
 
 export interface Backend {

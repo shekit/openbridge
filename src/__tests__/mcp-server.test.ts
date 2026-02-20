@@ -9,6 +9,9 @@ import {
   type BridgeCallbacks,
   type McpSessionContext,
 } from '../mcp/server.js';
+import { writeClaudeMcpConfig } from '../backends/claude.js';
+import { writeCodexMcpConfig } from '../backends/codex.js';
+import type { McpServerEntry } from '../types/backend.js';
 
 /** Create a temp project directory for tests. */
 function makeTempProjectDir(): string {
@@ -134,6 +137,16 @@ describe('P5.6: MCP tools enforce project directory boundaries', () => {
 });
 
 describe('P5.2: MCP config injection', () => {
+  let projectDir: string;
+  const mcpEntry: McpServerEntry = {
+    command: 'node',
+    args: ['/path/to/bridge.js', '--mcp', '--channel', 'CH1', '--thread', 'T1', '--project-dir', '/myapp'],
+  };
+
+  beforeEach(() => {
+    projectDir = makeTempProjectDir();
+  });
+
   it('getMcpConfig returns correct command and args', () => {
     const context: McpSessionContext = {
       channelId: 'CH1',
@@ -162,6 +175,104 @@ describe('P5.2: MCP config injection', () => {
     expect(args).toContain('CH_DISCORD');
     expect(args).toContain('T_DISCORD');
     expect(args).toContain('/projects/webapp');
+  });
+
+  describe('Claude Code MCP config file', () => {
+    it('writeClaudeMcpConfig creates .mcp.json in project directory', () => {
+      writeClaudeMcpConfig(projectDir, mcpEntry);
+      const mcpJsonPath = path.join(projectDir, '.mcp.json');
+      expect(fs.existsSync(mcpJsonPath)).toBe(true);
+    });
+
+    it('writeClaudeMcpConfig writes correct JSON structure', () => {
+      writeClaudeMcpConfig(projectDir, mcpEntry);
+      const mcpJsonPath = path.join(projectDir, '.mcp.json');
+      const content = JSON.parse(fs.readFileSync(mcpJsonPath, 'utf8'));
+      expect(content.mcpServers).toBeDefined();
+      expect(content.mcpServers.openbridge).toBeDefined();
+      expect(content.mcpServers.openbridge.type).toBe('stdio');
+      expect(content.mcpServers.openbridge.command).toBe('node');
+      expect(content.mcpServers.openbridge.args).toEqual(mcpEntry.args);
+    });
+
+    it('writeClaudeMcpConfig preserves existing MCP servers', () => {
+      const mcpJsonPath = path.join(projectDir, '.mcp.json');
+      // Pre-write another server config
+      fs.writeFileSync(mcpJsonPath, JSON.stringify({
+        mcpServers: {
+          other: { type: 'stdio', command: 'other-cmd', args: [] },
+        },
+      }));
+
+      writeClaudeMcpConfig(projectDir, mcpEntry);
+      const content = JSON.parse(fs.readFileSync(mcpJsonPath, 'utf8'));
+      expect(content.mcpServers.other).toBeDefined();
+      expect(content.mcpServers.openbridge).toBeDefined();
+    });
+
+    it('writeClaudeMcpConfig includes env if provided', () => {
+      const entryWithEnv: McpServerEntry = {
+        ...mcpEntry,
+        env: { API_KEY: 'test123' },
+      };
+      writeClaudeMcpConfig(projectDir, entryWithEnv);
+      const mcpJsonPath = path.join(projectDir, '.mcp.json');
+      const content = JSON.parse(fs.readFileSync(mcpJsonPath, 'utf8'));
+      expect(content.mcpServers.openbridge.env).toEqual({ API_KEY: 'test123' });
+    });
+  });
+
+  describe('Codex CLI MCP config file', () => {
+    it('writeCodexMcpConfig creates .codex/config.toml', () => {
+      writeCodexMcpConfig(projectDir, mcpEntry);
+      const configPath = path.join(projectDir, '.codex', 'config.toml');
+      expect(fs.existsSync(configPath)).toBe(true);
+    });
+
+    it('writeCodexMcpConfig writes correct TOML structure', () => {
+      writeCodexMcpConfig(projectDir, mcpEntry);
+      const configPath = path.join(projectDir, '.codex', 'config.toml');
+      const content = fs.readFileSync(configPath, 'utf8');
+      expect(content).toContain('[mcp_servers.openbridge]');
+      expect(content).toContain('command = "node"');
+      expect(content).toContain('args = [');
+    });
+
+    it('writeCodexMcpConfig creates .codex directory if missing', () => {
+      const codexDir = path.join(projectDir, '.codex');
+      expect(fs.existsSync(codexDir)).toBe(false);
+      writeCodexMcpConfig(projectDir, mcpEntry);
+      expect(fs.existsSync(codexDir)).toBe(true);
+    });
+
+    it('writeCodexMcpConfig includes env if provided', () => {
+      const entryWithEnv: McpServerEntry = {
+        ...mcpEntry,
+        env: { MY_VAR: 'hello' },
+      };
+      writeCodexMcpConfig(projectDir, entryWithEnv);
+      const configPath = path.join(projectDir, '.codex', 'config.toml');
+      const content = fs.readFileSync(configPath, 'utf8');
+      expect(content).toContain('env = {');
+      expect(content).toContain('MY_VAR = "hello"');
+    });
+
+    it('writeCodexMcpConfig replaces existing openbridge block', () => {
+      // Write initial config
+      writeCodexMcpConfig(projectDir, mcpEntry);
+      // Write again with different args
+      const updated: McpServerEntry = {
+        command: 'node',
+        args: ['/new/path/bridge.js'],
+      };
+      writeCodexMcpConfig(projectDir, updated);
+      const configPath = path.join(projectDir, '.codex', 'config.toml');
+      const content = fs.readFileSync(configPath, 'utf8');
+      // Should only have one openbridge block
+      const matches = content.match(/\[mcp_servers\.openbridge\]/g);
+      expect(matches).toHaveLength(1);
+      expect(content).toContain('/new/path/bridge.js');
+    });
   });
 });
 
