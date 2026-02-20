@@ -587,7 +587,7 @@
             "/project from unbound channel shows 'Use this channel' and 'Create new' buttons",
             "User selection binds the channel appropriately"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P3.15",
