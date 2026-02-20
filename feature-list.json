@@ -957,7 +957,7 @@
             "User types a custom response instead of clicking buttons",
             "Backend resumes with the custom text"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P7.4",
