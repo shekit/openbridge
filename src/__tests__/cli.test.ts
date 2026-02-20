@@ -1,4 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// Mock the init and start modules before importing cli
+vi.mock('../cli/init.js', () => ({
+  runInit: vi.fn(async () => { console.log('[init] mock init'); }),
+}));
+vi.mock('../cli/start.js', () => ({
+  runStart: vi.fn(async () => { console.log('[start] mock start'); }),
+}));
+
 import { parseArgs, cli } from '../cli.js';
 
 describe('CLI entry point (P6.1)', () => {

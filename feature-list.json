@@ -865,7 +865,7 @@
             "Interactive prompt asks which platform(s)",
             "Selection is stored in config"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P6.3",
