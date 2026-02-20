@@ -1212,7 +1212,7 @@
             "close() shuts down the server",
             "Unit tests verify all routes and auth"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P10.3",
