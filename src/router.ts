@@ -92,6 +92,13 @@ export class Router {
 
     const { project, session } = resolved;
 
+    // If session crashed previously, auto-recover: dead → idle, clear backend session
+    if (session.state === 'dead') {
+      this.store.updateSessionState(session.id, 'idle');
+      this.store.updateBackendSessionId(session.id, null);
+      console.log(`[router] auto-recovered dead session ${session.id} — starting fresh`);
+    }
+
     // Transition to running
     this.store.updateSessionState(session.id, 'running');
 
@@ -104,9 +111,10 @@ export class Router {
     this.activeBackends.set(session.thread_id, backend);
 
     // If there's a stored backend session ID, set it on the backend for resume
-    if (session.backend_session_id) {
-      // The backend's internal session ID must be set for resume
-      (backend as any).sessionId = session.backend_session_id;
+    // (will be null if session was auto-recovered from dead)
+    const currentSession = this.store.getSessionByThreadId(session.thread_id);
+    if (currentSession?.backend_session_id) {
+      (backend as any).sessionId = currentSession.backend_session_id;
     }
 
     let result: SendResult;

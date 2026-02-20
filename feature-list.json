@@ -1020,7 +1020,7 @@
             "Session state transitions to dead",
             "Next message in thread starts fresh session"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P7.10",

@@ -1132,3 +1132,189 @@ describe('P7.8: Error handling — backend timeout reported to user', () => {
     expect(result.events.some(e => e.type === 'assistant_text')).toBe(true);
   });
 });
+
+describe('P7.9: Error handling — backend crash reported to user', () => {
+  let tmpDir: string;
+  let store: Store;
+
+  beforeEach(() => {
+    tmpDir = createTempDir('openbridge-integration-');
+    store = createTestStore(tmpDir);
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    store.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('backend crash posts error with exit code and transitions to dead', async () => {
+    store.createProject('C_CRASH', '/home/user/project', 'claude');
+
+    const mockBackend: Backend = {
+      async start() {},
+      async send(): Promise<SendResult> {
+        throw new Error('Process exited with signal SIGKILL');
+      },
+      getSessionId() { return null; },
+      async stop() {},
+    };
+
+    const router = new Router(store, () => mockBackend);
+    const mockApp = createMockBoltApp();
+    const adapter = new SlackAdapter({
+      botToken: 'xoxb-test',
+      appToken: 'xapp-test',
+      router,
+      store,
+      app: mockApp as any,
+    });
+
+    const messageHandler = mockApp._messageHandlers[0];
+    await messageHandler({
+      message: {
+        channel: 'C_CRASH',
+        text: 'do something',
+        ts: '8888888888.888888',
+        user: 'U_USER1',
+      },
+      client: mockApp.client,
+    });
+
+    // Verify error was posted
+    const postCalls = mockApp.client.chat.postMessage.mock.calls;
+    const errorCall = postCalls.find(
+      (c: any) => c[0].text && c[0].text.includes('SIGKILL'),
+    );
+    expect(errorCall).toBeDefined();
+    expect(errorCall[0].thread_ts).toBe('8888888888.888888');
+
+    // Session should be dead
+    const session = store.getSessionByThreadId('8888888888.888888');
+    expect(session!.state).toBe('dead');
+  });
+
+  it('next message in dead session starts fresh session', async () => {
+    store.createProject('C_CRASH2', '/home/user/project', 'claude');
+
+    let callCount = 0;
+    const mockBackend: Backend = {
+      async start() {},
+      async send(): Promise<SendResult> {
+        callCount++;
+        if (callCount === 1) {
+          throw new Error('Backend crashed with exit code 1');
+        }
+        return {
+          events: [
+            { type: 'assistant_text', text: 'Fresh session response' },
+            { type: 'turn_completed' },
+          ],
+          sessionId: 'new-session-after-crash',
+        };
+      },
+      getSessionId() { return callCount > 1 ? 'new-session-after-crash' : null; },
+      async stop() {},
+    };
+
+    const router = new Router(store, () => mockBackend);
+    const mockApp = createMockBoltApp();
+    const adapter = new SlackAdapter({
+      botToken: 'xoxb-test',
+      appToken: 'xapp-test',
+      router,
+      store,
+      app: mockApp as any,
+    });
+
+    const messageHandler = mockApp._messageHandlers[0];
+
+    // First message — crash
+    await messageHandler({
+      message: {
+        channel: 'C_CRASH2',
+        text: 'first message',
+        ts: '9999999999.999999',
+        user: 'U_USER1',
+      },
+      client: mockApp.client,
+    });
+
+    // Session should be dead
+    let session = store.getSessionByThreadId('9999999999.999999');
+    expect(session!.state).toBe('dead');
+
+    // Second message in same thread — should auto-recover and start fresh
+    await messageHandler({
+      message: {
+        channel: 'C_CRASH2',
+        text: 'try again',
+        thread_ts: '9999999999.999999',
+        ts: '9999999999.111111',
+        user: 'U_USER1',
+      },
+      client: mockApp.client,
+    });
+
+    // Verify fresh response was posted
+    const postCalls = mockApp.client.chat.postMessage.mock.calls;
+    const freshResponse = postCalls.find(
+      (c: any) => c[0].text === 'Fresh session response',
+    );
+    expect(freshResponse).toBeDefined();
+
+    // Session should be back to idle with new session ID
+    session = store.getSessionByThreadId('9999999999.999999');
+    expect(session!.state).toBe('idle');
+    expect(session!.backend_session_id).toBe('new-session-after-crash');
+  });
+
+  it('non-zero exit code produces error event in the events', async () => {
+    store.createProject('C_EXIT', '/home/user/project', 'claude');
+
+    // Backend returns error event (like what parseClaudeOutput produces for non-zero exit)
+    const mockBackend: Backend = {
+      async start() {},
+      async send(): Promise<SendResult> {
+        return {
+          events: [
+            { type: 'error', message: 'Claude exited with code 1' },
+            { type: 'turn_completed' },
+          ],
+          sessionId: 'session-exit-1',
+        };
+      },
+      getSessionId() { return 'session-exit-1'; },
+      async stop() {},
+    };
+
+    const router = new Router(store, () => mockBackend);
+    const mockApp = createMockBoltApp();
+    const adapter = new SlackAdapter({
+      botToken: 'xoxb-test',
+      appToken: 'xapp-test',
+      router,
+      store,
+      app: mockApp as any,
+    });
+
+    const messageHandler = mockApp._messageHandlers[0];
+    await messageHandler({
+      message: {
+        channel: 'C_EXIT',
+        text: 'do something',
+        ts: '1010101010.101010',
+        user: 'U_USER1',
+      },
+      client: mockApp.client,
+    });
+
+    // Verify error was posted in thread
+    const postCalls = mockApp.client.chat.postMessage.mock.calls;
+    const errorCall = postCalls.find(
+      (c: any) => c[0].text && c[0].text.includes('exited with code 1'),
+    );
+    expect(errorCall).toBeDefined();
+  });
+});
