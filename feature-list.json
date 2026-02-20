@@ -1300,7 +1300,7 @@
             "Shutdown sequence: close IPC server, stop tunnels, stop file browsers, stop adapters",
             "Build succeeds, all tests pass"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P10.10",

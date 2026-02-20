@@ -23,6 +23,11 @@ import {
   mergeEnvFile,
   detectTunnelTools,
 } from './init.js';
+import { startIpcServer } from '../mcp/ipc-server.js';
+import { createCallbackHandler, closeAllFileBrowsers } from '../mcp/callbacks.js';
+import { closeAllTunnels } from '../mcp/tunnel.js';
+import { getMcpConfig } from '../mcp/server.js';
+import type { Adapter } from '../types/adapter.js';
 
 export interface StartDeps {
   /** Override the database path (for testing). */
@@ -315,17 +320,35 @@ export async function runStart(deps?: StartDeps): Promise<void> {
   console.log(`[start] platforms: ${platforms.join(', ')}`);
   console.log(`[start] default backend: ${defaultBackend}`);
 
-  // Create the router
+  // --- Start IPC server for MCP callbacks ---
+  const adapterMap = new Map<string, Adapter>();
+  const ipcHandler = createCallbackHandler({ adapters: adapterMap });
+  const ipcServer = await startIpcServer(ipcHandler);
+  console.log(`[start] IPC server listening on port ${ipcServer.port}`);
+
+  // Resolve the MCP entry script path (dist/mcp/entry.js)
+  const entryScriptPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'mcp', 'entry.js');
+
+  // Create mcpConfigFactory that generates per-session MCP config
   const backendFactory = createBackendFactory();
-  const router = new Router(store, backendFactory);
+  const router = new Router(store, backendFactory, {
+    mcpConfigFactory: (ctx) => {
+      const config = getMcpConfig(entryScriptPath, ctx, {
+        port: ipcServer.port,
+        secret: ipcServer.secret,
+      });
+      return config;
+    },
+  });
 
   if (dryRun) {
     console.log('[start] dry run — skipping adapter startup');
+    await ipcServer.close();
     store.close();
     return;
   }
 
-  const adapters: { name: string; start: () => Promise<void>; stop: () => Promise<void> }[] = [];
+  const adapterList: { name: string; start: () => Promise<void>; stop: () => Promise<void> }[] = [];
 
   // Set up Slack adapter if configured
   if (platforms.includes('slack')) {
@@ -334,6 +357,7 @@ export async function runStart(deps?: StartDeps): Promise<void> {
 
     if (!botToken || !appToken) {
       console.error('[start] Slack tokens not found. Check .env.local or environment variables.');
+      await ipcServer.close();
       store.close();
       process.exit(1);
       return;
@@ -345,7 +369,8 @@ export async function runStart(deps?: StartDeps): Promise<void> {
       router,
       store,
     });
-    adapters.push({ name: 'slack', start: () => slack.start(), stop: () => slack.stop() });
+    adapterMap.set('slack', slack);
+    adapterList.push({ name: 'slack', start: () => slack.start(), stop: () => slack.stop() });
   }
 
   // Set up Discord adapter if configured
@@ -354,6 +379,7 @@ export async function runStart(deps?: StartDeps): Promise<void> {
 
     if (!botToken) {
       console.error('[start] Discord token not found. Check .env.local or environment variables.');
+      await ipcServer.close();
       store.close();
       process.exit(1);
       return;
@@ -364,11 +390,12 @@ export async function runStart(deps?: StartDeps): Promise<void> {
       router,
       store,
     });
-    adapters.push({ name: 'discord', start: () => discord.start(), stop: () => discord.stop() });
+    adapterMap.set('discord', discord);
+    adapterList.push({ name: 'discord', start: () => discord.start(), stop: () => discord.stop() });
   }
 
   // Start all adapters
-  for (const adapter of adapters) {
+  for (const adapter of adapterList) {
     try {
       await adapter.start();
       console.log(`[start] ${adapter.name} adapter started`);
@@ -377,10 +404,10 @@ export async function runStart(deps?: StartDeps): Promise<void> {
     }
   }
 
-  console.log(`[start] bridge is running — listening on ${adapters.map((a) => a.name).join(', ')}`);
+  console.log(`[start] bridge is running — listening on ${adapterList.map((a) => a.name).join(', ')}`);
 
   // Show next-steps guidance
-  const platformNames = adapters.map((a) =>
+  const platformNames = adapterList.map((a) =>
     a.name === 'slack' ? 'Slack' : 'Discord',
   );
   const nextSteps = [
@@ -401,8 +428,14 @@ export async function runStart(deps?: StartDeps): Promise<void> {
     console.log('[start] shutting down...');
     // Stop all active backend sessions
     await router.shutdown();
+    // Close tunnels and file browsers
+    closeAllTunnels();
+    await closeAllFileBrowsers();
+    // Close IPC server
+    await ipcServer.close();
+    console.log('[start] IPC server closed');
     // Disconnect all messaging platform adapters
-    for (const adapter of adapters) {
+    for (const adapter of adapterList) {
       try {
         await adapter.stop();
         console.log(`[start] ${adapter.name} adapter stopped`);

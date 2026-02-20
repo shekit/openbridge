@@ -12,6 +12,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import type { McpServerEntry } from '../types/backend.js';
 
 /**
  * Callback interface for bridge actions that the MCP server triggers.
@@ -216,7 +217,7 @@ export function getMcpConfig(
   entryScriptPath: string,
   context: McpSessionContext & { platform: string },
   ipc: { port: number; secret: string },
-): Record<string, unknown> {
+): McpServerEntry {
   return {
     command: 'node',
     args: [
