@@ -731,7 +731,7 @@
             "Commands registered via Discord application commands API",
             "Commands show up with autocomplete in Discord"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P4.11",
