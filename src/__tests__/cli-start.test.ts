@@ -50,6 +50,50 @@ describe('CLI start (P6.7)', () => {
       expect(vars).toEqual({});
     });
 
+    it('strips double quotes from values', () => {
+      const tmpDir = createTempDir('openbridge-env-');
+      const envPath = path.join(tmpDir, '.env.local');
+      fs.writeFileSync(envPath, 'KEY="value"\n');
+
+      const vars = loadEnvFile(envPath);
+      expect(vars.KEY).toBe('value');
+
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('strips single quotes from values', () => {
+      const tmpDir = createTempDir('openbridge-env-');
+      const envPath = path.join(tmpDir, '.env.local');
+      fs.writeFileSync(envPath, "KEY='value'\n");
+
+      const vars = loadEnvFile(envPath);
+      expect(vars.KEY).toBe('value');
+
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('leaves unquoted values unchanged', () => {
+      const tmpDir = createTempDir('openbridge-env-');
+      const envPath = path.join(tmpDir, '.env.local');
+      fs.writeFileSync(envPath, 'KEY=value\n');
+
+      const vars = loadEnvFile(envPath);
+      expect(vars.KEY).toBe('value');
+
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('preserves internal equals signs', () => {
+      const tmpDir = createTempDir('openbridge-env-');
+      const envPath = path.join(tmpDir, '.env.local');
+      fs.writeFileSync(envPath, 'KEY=value=with=equals\n');
+
+      const vars = loadEnvFile(envPath);
+      expect(vars.KEY).toBe('value=with=equals');
+
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
     it('sets values in process.env', () => {
       const tmpDir = createTempDir('openbridge-env-');
       const envPath = path.join(tmpDir, '.env.local');

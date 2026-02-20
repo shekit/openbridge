@@ -1131,7 +1131,7 @@
             "loadEnvFile('KEY=value=with=equals') preserves internal equals signs",
             "Unit tests verify all four cases"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P9.3",

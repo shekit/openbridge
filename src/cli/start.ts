@@ -39,7 +39,15 @@ export function loadEnvFile(envPath: string): Record<string, string> {
     const eqIndex = trimmed.indexOf('=');
     if (eqIndex === -1) continue;
     const key = trimmed.substring(0, eqIndex).trim();
-    const value = trimmed.substring(eqIndex + 1).trim();
+    let value = trimmed.substring(eqIndex + 1).trim();
+    // Strip surrounding quotes (double or single)
+    if (
+      value.length >= 2 &&
+      ((value[0] === '"' && value[value.length - 1] === '"') ||
+       (value[0] === "'" && value[value.length - 1] === "'"))
+    ) {
+      value = value.slice(1, -1);
+    }
     vars[key] = value;
     process.env[key] = value;
   }
