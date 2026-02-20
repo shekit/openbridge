@@ -293,7 +293,7 @@
             "channel_id has a unique index",
             "Unit test verifies table creation"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P2.3",

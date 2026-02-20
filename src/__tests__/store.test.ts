@@ -37,10 +37,39 @@ describe('Store', () => {
     });
 
     it('uses WAL journal mode', () => {
-      // WAL mode creates -wal file on first write, but we can check pragma
       const db = (store as any).db;
       const result = db.pragma('journal_mode');
       expect(result[0].journal_mode).toBe('wal');
+    });
+  });
+
+  describe('P2.2: projects table schema', () => {
+    it('projects table is created on init', () => {
+      const db = (store as any).db;
+      const table = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='projects'"
+      ).get();
+      expect(table).toBeDefined();
+      expect(table.name).toBe('projects');
+    });
+
+    it('channel_id has a unique index', () => {
+      const db = (store as any).db;
+      const index = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_projects_channel_id'"
+      ).get();
+      expect(index).toBeDefined();
+    });
+
+    it('projects table has expected columns', () => {
+      const db = (store as any).db;
+      const columns = db.prepare("PRAGMA table_info('projects')").all() as Array<{ name: string }>;
+      const colNames = columns.map((c) => c.name);
+      expect(colNames).toContain('id');
+      expect(colNames).toContain('channel_id');
+      expect(colNames).toContain('project_dir');
+      expect(colNames).toContain('backend_name');
+      expect(colNames).toContain('created_at');
     });
   });
 });
