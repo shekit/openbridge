@@ -7,6 +7,7 @@ Phase 2 — SQLite Persistence and Router (complete)
 Phase 3 — Slack Adapter (complete)
 Phase 4 — Discord Adapter (complete)
 Phase 5 — Bridge MCP Server (complete)
+Phase 6 — CLI Setup Wizard (complete)
 
 ## Session Log
 
@@ -154,3 +155,33 @@ Phase 5 — Bridge MCP Server (complete)
   - P5.6: validateProjectPath — within-project, root, absolute, traversal attacks, nested (7 tests)
 - 292 tests passing across 10 test files
 - All 6 features (P5.1–P5.6) committed individually, all marked passing
+
+### Session 9 — Phase 6: CLI Setup Wizard
+- Created `src/cli.ts` — CLI entry point:
+  - `parseArgs()` parses subcommands (init, start, --help, --version)
+  - `cli()` dispatches to runInit/runStart, shows usage/version
+  - Handles unknown commands with error and exit code 1
+- Created `src/cli/prompt.ts` — interactive prompt utilities:
+  - `PromptIO` interface wrapping readline (injectable for testing)
+  - `promptSelect()` — numbered list selection, supports multi-select
+  - `promptText()` — text input with optional validation function
+  - `promptConfirm()` — yes/no with configurable default
+- Created `src/cli/init.ts` — setup wizard:
+  - `selectPlatforms()` — Slack / Discord / Both selection (P6.2)
+  - `inputTokens()` — platform-conditional token prompts (P6.3)
+  - Token validators: `validateSlackBotToken` (xoxb-), `validateSlackAppToken` (xapp-), `validateDiscordToken` (length)
+  - `detectCli()` — checks PATH for claude/codex (P6.4)
+  - `detectBackend()` — auto-detects available backends, prompts if multiple found
+  - `createFirstProject()` — prompts for name + directory, creates project in SQLite (P6.5)
+  - `writeEnvFile()` — writes tokens to .env.local (P6.6)
+  - `saveConfig()` — persists platforms and default_backend to store settings (P6.6)
+  - `runInit()` — orchestrates full wizard flow, accepts optional PromptIO for testing
+- Created `src/cli/start.ts` — bridge launcher:
+  - `loadEnvFile()` — parses .env.local into process.env (key=value, skips comments)
+  - `createBackendFactory()` — produces ClaudeBackend or CodexBackend by name
+  - `runStart()` — loads config from .openbridge/, creates router + adapters, starts listening
+  - Supports dryRun mode for testing without connecting to platforms
+  - Graceful shutdown on SIGTERM/SIGINT
+- Created test files: `cli.test.ts` (15 tests), `cli-init.test.ts` (20 tests), `cli-start.test.ts` (12 tests)
+- 347 tests passing across 13 test files
+- All 7 features (P6.1–P6.7) committed individually, all marked passing
