@@ -807,7 +807,7 @@
             "Tool returns success confirmation",
             "File access restricted to project directory by default"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P5.4",
