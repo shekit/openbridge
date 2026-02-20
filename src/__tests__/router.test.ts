@@ -185,4 +185,63 @@ describe('Router', () => {
       expect(result.session.state).toBe('idle');
     });
   });
+
+  describe('P2.14: handle user response when waiting_for_input', () => {
+    it('when session is waiting_for_input, respond routes as a resume', async () => {
+      // First, set up a session in waiting_for_input state
+      const permBackend = createMockBackend([
+        { type: 'permission_denied', toolName: 'Edit', toolInput: { path: 'foo.js' } },
+      ]);
+      let callCount = 0;
+      const factory: BackendFactory = () => {
+        callCount++;
+        if (callCount === 1) return permBackend;
+        // Second call (resume) returns normal text
+        return createMockBackend([
+          { type: 'assistant_text', text: 'Done!' },
+          { type: 'turn_completed' },
+        ]);
+      };
+      router = new Router(store, factory);
+
+      store.createProject('CH_RESP', '/proj', 'claude');
+
+      // Send initial message — triggers permission denied
+      const sendResult = await router.send('CH_RESP', 'T_RESP', 'edit foo.js');
+      expect(sendResult.session.state).toBe('waiting_for_input');
+
+      // User responds — should resume
+      const respondResult = await router.respond('CH_RESP', 'T_RESP', 'yes, allow it');
+      expect(respondResult.session.state).toBe('idle');
+      expect(respondResult.events[0]).toEqual({ type: 'assistant_text', text: 'Done!' });
+    });
+
+    it('session transitions from waiting_for_input → running → idle', async () => {
+      const permBackend = createMockBackend([
+        { type: 'permission_denied', toolName: 'Bash', toolInput: { command: 'ls' } },
+      ]);
+      let callCount = 0;
+      const factory: BackendFactory = () => {
+        callCount++;
+        if (callCount === 1) return permBackend;
+        return createMockBackend([{ type: 'turn_completed' }]);
+      };
+      router = new Router(store, factory);
+
+      store.createProject('CH_TRANS', '/proj', 'claude');
+      await router.send('CH_TRANS', 'T_TRANS', 'run ls');
+      // Now in waiting_for_input
+      const result = await router.respond('CH_TRANS', 'T_TRANS', 'allow');
+      expect(result.session.state).toBe('idle');
+    });
+
+    it('respond throws if session is not waiting_for_input', async () => {
+      store.createProject('CH_ERR', '/proj', 'claude');
+      // Session is idle, not waiting_for_input
+      router.resolve('CH_ERR', 'T_ERR');
+      await expect(router.respond('CH_ERR', 'T_ERR', 'hello')).rejects.toThrow(
+        'not waiting for input'
+      );
+    });
+  });
 });

@@ -428,7 +428,7 @@
             "Session transitions from waiting_for_input → running → idle",
             "Unit test verifies the resume flow"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P2.15",
