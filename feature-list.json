@@ -548,7 +548,7 @@
             "Text is passed to router as the user's reply",
             "Session resumes with the custom text"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P3.11",
