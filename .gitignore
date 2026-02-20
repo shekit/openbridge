@@ -15,9 +15,10 @@ dist/
 .DS_Store
 Thumbs.db
 
-# IDE
+# IDE and tools
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 
