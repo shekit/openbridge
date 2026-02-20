@@ -628,7 +628,7 @@
             "File path is included in the message sent to the backend",
             "Backend receives context about the uploaded file"
           ],
-          "status": "failing"
+          "status": "passing"
         }
       ]
     },
