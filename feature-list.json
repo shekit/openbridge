@@ -486,7 +486,7 @@
             "Bot replies in the new thread, not in the channel",
             "Channel stays clean — only thread starters visible"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P3.5",
