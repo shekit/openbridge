@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { loadEnvFile, createBackendFactory, runStart } from '../cli/start.js';
+import * as initModule from '../cli/init.js';
 import { Store } from '../store.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -134,19 +135,27 @@ describe('CLI start (P6.7)', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
-    it('exits with error if .openbridge/ not found', async () => {
-      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
-      const errorSpy = vi.spyOn(console, 'error');
+    it('auto-runs init if .openbridge/ not found', async () => {
+      const tmpDir = createTempDir('openbridge-start-noinit-');
+      const dbPath = path.join(tmpDir, '.openbridge', 'bridge.db');
+      const envPath = path.join(tmpDir, '.env.local');
 
-      await runStart({
-        dbPath: '/nonexistent/path/.openbridge/bridge.db',
-        envPath: '/nonexistent/.env.local',
+      // Mock runInit so it doesn't actually prompt, but creates the db dir
+      // so runStart can proceed (it will then fail on missing platforms)
+      const initSpy = vi.spyOn(initModule, 'runInit').mockImplementation(async () => {
+        fs.mkdirSync(path.dirname(dbPath), { recursive: true });
       });
+      const logSpy = vi.spyOn(console, 'log');
+      vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
 
-      expect(errorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Run "openbridge init" first'),
+      await runStart({ dbPath, envPath });
+
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('first run detected'),
       );
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(initSpy).toHaveBeenCalled();
+
+      fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
     it('exits with error if no platforms configured', async () => {

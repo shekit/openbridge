@@ -14,6 +14,7 @@ import { CodexBackend } from '../backends/codex.js';
 import { SlackAdapter } from '../adapters/slack.js';
 import { DiscordAdapter } from '../adapters/discord.js';
 import type { Platform } from './init.js';
+import { runInit } from './init.js';
 
 export interface StartDeps {
   /** Override the database path (for testing). */
@@ -67,11 +68,10 @@ export async function runStart(deps?: StartDeps): Promise<void> {
   const envPath = deps?.envPath ?? path.resolve('.env.local');
   const dryRun = deps?.dryRun ?? false;
 
-  // Check if .openbridge/ exists
+  // Auto-run init if .openbridge/ doesn't exist yet
   if (!fs.existsSync(path.dirname(dbPath))) {
-    console.error('[start] .openbridge/ not found. Run "openbridge init" first.');
-    process.exit(1);
-    return; // unreachable, but makes types happy
+    console.log('[start] first run detected — running setup wizard...\n');
+    await runInit();
   }
 
   // Load environment variables
