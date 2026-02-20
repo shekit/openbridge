@@ -819,7 +819,7 @@
             "Tool returns the public URL",
             "Tunnel has a configurable TTL"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P5.5",
