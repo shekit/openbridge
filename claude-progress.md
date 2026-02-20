@@ -6,6 +6,7 @@ Phase 1 — Normalized Event Types and Backend Interface (complete)
 Phase 2 — SQLite Persistence and Router (complete)
 Phase 3 — Slack Adapter (complete)
 Phase 4 — Discord Adapter (complete)
+Phase 5 — Bridge MCP Server (complete)
 
 ## Session Log
 
@@ -124,3 +125,32 @@ Phase 4 — Discord Adapter (complete)
 - Created `src/__tests__/discord.test.ts` — 48 tests using mock Discord Client injection
 - 253 tests passing across 9 test files
 - All 14 features (P4.1–P4.14) committed individually, all marked passing
+
+### Session 8 — Phase 5: Bridge MCP Server
+- Installed `@modelcontextprotocol/sdk` and `zod`
+- Created `src/mcp/server.ts` — Bridge MCP server:
+  - `createMcpServer()` — creates McpServer with three registered tools using `@modelcontextprotocol/sdk`
+  - `startMcpServer()` — connects server via StdioServerTransport
+  - `BridgeCallbacks` interface — adapter-agnostic callbacks (uploadFile, openTunnel, serveFileBrowser, postMessage)
+  - `McpSessionContext` — ties each MCP server instance to a specific chat channel/thread/project
+  - `validateProjectPath()` — resolves paths against project directory, rejects traversal attacks
+  - `getMcpConfig()` — generates MCP server config entry for backend injection
+  - `upload_file` tool — accepts file_path, validates within project, calls uploadFile callback
+  - `open_tunnel` tool — accepts port + optional TTL (default 3600s), calls openTunnel callback, posts URL in thread
+  - `serve_file_browser` tool — accepts optional directory (defaults to project root), calls serveFileBrowser callback, posts URL
+- Added `McpServerEntry` interface to `src/types/backend.ts` — `BackendOptions` now accepts optional `mcpConfig`
+- Modified `src/backends/claude.ts`:
+  - `writeClaudeMcpConfig()` — writes `.mcp.json` in project directory with openbridge stdio server entry
+  - `ClaudeBackend.start()` writes MCP config if provided, preserves existing MCP servers in file
+- Modified `src/backends/codex.ts`:
+  - `writeCodexMcpConfig()` — writes `.codex/config.toml` with `[mcp_servers.openbridge]` TOML block
+  - `CodexBackend.start()` writes MCP config if provided, preserves existing config sections
+- Created `src/__tests__/mcp-server.test.ts` — 39 tests covering all 6 features:
+  - P5.1: Server creation, tool registration (6 tests)
+  - P5.2: Config generation, Claude .mcp.json writing, Codex .codex/config.toml writing (11 tests)
+  - P5.3: upload_file — callback invocation, missing file error, path rejection, absolute path (4 tests)
+  - P5.4: open_tunnel — port+TTL, default TTL, URL posting, error handling, URL return (5 tests)
+  - P5.5: serve_file_browser — directory resolution, subdirectory, URL posting, path rejection, nonexistent dir, default root (6 tests)
+  - P5.6: validateProjectPath — within-project, root, absolute, traversal attacks, nested (7 tests)
+- 292 tests passing across 10 test files
+- All 6 features (P5.1–P5.6) committed individually, all marked passing
