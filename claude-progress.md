@@ -9,6 +9,8 @@ Phase 4 — Discord Adapter (complete)
 Phase 5 — Bridge MCP Server (complete)
 Phase 6 — CLI Setup Wizard (complete)
 Phase 7 — Integration and Polish (complete)
+Phase 9 — Production-Readiness Fixes (complete)
+Phase 10 — Wire MCP Server to Runtime (complete)
 
 ## Session Log
 
@@ -301,3 +303,46 @@ Major UX improvements across the CLI onboarding, slash commands, and ongoing con
 - Added 4 mergeEnvFile tests, 3 extractDiscordAppId tests
 - Updated cli.test.ts (removed init command tests)
 - Updated cli-init.test.ts (removed createFirstProject, added Discord App ID extraction)
+
+### Session 14 — Phase 10: Wire MCP Server to Runtime
+
+Implemented all 10 features to connect the MCP server to the runtime so backends can invoke MCP tools and results flow back through adapters.
+
+**Architecture:**
+```
+Bridge Process
+  ├── IPC Server (localhost:<random-port>)
+  │     POST /upload-file, /open-tunnel, /serve-file-browser, /post-message
+  ├── Router → backend.start({ projectDir, mcpConfig })
+  └── Adapters (Slack/Discord) ← called by IPC handler
+
+Backend Process (Claude Code / Codex)
+  └── MCP Server (src/mcp/entry.ts, stdio transport)
+        └── On tool call → HTTP POST to localhost:<port>
+```
+
+**New files:**
+- `src/mcp/ipc-server.ts` — localhost HTTP server on random port with UUID auth, 4 POST routes
+- `src/mcp/entry.ts` — MCP entry script spawned by backends, creates fetch-based BridgeCallbacks
+- `src/mcp/tunnel.ts` — tunnel manager (cloudflared preferred, ngrok fallback), TTL enforcement
+- `src/mcp/file-browser.ts` — minimal file browser HTTP server with directory listing and file serving
+- `src/mcp/callbacks.ts` — callback handler glue layer routing IPC to adapters/tunnels/file-browser
+- `src/__tests__/ipc-server.test.ts` (12 tests)
+- `src/__tests__/mcp-entry.test.ts` (6 tests)
+- `src/__tests__/tunnel.test.ts` (7 tests)
+- `src/__tests__/file-browser.test.ts` (10 tests)
+- `src/__tests__/callbacks.test.ts` (5 tests)
+- `src/__tests__/mcp-integration.test.ts` (7 tests)
+
+**Modified files:**
+- `src/store.ts` — added `platform` column to projects, updated `createProject()` signature
+- `src/adapters/slack.ts` — passes 'slack' platform, added `uploadFile()` and `sendMessage()` methods
+- `src/adapters/discord.ts` — passes 'discord' platform, added `uploadFile()` and `sendMessage()` methods
+- `src/types/adapter.ts` — added `uploadFile()` and `sendMessage()` to Adapter interface
+- `src/router.ts` — added `McpConfigFactory`, `McpConfigContext` types, passes mcpConfig to backend.start()
+- `src/mcp/server.ts` — updated `getMcpConfig()` with --platform arg and IPC env vars, typed return as `McpServerEntry`
+- `src/cli/start.ts` — starts IPC server, creates mcpConfigFactory, registers adapters with callback handler, shutdown cleanup
+
+**Test count:** 442 tests passing across 20 test files
+- All 10 features (P10.1–P10.10) committed individually, all marked passing
+- Total: 92 features across 10 phases (P0–P7, P9, P10), all passing
