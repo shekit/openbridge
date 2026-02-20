@@ -917,7 +917,7 @@
             "Bridge begins listening for messages",
             "Startup message logged with connected platforms"
           ],
-          "status": "failing"
+          "status": "passing"
         }
       ]
     },
