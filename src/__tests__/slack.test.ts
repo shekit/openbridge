@@ -71,6 +71,7 @@ function createMockBackendFactory() {
       sessionId: 'session-123',
     })),
     getSessionId: vi.fn(() => 'session-123'),
+    setSessionId: vi.fn(),
     stop: vi.fn(async () => {}),
   }));
 }
@@ -431,6 +432,7 @@ describe('SlackAdapter', () => {
           sessionId: 'session-123',
         })),
         getSessionId: vi.fn(() => 'session-123'),
+        setSessionId: vi.fn(),
         stop: vi.fn(async () => {}),
       }));
 
@@ -613,6 +615,7 @@ describe('SlackAdapter', () => {
           throw new Error('Backend crashed unexpectedly');
         }),
         getSessionId: vi.fn(() => null),
+        setSessionId: vi.fn(),
         stop: vi.fn(async () => {}),
       }));
 
@@ -645,6 +648,7 @@ describe('SlackAdapter', () => {
           sessionId: null,
         })),
         getSessionId: vi.fn(() => null),
+        setSessionId: vi.fn(),
         stop: vi.fn(async () => {}),
       }));
 
@@ -969,6 +973,7 @@ describe('SlackAdapter', () => {
           };
         }),
         getSessionId: vi.fn(() => 'session-123'),
+        setSessionId: vi.fn(),
         stop: vi.fn(async () => {}),
       });
 

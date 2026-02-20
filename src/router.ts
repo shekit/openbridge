@@ -128,7 +128,7 @@ export class Router {
     // (will be null if session was auto-recovered from dead)
     const currentSession = this.store.getSessionByThreadId(session.thread_id);
     if (currentSession?.backend_session_id) {
-      (backend as any).sessionId = currentSession.backend_session_id;
+      backend.setSessionId(currentSession.backend_session_id);
     }
 
     let result: SendResult;
@@ -199,7 +199,7 @@ export class Router {
 
     // Must have a backend session ID for resume
     if (session.backend_session_id) {
-      (backend as any).sessionId = session.backend_session_id;
+      backend.setSessionId(session.backend_session_id);
     }
 
     let result: SendResult;

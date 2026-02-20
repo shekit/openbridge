@@ -1156,7 +1156,7 @@
             "No (backend as any).sessionId casts remain in router.ts",
             "TypeScript compiles with no errors"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P9.5",

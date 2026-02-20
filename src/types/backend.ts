@@ -35,6 +35,9 @@ export interface Backend {
   /** Return the current session ID for resume, or null if none. */
   getSessionId(): string | null;
 
+  /** Set the session ID for resume (used by the router to restore from DB). */
+  setSessionId(id: string | null): void;
+
   /** Clean shutdown — kill any running process. */
   stop(): Promise<void>;
 }
