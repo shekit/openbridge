@@ -978,7 +978,7 @@
             "Send another message in the same thread",
             "Backend resumes the previous session (session_id retrieved from SQLite)"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P7.6",

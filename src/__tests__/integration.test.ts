@@ -644,3 +644,129 @@ describe('P7.4: End-to-end Discord → Codex CLI → response', () => {
     );
   });
 });
+
+describe('P7.5: Session persistence across bridge restart', () => {
+  let tmpDir: string;
+  let dbPath: string;
+
+  beforeEach(() => {
+    tmpDir = createTempDir('openbridge-integration-');
+    dbPath = path.join(tmpDir, '.openbridge', 'bridge.db');
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('resumes session after bridge restart using stored backend_session_id', async () => {
+    // === First "run" of the bridge ===
+    const store1 = new Store(dbPath);
+    store1.createProject('C_PERSIST', '/home/user/project', 'claude');
+
+    let backend1SessionIdReceived: string | null = null;
+
+    const mockBackend1: Backend = {
+      sessionId: null,
+      async start() {},
+      async send(text: string): Promise<SendResult> {
+        // Capture if sessionId was set externally (resume mode)
+        backend1SessionIdReceived = (this as any).sessionId;
+        return {
+          events: [
+            { type: 'assistant_text', text: 'First run response' },
+            { type: 'turn_completed' },
+          ],
+          sessionId: 'claude-session-persist-123',
+        };
+      },
+      getSessionId() { return 'claude-session-persist-123'; },
+      async stop() {},
+    } as any;
+
+    const router1 = new Router(store1, () => mockBackend1);
+
+    // Send first message
+    const result1 = await router1.send('C_PERSIST', 'T_PERSIST_1', 'Hello');
+    expect(result1.events.some(e => e.type === 'assistant_text')).toBe(true);
+
+    // Verify session is stored with backend_session_id
+    const sessionBefore = store1.getSessionByThreadId('T_PERSIST_1');
+    expect(sessionBefore).toBeDefined();
+    expect(sessionBefore!.backend_session_id).toBe('claude-session-persist-123');
+    expect(sessionBefore!.state).toBe('idle');
+
+    // First send should NOT have a pre-set sessionId (new session)
+    expect(backend1SessionIdReceived).toBeNull();
+
+    // Close the store (simulates bridge restart)
+    store1.close();
+
+    // === Second "run" of the bridge (restart) ===
+    const store2 = new Store(dbPath);
+
+    // Verify session survived the restart
+    const sessionAfter = store2.getSessionByThreadId('T_PERSIST_1');
+    expect(sessionAfter).toBeDefined();
+    expect(sessionAfter!.backend_session_id).toBe('claude-session-persist-123');
+
+    let backend2SessionIdReceived: string | null = null;
+
+    const mockBackend2: Backend = {
+      sessionId: null,
+      async start() {},
+      async send(text: string): Promise<SendResult> {
+        // This should have the stored sessionId from the first run
+        backend2SessionIdReceived = (this as any).sessionId;
+        return {
+          events: [
+            { type: 'assistant_text', text: 'Resumed response' },
+            { type: 'turn_completed' },
+          ],
+          sessionId: 'claude-session-persist-123',
+        };
+      },
+      getSessionId() { return 'claude-session-persist-123'; },
+      async stop() {},
+    } as any;
+
+    const router2 = new Router(store2, () => mockBackend2);
+
+    // Send follow-up message in the same thread
+    const result2 = await router2.send('C_PERSIST', 'T_PERSIST_1', 'Follow up');
+    expect(result2.events.some(e => e.type === 'assistant_text')).toBe(true);
+
+    // The second send should have received the stored session ID for resume
+    expect(backend2SessionIdReceived).toBe('claude-session-persist-123');
+
+    store2.close();
+  });
+
+  it('project bindings survive restart', () => {
+    // Create store and add a project
+    const store1 = new Store(dbPath);
+    store1.createProject('C_BIND_1', '/path/to/project', 'codex');
+    store1.close();
+
+    // Reopen store (simulates restart)
+    const store2 = new Store(dbPath);
+    const project = store2.getProjectByChannelId('C_BIND_1');
+    expect(project).toBeDefined();
+    expect(project!.project_dir).toBe('/path/to/project');
+    expect(project!.backend_name).toBe('codex');
+    store2.close();
+  });
+
+  it('settings survive restart', () => {
+    const store1 = new Store(dbPath);
+    store1.setSetting('platforms', '["slack","discord"]');
+    store1.setSetting('default_backend', 'claude');
+    store1.close();
+
+    const store2 = new Store(dbPath);
+    expect(store2.getSetting('platforms')).toBe('["slack","discord"]');
+    expect(store2.getSetting('default_backend')).toBe('claude');
+    store2.close();
+  });
+});
