@@ -722,7 +722,7 @@
             "Error events posted as Discord messages with explanation",
             "Backend crashes reported clearly"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P4.10",
