@@ -704,7 +704,7 @@
             "Deny button sends denial to router",
             "Interaction is acknowledged and message updated"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P4.8",
