@@ -769,7 +769,7 @@
             "Saved to project directory",
             "Path passed to backend with context"
           ],
-          "status": "failing"
+          "status": "passing"
         }
       ]
     },
