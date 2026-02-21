@@ -177,21 +177,23 @@ export function buildCodexArgs(
   imagePaths?: string[],
 ): string[] {
   if (sessionId) {
-    // Resume: codex exec resume --skip-git-repo-check --json SESSION_ID "prompt"
+    // Resume: codex exec resume --skip-git-repo-check --json SESSION_ID -- "prompt"
     // Note: --sandbox and -i are NOT included in resume (persists from initial invocation)
-    return ['exec', 'resume', '--skip-git-repo-check', '--json', sessionId, text];
+    return ['exec', 'resume', '--skip-git-repo-check', '--json', sessionId, '--', text];
   }
 
   const args = ['exec', '--skip-git-repo-check', '--json', '--sandbox', sandbox];
 
-  // Attach images via -i flag (Codex CLI multimodal input)
+  // Attach images via -i/--image flag (Codex CLI multimodal input)
   if (imagePaths) {
     for (const imgPath of imagePaths) {
       args.push('-i', imgPath);
     }
   }
 
-  args.push(text);
+  // Use -- to separate options from the prompt positional argument.
+  // Without this, the arg parser can misinterpret the prompt as a flag value.
+  args.push('--', text);
   return args;
 }
 
