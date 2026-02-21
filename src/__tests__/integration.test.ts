@@ -199,7 +199,7 @@ describe('P7.1: End-to-end Slack → Claude Code → response posted in thread',
 
     // Verify backend was called correctly
     expect(mockBackend.calls).toEqual([
-      { method: 'start', args: [{ projectDir: '/home/user/my-project' }] },
+      { method: 'start', args: [expect.objectContaining({ projectDir: '/home/user/my-project' })] },
       { method: 'send', args: ['Create a new file called hello.ts'] },
     ]);
 

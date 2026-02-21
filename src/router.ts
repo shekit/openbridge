@@ -41,6 +41,10 @@ export interface RouterOptions {
   timeoutMs?: number;
   /** Factory to generate MCP config for each backend session. */
   mcpConfigFactory?: McpConfigFactory;
+  /** IPC server info for permission hook scripts. */
+  ipc?: { port: number; secret: string };
+  /** Path to compiled hook scripts directory (dist/hooks/). */
+  hookScriptDir?: string;
 }
 
 export class Router {
@@ -49,12 +53,16 @@ export class Router {
   private activeBackends: Map<string, Backend> = new Map();
   private timeoutMs: number;
   private mcpConfigFactory?: McpConfigFactory;
+  private ipc?: { port: number; secret: string };
+  private hookScriptDir?: string;
 
   constructor(store: Store, backendFactory: BackendFactory, options?: RouterOptions) {
     this.store = store;
     this.backendFactory = backendFactory;
     this.timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.mcpConfigFactory = options?.mcpConfigFactory;
+    this.ipc = options?.ipc;
+    this.hookScriptDir = options?.hookScriptDir;
   }
 
   /** Send with timeout — races backend.send() against a timeout. */
@@ -140,7 +148,15 @@ export class Router {
       projectDir: project.project_dir,
       platform: project.platform,
     });
-    await backend.start({ projectDir: project.project_dir, mcpConfig });
+    await backend.start({
+      projectDir: project.project_dir,
+      mcpConfig,
+      ipc: this.ipc,
+      channelId,
+      threadId,
+      platform: project.platform,
+      hookScriptDir: this.hookScriptDir,
+    });
 
     // Track as active for graceful shutdown
     this.activeBackends.set(session.thread_id, backend);
@@ -232,7 +248,15 @@ export class Router {
       projectDir: project.project_dir,
       platform: project.platform,
     });
-    await backend.start({ projectDir: project.project_dir, mcpConfig });
+    await backend.start({
+      projectDir: project.project_dir,
+      mcpConfig,
+      ipc: this.ipc,
+      channelId,
+      threadId,
+      platform: project.platform,
+      hookScriptDir: this.hookScriptDir,
+    });
 
     // Track as active for graceful shutdown
     this.activeBackends.set(session.thread_id, backend);

@@ -391,14 +391,17 @@ describe('Router', () => {
         platform: 'slack',
       });
 
-      expect(startSpy).toHaveBeenCalledWith({
+      expect(startSpy).toHaveBeenCalledWith(expect.objectContaining({
         projectDir: '/tmp/proj',
         mcpConfig: {
           command: 'node',
           args: ['entry.js', '--channel', 'CH_MCP', '--thread', 'T_MCP'],
           env: { OPENBRIDGE_IPC_PORT: '9999' },
         },
-      });
+        channelId: 'CH_MCP',
+        threadId: 'T_MCP',
+        platform: 'slack',
+      }));
     });
 
     it('passes undefined mcpConfig when no factory is set', async () => {
@@ -417,10 +420,10 @@ describe('Router', () => {
 
       await routerNoMcp.send('CH_NOMCP', 'T_NOMCP', 'hello');
 
-      expect(startSpy).toHaveBeenCalledWith({
+      expect(startSpy).toHaveBeenCalledWith(expect.objectContaining({
         projectDir: '/tmp/proj2',
         mcpConfig: undefined,
-      });
+      }));
     });
   });
 });

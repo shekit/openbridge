@@ -23,6 +23,14 @@ export interface BackendOptions {
   projectDir: string;
   /** Optional MCP server config to inject so the backend agent gets bridge tools. */
   mcpConfig?: McpServerEntry;
+  /** IPC server connection info for hook scripts. */
+  ipc?: { port: number; secret: string };
+  /** Chat context for hook scripts to send permission prompts. */
+  channelId?: string;
+  threadId?: string;
+  platform?: string;
+  /** Path to compiled hook scripts directory (dist/hooks/). */
+  hookScriptDir?: string;
 }
 
 export interface Backend {

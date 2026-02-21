@@ -1380,6 +1380,17 @@
             "Integration tests with real IPC server verify full flow"
           ],
           "status": "passing"
+        },
+        {
+          "id": "P11.6",
+          "description": "Extend BackendOptions with IPC/hook fields, wire through router to backend.start()",
+          "verification": [
+            "BackendOptions has ipc, channelId, threadId, platform, hookScriptDir fields",
+            "RouterOptions accepts ipc and hookScriptDir",
+            "Router.send() and Router.respond() pass all fields to backend.start()",
+            "All 473 existing tests pass"
+          ],
+          "status": "passing"
         }
       ]
     }
