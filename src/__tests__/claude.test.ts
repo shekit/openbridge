@@ -488,12 +488,12 @@ describe('Claude Code backend', () => {
   });
 
   describe('buildHookSettings', () => {
-    it('returns valid JSON with PreToolUse and PermissionRequest hooks', () => {
+    it('returns valid JSON with PreToolUse hook only', () => {
       const json = buildHookSettings('/opt/openbridge/dist');
       const settings = JSON.parse(json);
       expect(settings.hooks).toBeDefined();
       expect(settings.hooks.PreToolUse).toHaveLength(1);
-      expect(settings.hooks.PermissionRequest).toHaveLength(1);
+      expect(settings.hooks.PermissionRequest).toBeUndefined();
     });
 
     it('PreToolUse hook command points to pre-tool-use.js in hookScriptDir', () => {
@@ -502,23 +502,13 @@ describe('Claude Code backend', () => {
       const hook = settings.hooks.PreToolUse[0].hooks[0];
       expect(hook.type).toBe('command');
       expect(hook.command).toBe('node /opt/openbridge/dist/hooks/pre-tool-use.js');
-      expect(hook.timeout).toBe(10);
-    });
-
-    it('PermissionRequest hook command points to permission-request.js', () => {
-      const json = buildHookSettings('/opt/openbridge/dist');
-      const settings = JSON.parse(json);
-      const hook = settings.hooks.PermissionRequest[0].hooks[0];
-      expect(hook.type).toBe('command');
-      expect(hook.command).toBe('node /opt/openbridge/dist/hooks/permission-request.js');
       expect(hook.timeout).toBe(310);
     });
 
-    it('both hooks use wildcard matcher', () => {
+    it('uses wildcard matcher', () => {
       const json = buildHookSettings('/opt/openbridge/dist');
       const settings = JSON.parse(json);
       expect(settings.hooks.PreToolUse[0].matcher).toBe('*');
-      expect(settings.hooks.PermissionRequest[0].matcher).toBe('*');
     });
   });
 

@@ -223,8 +223,8 @@ export function parseClaudeOutput(
 
 /**
  * Build a --settings JSON string that configures Claude Code hooks.
- * PreToolUse hook auto-approves MCP tools, PermissionRequest hook
- * sends real-time permission prompts via the IPC server.
+ * PreToolUse hook handles both MCP tool auto-approval and real-time
+ * permission prompts for tools like Bash, Write, Edit.
  */
 export function buildHookSettings(hookScriptDir: string): string {
   return JSON.stringify({
@@ -234,14 +234,6 @@ export function buildHookSettings(hookScriptDir: string): string {
         hooks: [{
           type: 'command',
           command: `node ${hookScriptDir}/hooks/pre-tool-use.js`,
-          timeout: 10,
-        }],
-      }],
-      PermissionRequest: [{
-        matcher: '*',
-        hooks: [{
-          type: 'command',
-          command: `node ${hookScriptDir}/hooks/permission-request.js`,
           timeout: 310,
         }],
       }],
