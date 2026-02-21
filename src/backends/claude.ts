@@ -252,23 +252,40 @@ export function buildHookSettings(hookScriptDir: string): string {
 
 /**
  * Build stream-json JSONL input for Claude Code stdin.
- * Used when passing images — text-only messages don't need this (use --input-format text).
+ * Used when passing images or PDFs — text-only messages don't need this (use --input-format text).
  * Format matches Anthropic API content blocks inside a stream-json user message.
+ *
+ * File kinds map to content blocks:
+ * - image → { type: 'image', source: { type: 'base64', ... } }
+ * - pdf   → { type: 'document', source: { type: 'base64', media_type: 'application/pdf', ... } }
+ * - text/binary → no content block (handled via prompt text)
  */
-export function buildStreamJsonInput(text: string, images?: FileAttachment[]): string {
+export function buildStreamJsonInput(text: string, files?: FileAttachment[]): string {
   const content: Array<Record<string, unknown>> = [];
 
-  // Add images first (model sees them before the text prompt)
-  if (images) {
-    for (const img of images) {
-      content.push({
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: img.mediaType,
-          data: img.base64,
-        },
-      });
+  // Add file content blocks (images and PDFs only — text/binary are in the prompt)
+  if (files) {
+    for (const file of files) {
+      if (file.kind === 'image') {
+        content.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: file.mediaType,
+            data: file.base64,
+          },
+        });
+      } else if (file.kind === 'pdf') {
+        content.push({
+          type: 'document',
+          source: {
+            type: 'base64',
+            media_type: 'application/pdf',
+            data: file.base64,
+          },
+        });
+      }
+      // text and binary files: no content block — their info is in the prompt text
     }
   }
 
@@ -402,7 +419,7 @@ export class ClaudeBackend implements Backend {
     console.log(`[claude] initialized for project: ${this.projectDir}`);
   }
 
-  async send(text: string, images?: FileAttachment[]): Promise<SendResult> {
+  async send(text: string, files?: FileAttachment[]): Promise<SendResult> {
     // Build MCP config JSON for explicit --mcp-config flag
     let mcpConfigJson: string | undefined;
     if (this.mcpConfig) {
@@ -425,11 +442,12 @@ export class ClaudeBackend implements Backend {
       ? buildHookSettings(this.hookScriptDir)
       : undefined;
 
-    // Use stream-json input when images are attached (text-only uses simpler text input)
-    const useStreamJson = images !== undefined && images.length > 0;
+    // Use stream-json input when files that produce content blocks are attached
+    // (images and PDFs — text/binary files don't need content blocks)
+    const useStreamJson = files?.some(f => f.kind === 'image' || f.kind === 'pdf') ?? false;
     let stdinData: string | undefined;
     if (useStreamJson) {
-      stdinData = buildStreamJsonInput(text, images);
+      stdinData = buildStreamJsonInput(text, files);
     }
 
     const args = buildClaudeArgs(

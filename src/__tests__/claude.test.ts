@@ -640,6 +640,47 @@ describe('Claude Code backend', () => {
       expect(parsed.message.content).toHaveLength(1);
       expect(parsed.message.content[0].type).toBe('text');
     });
+
+    it('produces document content block for PDF files', () => {
+      const files = [
+        { base64: 'cGRmZGF0YQ==', mediaType: 'application/pdf', kind: 'pdf' as const },
+      ];
+      const input = buildStreamJsonInput('review this PDF', files);
+      const parsed = JSON.parse(input);
+      expect(parsed.message.content).toHaveLength(2); // 1 document + 1 text
+      expect(parsed.message.content[0].type).toBe('document');
+      expect(parsed.message.content[0].source.type).toBe('base64');
+      expect(parsed.message.content[0].source.media_type).toBe('application/pdf');
+      expect(parsed.message.content[0].source.data).toBe('cGRmZGF0YQ==');
+      expect(parsed.message.content[1]).toEqual({ type: 'text', text: 'review this PDF' });
+    });
+
+    it('produces no content blocks for text and binary files', () => {
+      const files = [
+        { base64: 'dGV4dA==', mediaType: 'text/plain', kind: 'text' as const },
+        { base64: 'YmluYXJ5', mediaType: 'application/octet-stream', kind: 'binary' as const },
+      ];
+      const input = buildStreamJsonInput('check these files', files);
+      const parsed = JSON.parse(input);
+      // Only the text prompt — no content blocks for text/binary files
+      expect(parsed.message.content).toHaveLength(1);
+      expect(parsed.message.content[0]).toEqual({ type: 'text', text: 'check these files' });
+    });
+
+    it('produces mixed content blocks for image + PDF + text files', () => {
+      const files = [
+        { base64: 'aW1n', mediaType: 'image/png', kind: 'image' as const },
+        { base64: 'cGRm', mediaType: 'application/pdf', kind: 'pdf' as const },
+        { base64: 'dHh0', mediaType: 'text/csv', kind: 'text' as const },
+      ];
+      const input = buildStreamJsonInput('analyze all these', files);
+      const parsed = JSON.parse(input);
+      // image + document + text prompt = 3 content blocks (text file gets no block)
+      expect(parsed.message.content).toHaveLength(3);
+      expect(parsed.message.content[0].type).toBe('image');
+      expect(parsed.message.content[1].type).toBe('document');
+      expect(parsed.message.content[2]).toEqual({ type: 'text', text: 'analyze all these' });
+    });
   });
 
   describe('P12.9: buildClaudeArgs with useStreamJsonInput', () => {

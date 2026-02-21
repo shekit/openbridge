@@ -1717,7 +1717,7 @@
             "useStreamJson only activates for images or PDFs",
             "Unit tests pass"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P14.4",
