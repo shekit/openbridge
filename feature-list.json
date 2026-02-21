@@ -1617,7 +1617,7 @@
             "ImageAttachment objects include uploadId, filename, stagingPath",
             "Unit tests verify staging metadata is populated"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P13.4",

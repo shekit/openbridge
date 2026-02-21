@@ -1315,6 +1315,12 @@ describe('DiscordAdapter', () => {
         expect(capturedImages).toHaveLength(1);
         expect(capturedImages![0].mediaType).toBe('image/jpeg');
         expect(capturedImages![0].base64).toBe(fakeImageData.toString('base64'));
+        // P13.3: staging metadata populated
+        expect(capturedImages![0].uploadId).toMatch(/^upload_[a-f0-9]{12}$/);
+        expect(capturedImages![0].filename).toBe('photo.jpg');
+        expect(capturedImages![0].stagingPath).toBeTruthy();
+        // Clean up staging file
+        try { (await import('node:fs')).unlinkSync(capturedImages![0].stagingPath); } catch {}
       } finally {
         globalThis.fetch = originalFetch;
       }

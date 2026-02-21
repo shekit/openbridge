@@ -27,7 +27,7 @@ import * as fs from 'node:fs';
 import type { Router, RouteResult } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
-import { splitText, isImageMimeType, downloadToBase64 } from '../utils.js';
+import { splitText, isImageMimeType, downloadToBase64, saveToStagingDir } from '../utils.js';
 import type { ImageAttachment } from '../types/backend.js';
 import { resolvePermission } from '../mcp/ipc-server.js';
 
@@ -968,8 +968,15 @@ export class DiscordAdapter {
         // Download image for passthrough to backend (Discord URLs are public)
         const downloaded = await downloadToBase64(file.url);
         if (downloaded) {
-          images.push({ base64: downloaded.base64, mediaType: downloaded.mediaType });
-          console.log(`[discord] downloaded image ${file.name} (${downloaded.mediaType})`);
+          const staging = saveToStagingDir(downloaded.base64, downloaded.mediaType, file.name);
+          images.push({
+            base64: downloaded.base64,
+            mediaType: downloaded.mediaType,
+            uploadId: staging.uploadId,
+            filename: staging.filename,
+            stagingPath: staging.stagingPath,
+          });
+          console.log(`[discord] downloaded image ${file.name} (${downloaded.mediaType}, staged as ${staging.uploadId})`);
         } else {
           fileDescriptions.push(`[Uploaded image: ${file.name} (download failed)]`);
         }
