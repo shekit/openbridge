@@ -111,10 +111,11 @@ export function createMcpServer(
     'open_tunnel',
     {
       description:
-        'Expose a local port via a public tunnel (Cloudflare Tunnel or ngrok) and post the URL in the chat thread. ' +
+        'Expose a local port via a public tunnel (Cloudflare Tunnel or ngrok) and return the public URL. ' +
         'IMPORTANT: Before calling this, start your dev server in the BACKGROUND using a shell command with & ' +
         '(e.g. `npm run dev &` or `npx serve -p 3000 &`). Do NOT run the server in the foreground — ' +
-        'it will block forever. Once the server is running in the background, call this tool with its port number.',
+        'it will block forever. Once the server is running in the background, call this tool with its port number. ' +
+        'After receiving the URL, use post_message to share it with the user.',
       inputSchema: {
         port: z.number().int().min(1).max(65535).describe('Port number to tunnel'),
         ttl: z.number().int().min(60).max(86400).default(3600).optional()
@@ -125,13 +126,6 @@ export function createMcpServer(
       try {
         const tunnelTtl = ttl ?? 3600;
         const url = await callbacks.openTunnel(port, tunnelTtl);
-
-        // Post the URL in the chat thread
-        await callbacks.postMessage(
-          context.channelId,
-          context.threadId,
-          `Tunnel opened: ${url}\n(expires in ${Math.round(tunnelTtl / 60)} minutes)`,
-        );
 
         return {
           content: [{ type: 'text', text: `Tunnel opened: ${url} (TTL: ${tunnelTtl}s)` }],
@@ -151,7 +145,8 @@ export function createMcpServer(
     'serve_file_browser',
     {
       description:
-        'Serve a lightweight file browser for the project directory (or a subdirectory) behind a public tunnel. Posts the URL in the chat thread.',
+        'Serve a lightweight file browser for the project directory (or a subdirectory) behind a public tunnel. ' +
+        'Returns the URL. Use post_message to share it with the user.',
       inputSchema: {
         directory: z.string().default('.').optional()
           .describe('Directory to serve (relative to project directory, defaults to project root)'),
@@ -170,13 +165,6 @@ export function createMcpServer(
         }
 
         const url = await callbacks.serveFileBrowser(resolved);
-
-        // Post the URL in the chat thread
-        await callbacks.postMessage(
-          context.channelId,
-          context.threadId,
-          `File browser: ${url}`,
-        );
 
         return {
           content: [{ type: 'text', text: `File browser available at: ${url}` }],

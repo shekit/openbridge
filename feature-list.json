@@ -1783,7 +1783,7 @@
             "Tool descriptions updated to remove 'post URL in chat' language",
             "Build passes, all tests pass"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P16.4",

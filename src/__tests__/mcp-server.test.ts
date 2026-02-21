@@ -382,18 +382,14 @@ describe('P5.4: open_tunnel MCP tool', () => {
     expect(result.content[0].text).toContain('TTL: 3600s');
   });
 
-  it('open_tunnel posts URL in chat thread', async () => {
+  it('open_tunnel does not auto-post URL (Claude uses post_message instead)', async () => {
     const server = createMcpServer(context, callbacks);
     const tools = (server as any)._registeredTools;
     const tunnelTool = tools['open_tunnel'];
     const handler = tunnelTool.handler;
 
     await handler({ port: 3000, ttl: 1800 }, {});
-    expect(callbacks.postMessage).toHaveBeenCalledWith(
-      'CH_TEST',
-      'T_TEST',
-      expect.stringContaining('https://tunnel.example.com'),
-    );
+    expect(callbacks.postMessage).not.toHaveBeenCalled();
   });
 
   it('open_tunnel returns error on callback failure', async () => {
@@ -456,18 +452,14 @@ describe('P5.5: serve_file_browser MCP tool', () => {
     expect(result.content[0].text).toContain('File browser available at');
   });
 
-  it('serve_file_browser posts URL in chat thread', async () => {
+  it('serve_file_browser does not auto-post URL (Claude uses post_message instead)', async () => {
     const server = createMcpServer(context, callbacks);
     const tools = (server as any)._registeredTools;
     const browserTool = tools['serve_file_browser'];
     const handler = browserTool.handler;
 
     await handler({ directory: '.' }, {});
-    expect(callbacks.postMessage).toHaveBeenCalledWith(
-      'CH_TEST',
-      'T_TEST',
-      expect.stringContaining('https://browser.example.com'),
-    );
+    expect(callbacks.postMessage).not.toHaveBeenCalled();
   });
 
   it('serve_file_browser rejects paths outside project directory', async () => {
