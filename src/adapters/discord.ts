@@ -319,6 +319,21 @@ export class DiscordAdapter {
       await this.postProjectPicker(interaction, offset);
       return;
     }
+    if (customId === 'sandbox_upgrade') {
+      const channelId = this.getInteractionChannelId(interaction);
+      if (channelId) {
+        const project = this.store.getProjectByChannelId(channelId);
+        if (project) {
+          this.store.updateSandboxMode(project.id, 'danger-full-access');
+          console.log(`[discord] upgraded sandbox to danger-full-access for project ${project.id}`);
+        }
+      }
+      await interaction.update({
+        content: '**Sandbox upgraded to full access.** Try your request again.',
+        components: [],
+      });
+      return;
+    }
     if (customId.startsWith('perm_mode_')) {
       const rest = customId.slice('perm_mode_'.length); // e.g. "trusted:42"
       const colonIdx = rest.indexOf(':');
@@ -456,7 +471,11 @@ export class DiscordAdapter {
           break;
 
         case 'permission_denied':
-          await this.postPermissionPrompt(channelId, threadId, event, context);
+          if (event.toolName === 'sandbox') {
+            await this.postSandboxUpgradePrompt(channelId, threadId, event.context || '', context);
+          } else {
+            await this.postPermissionPrompt(channelId, threadId, event, context);
+          }
           break;
 
         case 'error':
@@ -515,6 +534,24 @@ export class DiscordAdapter {
 
     const content = `**Permission requested: \`${event.toolName}\`**\n\`\`\`\n${inputStr}\n\`\`\`${contextStr}\n_or type a custom response_`;
 
+    await this.sendToThread(threadId, context, content, [row]);
+  }
+
+  /** Post a sandbox upgrade prompt for Codex sandbox denials. */
+  async postSandboxUpgradePrompt(
+    channelId: string,
+    threadId: string,
+    contextText: string,
+    context: any
+  ): Promise<void> {
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId('sandbox_upgrade')
+        .setLabel('Upgrade to Full Access')
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    const content = `**Sandbox denied this action:**\n${contextText.slice(0, 500)}\n_This will allow unrestricted file system access for all future Codex sessions in this project_`;
     await this.sendToThread(threadId, context, content, [row]);
   }
 

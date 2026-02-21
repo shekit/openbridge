@@ -225,6 +225,9 @@ export class CodexBackend implements Backend {
     // Trusted mode — override sandbox to full access (no restrictions)
     if (options.permissionMode === 'trusted') {
       this.sandbox = 'danger-full-access';
+    } else if (options.sandboxMode && ['workspace-write', 'read-only', 'danger-full-access'].includes(options.sandboxMode)) {
+      // Use sandbox mode from project settings (may have been upgraded via P12.7)
+      this.sandbox = options.sandboxMode as SandboxMode;
     }
 
     // Write MCP config if provided so Codex discovers the bridge tools

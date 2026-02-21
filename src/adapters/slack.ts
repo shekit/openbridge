@@ -141,6 +141,11 @@ export class SlackAdapter {
       await this.handlePermissionAction(body as any, 'always_allow', client);
     });
 
+    this.app.action('sandbox_upgrade', async ({ body, ack, client }) => {
+      await ack();
+      await this.handleSandboxUpgrade(body as any, client);
+    });
+
     this.app.action('perm_mode_trusted', async ({ body, ack, client }) => {
       await ack();
       await this.handlePermModeAction(body as any, 'trusted', client);
@@ -487,7 +492,11 @@ export class SlackAdapter {
           break;
 
         case 'permission_denied':
-          await this.postPermissionPrompt(channelId, threadTs, event, client);
+          if (event.toolName === 'sandbox') {
+            await this.postSandboxUpgradePrompt(channelId, threadTs, event.context || '', client);
+          } else {
+            await this.postPermissionPrompt(channelId, threadTs, event, client);
+          }
           break;
 
         case 'error':
@@ -921,6 +930,76 @@ export class SlackAdapter {
     await client.chat.postMessage({
       channel: channelId,
       text: `Permission mode set to *${mode}*${mode === 'trusted' ? ' — all permissions will be auto-approved' : ' — you\'ll be asked to approve actions'}`,
+    });
+  }
+
+  /** Handle sandbox upgrade button click. */
+  private async handleSandboxUpgrade(body: any, client: any): Promise<void> {
+    const channelId = body.channel?.id;
+    const messageTs = body.message?.ts;
+    if (!channelId) return;
+
+    const project = this.store.getProjectByChannelId(channelId);
+    if (project) {
+      this.store.updateSandboxMode(project.id, 'danger-full-access');
+      console.log(`[slack] upgraded sandbox to danger-full-access for project ${project.id}`);
+    }
+
+    try {
+      await client.chat.update({
+        channel: channelId,
+        ts: messageTs,
+        text: 'Sandbox upgraded to full access. Try your request again.',
+        blocks: [
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: '*Sandbox upgraded to full access.* Try your request again.' },
+          },
+        ],
+      });
+    } catch { /* non-fatal */ }
+  }
+
+  /** Post a sandbox upgrade prompt for Codex sandbox denials. */
+  private async postSandboxUpgradePrompt(
+    channelId: string,
+    threadTs: string,
+    context: string,
+    client: any
+  ): Promise<void> {
+    await client.chat.postMessage({
+      channel: channelId,
+      thread_ts: threadTs,
+      text: 'Sandbox denied this action',
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Sandbox denied this action:*\n${context.slice(0, 500)}`,
+          },
+        },
+        {
+          type: 'actions',
+          elements: [
+            {
+              type: 'button',
+              text: { type: 'plain_text', text: 'Upgrade to Full Access' },
+              style: 'danger',
+              action_id: 'sandbox_upgrade',
+            },
+          ],
+        },
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: '_This will allow unrestricted file system access for all future Codex sessions in this project_',
+            },
+          ],
+        },
+      ],
     });
   }
 

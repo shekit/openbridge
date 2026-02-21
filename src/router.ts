@@ -157,6 +157,7 @@ export class Router {
       platform: project.platform,
       hookScriptDir: this.hookScriptDir,
       permissionMode: project.permission_mode,
+      sandboxMode: project.sandbox_mode,
     });
 
     // Track as active for graceful shutdown
@@ -264,6 +265,7 @@ export class Router {
       platform: project.platform,
       hookScriptDir: this.hookScriptDir,
       permissionMode: project.permission_mode,
+      sandboxMode: project.sandbox_mode,
     });
 
     // Track as active for graceful shutdown

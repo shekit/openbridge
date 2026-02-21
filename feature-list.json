@@ -1528,7 +1528,7 @@
             "Clicking 'Keep restricted' leaves sandbox_mode unchanged",
             "Unit tests verify upgrade flow and persistence"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P12.8",

@@ -33,6 +33,8 @@ export interface BackendOptions {
   hookScriptDir?: string;
   /** Permission mode for the project ('trusted' skips all permission prompts). */
   permissionMode?: string;
+  /** Sandbox mode for Codex ('workspace-write' | 'read-only' | 'danger-full-access'). */
+  sandboxMode?: string;
 }
 
 export interface Backend {

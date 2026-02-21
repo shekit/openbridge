@@ -1186,6 +1186,72 @@ describe('SlackAdapter', () => {
     });
   });
 
+  describe('P12.7: Codex sandbox upgrade flow', () => {
+    it('renders sandbox denials with Upgrade button instead of Allow/Deny', async () => {
+      const sandboxBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => ({
+          events: [
+            {
+              type: 'permission_denied' as const,
+              toolName: 'sandbox',
+              toolInput: { command: 'touch /etc/test' },
+              context: 'touch: /etc/test: Operation not permitted',
+            },
+          ],
+          sessionId: 'session-123',
+        })),
+        getSessionId: vi.fn(() => 'session-123'),
+        setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
+        stop: vi.fn(async () => {}),
+      }));
+
+      createAdapter({ backendFactory: sandboxBackend });
+      await adapter.start();
+      store.createProject('C_SB', '/test/sb', 'codex');
+
+      await triggerMessage({
+        channel: 'C_SB',
+        text: 'touch /etc/test',
+        user: 'U_USER1',
+        ts: '1234567890.000002',
+        thread_ts: '1234567890.000001',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      const upgradeCall = calls.find(
+        (c: any) => c[0].blocks?.some((b: any) =>
+          b.type === 'actions' && b.elements?.some((e: any) => e.action_id === 'sandbox_upgrade')
+        )
+      );
+      expect(upgradeCall).toBeDefined();
+      expect(upgradeCall![0].blocks[0].text.text).toContain('Sandbox denied');
+    });
+
+    it('sandbox_upgrade button updates project sandbox_mode', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const project = store.createProject('C_SBU', '/test/sbu', 'codex');
+      expect(project.sandbox_mode).toBe('workspace-write');
+
+      await triggerAction('sandbox_upgrade', {
+        channel: { id: 'C_SBU' },
+        message: { ts: '1234567890.000005' },
+      });
+
+      const updated = store.getProjectById(project.id)!;
+      expect(updated.sandbox_mode).toBe('danger-full-access');
+
+      expect(mockApp.client.chat.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining('Sandbox upgraded'),
+        })
+      );
+    });
+  });
+
   describe('P12.2: Permission mode selection on project connect', () => {
     it('posts permission mode prompt after binding a project', async () => {
       createAdapter();
