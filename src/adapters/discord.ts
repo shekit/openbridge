@@ -27,7 +27,7 @@ import * as fs from 'node:fs';
 import type { Router, RouteResult } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
-import { splitText, isImageMimeType, downloadToBase64, saveToStagingDir } from '../utils.js';
+import { splitText, downloadAndStageFile } from '../utils.js';
 import type { FileAttachment } from '../types/backend.js';
 import { resolvePermission } from '../mcp/ipc-server.js';
 
@@ -949,7 +949,7 @@ export class DiscordAdapter {
     }
   }
 
-  /** Handle file uploads in messages — downloads images for backend passthrough. */
+  /** Handle file uploads in messages — downloads all file types for backend passthrough. */
   async handleFileUpload(
     channelId: string,
     threadId: string,
@@ -960,40 +960,37 @@ export class DiscordAdapter {
     const project = this.store.getProjectByChannelId(channelId);
     if (!project) return;
 
-    const images: FileAttachment[] = [];
-    const fileDescriptions: string[] = [];
+    const attachments: FileAttachment[] = [];
+    const textInclusions: string[] = [];
 
     for (const file of files) {
-      if (isImageMimeType(file.contentType)) {
-        // Download image for passthrough to backend (Discord URLs are public)
-        const downloaded = await downloadToBase64(file.url);
-        if (downloaded) {
-          const staging = saveToStagingDir(downloaded.base64, downloaded.mediaType, file.name);
-          images.push({
-            base64: downloaded.base64,
-            mediaType: downloaded.mediaType,
-            kind: 'image',
-            uploadId: staging.uploadId,
-            filename: staging.filename,
-            stagingPath: staging.stagingPath,
-          });
-          console.log(`[discord] downloaded image ${file.name} (${downloaded.mediaType}, staged as ${staging.uploadId})`);
-        } else {
-          fileDescriptions.push(`[Uploaded image: ${file.name} (download failed)]`);
+      // Discord URLs are public — no auth headers needed
+      const attachment = await downloadAndStageFile(file.url, file.name, file.contentType);
+
+      if (attachment) {
+        attachments.push(attachment);
+        // Include text file contents inline so the AI can read them
+        if (attachment.kind === 'text' && attachment.stagingPath) {
+          try {
+            const content = fs.readFileSync(attachment.stagingPath, 'utf8');
+            textInclusions.push(`\`\`\`${attachment.filename}\n${content}\n\`\`\``);
+          } catch { /* skip inline inclusion on read error */ }
         }
+        console.log(`[discord] downloaded ${attachment.kind} file ${file.name} (${attachment.mediaType}, staged as ${attachment.uploadId})`);
       } else {
-        fileDescriptions.push(`[Uploaded file: ${file.name}]`);
+        textInclusions.push(`[Uploaded file: ${file.name} (download failed)]`);
       }
     }
 
-    const combinedText =
-      fileDescriptions.length > 0 ? `${text}\n\n${fileDescriptions.join('\n')}` : text;
+    const combinedText = textInclusions.length > 0
+      ? `${text}\n\n${textInclusions.join('\n\n')}`
+      : text;
 
     let result: RouteResult;
     try {
       result = await this.router.send(
         channelId, threadId, combinedText,
-        images.length > 0 ? images : undefined,
+        attachments.length > 0 ? attachments : undefined,
       );
     } catch (err: any) {
       await this.postError(channelId, threadId, err.message, context);

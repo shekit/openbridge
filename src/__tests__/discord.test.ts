@@ -1326,31 +1326,148 @@ describe('DiscordAdapter', () => {
       }
     });
 
-    it('non-image attachments are described as text', async () => {
+    it('downloads PDF files and passes them as attachments', async () => {
+      const originalFetch = globalThis.fetch;
+      const fakePdfData = Buffer.from('fake-pdf-data');
+      globalThis.fetch = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => fakePdfData.buffer.slice(
+          fakePdfData.byteOffset,
+          fakePdfData.byteOffset + fakePdfData.byteLength,
+        ),
+        headers: new Headers({ 'content-type': 'application/pdf' }),
+      })) as any;
+
+      try {
+        let capturedFiles: any[] | undefined;
+        const pdfBackend = vi.fn(() => ({
+          start: vi.fn(async () => {}),
+          send: vi.fn(async (_text: string, files?: any[]) => {
+            capturedFiles = files;
+            return {
+              events: [{ type: 'assistant_text' as const, text: 'Got it' }],
+              sessionId: 'session-pdf',
+            };
+          }),
+          getSessionId: vi.fn(() => 'session-pdf'),
+          setSessionId: vi.fn(),
+          setAllowedTools: vi.fn(),
+          stop: vi.fn(async () => {}),
+        }));
+
+        createAdapter({ backendFactory: pdfBackend });
+        await adapter.start();
+        store.createProject('C_BOUND', '/test/project', 'claude');
+
+        const { message } = createMockMessage({
+          channelId: 'thread-pdf',
+          content: 'review this doc',
+          isThread: true,
+          parentId: 'C_BOUND',
+          attachments: [
+            { name: 'report.pdf', url: 'https://cdn.discord.com/report.pdf', contentType: 'application/pdf' },
+          ],
+        });
+
+        await triggerMessage(message);
+
+        expect(capturedFiles).toBeDefined();
+        expect(capturedFiles).toHaveLength(1);
+        expect(capturedFiles![0].kind).toBe('pdf');
+        expect(capturedFiles![0].mediaType).toBe('application/pdf');
+        expect(capturedFiles![0].uploadId).toMatch(/^upload_[a-f0-9]{12}$/);
+        expect(capturedFiles![0].filename).toBe('report.pdf');
+        // Clean up staging file
+        try { fs.unlinkSync(capturedFiles![0].stagingPath); } catch {}
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    it('downloads text files and inlines their content', async () => {
+      const originalFetch = globalThis.fetch;
+      const fakeJsonData = Buffer.from('{"key": "value"}');
+      globalThis.fetch = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => fakeJsonData.buffer.slice(
+          fakeJsonData.byteOffset,
+          fakeJsonData.byteOffset + fakeJsonData.byteLength,
+        ),
+        headers: new Headers({ 'content-type': 'application/json' }),
+      })) as any;
+
+      try {
+        let capturedText = '';
+        let capturedFiles: any[] | undefined;
+        const jsonBackend = vi.fn(() => ({
+          start: vi.fn(async () => {}),
+          send: vi.fn(async (text: string, files?: any[]) => {
+            capturedText = text;
+            capturedFiles = files;
+            return {
+              events: [{ type: 'assistant_text' as const, text: 'Got it' }],
+              sessionId: 'session-json',
+            };
+          }),
+          getSessionId: vi.fn(() => 'session-json'),
+          setSessionId: vi.fn(),
+          setAllowedTools: vi.fn(),
+          stop: vi.fn(async () => {}),
+        }));
+
+        createAdapter({ backendFactory: jsonBackend });
+        await adapter.start();
+        store.createProject('C_BOUND', '/test/project', 'claude');
+
+        const { message } = createMockMessage({
+          channelId: 'thread-json',
+          content: 'check this config',
+          isThread: true,
+          parentId: 'C_BOUND',
+          attachments: [
+            { name: 'config.json', url: 'https://cdn.discord.com/config.json', contentType: 'application/json' },
+          ],
+        });
+
+        await triggerMessage(message);
+
+        expect(capturedText).toContain('config.json');
+        expect(capturedText).toContain('"key": "value"');
+        expect(capturedFiles).toBeDefined();
+        expect(capturedFiles).toHaveLength(1);
+        expect(capturedFiles![0].kind).toBe('text');
+        // Clean up staging file
+        try { fs.unlinkSync(capturedFiles![0].stagingPath); } catch {}
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    it('shows download failed message when file download fails', async () => {
       let capturedText = '';
-      let capturedImages: any[] | undefined;
-      const mixBackend = vi.fn(() => ({
+      let capturedFiles: any[] | undefined;
+      const failBackend = vi.fn(() => ({
         start: vi.fn(async () => {}),
-        send: vi.fn(async (text: string, images?: any[]) => {
+        send: vi.fn(async (text: string, files?: any[]) => {
           capturedText = text;
-          capturedImages = images;
+          capturedFiles = files;
           return {
             events: [{ type: 'assistant_text' as const, text: 'Got it' }],
-            sessionId: 'session-mix',
+            sessionId: 'session-fail',
           };
         }),
-        getSessionId: vi.fn(() => 'session-mix'),
+        getSessionId: vi.fn(() => 'session-fail'),
         setSessionId: vi.fn(),
         setAllowedTools: vi.fn(),
         stop: vi.fn(async () => {}),
       }));
 
-      createAdapter({ backendFactory: mixBackend });
+      createAdapter({ backendFactory: failBackend });
       await adapter.start();
       store.createProject('C_BOUND', '/test/project', 'claude');
 
       const { message } = createMockMessage({
-        channelId: 'thread-pdf',
+        channelId: 'thread-fail',
         content: 'review this doc',
         isThread: true,
         parentId: 'C_BOUND',
@@ -1362,7 +1479,8 @@ describe('DiscordAdapter', () => {
       await triggerMessage(message);
 
       expect(capturedText).toContain('report.pdf');
-      expect(capturedImages).toBeUndefined();
+      expect(capturedText).toContain('download failed');
+      expect(capturedFiles).toBeUndefined();
     });
   });
 });

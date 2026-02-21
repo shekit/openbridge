@@ -1705,7 +1705,7 @@
             "Both adapters use downloadAndStageFile (DRY)",
             "Unit tests pass"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P14.3",

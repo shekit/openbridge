@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SlackAdapter, splitText, createBoltApp } from '../adapters/slack.js';
-import { isImageMimeType } from '../utils.js';
+import { isImageMimeType, classifyMimeType } from '../utils.js';
 import { Router } from '../router.js';
 import { Store } from '../store.js';
 import * as path from 'node:path';
@@ -1379,32 +1379,147 @@ describe('SlackAdapter', () => {
       }
     });
 
-    it('non-image files are described as text, not downloaded', async () => {
+    it('downloads PDF files and passes them as attachments', async () => {
+      const originalFetch = globalThis.fetch;
+      const fakePdfData = Buffer.from('fake-pdf-data');
+      globalThis.fetch = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => fakePdfData.buffer.slice(
+          fakePdfData.byteOffset,
+          fakePdfData.byteOffset + fakePdfData.byteLength,
+        ),
+        headers: new Headers({ 'content-type': 'application/pdf' }),
+      })) as any;
+
+      try {
+        let capturedFiles: any[] | undefined;
+        const pdfBackend = vi.fn(() => ({
+          start: vi.fn(async () => {}),
+          send: vi.fn(async (_text: string, files?: any[]) => {
+            capturedFiles = files;
+            return {
+              events: [{ type: 'assistant_text' as const, text: 'Got it' }],
+              sessionId: 'session-pdf',
+            };
+          }),
+          getSessionId: vi.fn(() => 'session-pdf'),
+          setSessionId: vi.fn(),
+          setAllowedTools: vi.fn(),
+          stop: vi.fn(async () => {}),
+        }));
+
+        createAdapter({ backendFactory: pdfBackend });
+        await adapter.start();
+        store.createProject('C_PDF', '/test/pdf', 'claude');
+
+        await adapter.handleFileUpload(
+          'C_PDF',
+          '1234567890.PDF001',
+          [
+            { name: 'report.pdf', mimetype: 'application/pdf', url_private_download: 'https://files.slack.com/report.pdf' },
+          ],
+          'review this',
+          mockApp.client,
+        );
+
+        expect(capturedFiles).toBeDefined();
+        expect(capturedFiles).toHaveLength(1);
+        expect(capturedFiles![0].kind).toBe('pdf');
+        expect(capturedFiles![0].mediaType).toBe('application/pdf');
+        expect(capturedFiles![0].uploadId).toMatch(/^upload_[a-f0-9]{12}$/);
+        expect(capturedFiles![0].filename).toBe('report.pdf');
+        // Clean up staging file
+        try { fs.unlinkSync(capturedFiles![0].stagingPath); } catch {}
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    it('downloads text files, stages them, and inlines their content', async () => {
+      const originalFetch = globalThis.fetch;
+      const fakeCsvData = Buffer.from('name,age\nAlice,30\nBob,25');
+      globalThis.fetch = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => fakeCsvData.buffer.slice(
+          fakeCsvData.byteOffset,
+          fakeCsvData.byteOffset + fakeCsvData.byteLength,
+        ),
+        headers: new Headers({ 'content-type': 'text/csv' }),
+      })) as any;
+
+      try {
+        let capturedText = '';
+        let capturedFiles: any[] | undefined;
+        const csvBackend = vi.fn(() => ({
+          start: vi.fn(async () => {}),
+          send: vi.fn(async (text: string, files?: any[]) => {
+            capturedText = text;
+            capturedFiles = files;
+            return {
+              events: [{ type: 'assistant_text' as const, text: 'Got it' }],
+              sessionId: 'session-csv',
+            };
+          }),
+          getSessionId: vi.fn(() => 'session-csv'),
+          setSessionId: vi.fn(),
+          setAllowedTools: vi.fn(),
+          stop: vi.fn(async () => {}),
+        }));
+
+        createAdapter({ backendFactory: csvBackend });
+        await adapter.start();
+        store.createProject('C_CSV', '/test/csv', 'claude');
+
+        await adapter.handleFileUpload(
+          'C_CSV',
+          '1234567890.CSV001',
+          [
+            { name: 'data.csv', mimetype: 'text/csv', url_private_download: 'https://files.slack.com/data.csv' },
+          ],
+          'analyze this',
+          mockApp.client,
+        );
+
+        // Text file contents should be inlined in the prompt
+        expect(capturedText).toContain('data.csv');
+        expect(capturedText).toContain('Alice,30');
+        // File should also be passed as an attachment (for staging/save)
+        expect(capturedFiles).toBeDefined();
+        expect(capturedFiles).toHaveLength(1);
+        expect(capturedFiles![0].kind).toBe('text');
+        // Clean up staging file
+        try { fs.unlinkSync(capturedFiles![0].stagingPath); } catch {}
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    it('shows download failed message when file download fails', async () => {
       let capturedText = '';
-      let capturedImages: any[] | undefined;
-      const mixBackend = vi.fn(() => ({
+      let capturedFiles: any[] | undefined;
+      const failBackend = vi.fn(() => ({
         start: vi.fn(async () => {}),
-        send: vi.fn(async (text: string, images?: any[]) => {
+        send: vi.fn(async (text: string, files?: any[]) => {
           capturedText = text;
-          capturedImages = images;
+          capturedFiles = files;
           return {
             events: [{ type: 'assistant_text' as const, text: 'Got it' }],
-            sessionId: 'session-mix',
+            sessionId: 'session-fail',
           };
         }),
-        getSessionId: vi.fn(() => 'session-mix'),
+        getSessionId: vi.fn(() => 'session-fail'),
         setSessionId: vi.fn(),
         setAllowedTools: vi.fn(),
         stop: vi.fn(async () => {}),
       }));
 
-      createAdapter({ backendFactory: mixBackend });
+      createAdapter({ backendFactory: failBackend });
       await adapter.start();
-      store.createProject('C_MIX', '/test/mix', 'claude');
+      store.createProject('C_FAIL', '/test/fail', 'claude');
 
       await adapter.handleFileUpload(
-        'C_MIX',
-        '1234567890.MIX001',
+        'C_FAIL',
+        '1234567890.FAIL001',
         [
           { name: 'report.pdf', mimetype: 'application/pdf', url_private_download: 'https://files.slack.com/report.pdf' },
         ],
@@ -1413,7 +1528,8 @@ describe('SlackAdapter', () => {
       );
 
       expect(capturedText).toContain('report.pdf');
-      expect(capturedImages).toBeUndefined();
+      expect(capturedText).toContain('download failed');
+      expect(capturedFiles).toBeUndefined();
     });
   });
 });

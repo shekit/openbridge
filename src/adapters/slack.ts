@@ -12,7 +12,7 @@ import { App, type LogLevel } from '@slack/bolt';
 import type { Router, RouteResult } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
-import { splitText, isImageMimeType, downloadToBase64, saveToStagingDir } from '../utils.js';
+import { splitText, downloadAndStageFile } from '../utils.js';
 import type { FileAttachment } from '../types/backend.js';
 import { resolvePermission } from '../mcp/ipc-server.js';
 
@@ -1232,7 +1232,7 @@ export class SlackAdapter {
     }
   }
 
-  /** Handle file uploads in messages — downloads images for backend passthrough. */
+  /** Handle file uploads in messages — downloads all file types for backend passthrough. */
   async handleFileUpload(
     channelId: string,
     threadTs: string,
@@ -1243,8 +1243,8 @@ export class SlackAdapter {
     const project = this.store.getProjectByChannelId(channelId);
     if (!project) return;
 
-    const images: FileAttachment[] = [];
-    const fileDescriptions: string[] = [];
+    const attachments: FileAttachment[] = [];
+    const textInclusions: string[] = [];
 
     // Get the bot token for authenticated downloads from Slack
     const botToken = (this.app as any).client?.token
@@ -1254,42 +1254,38 @@ export class SlackAdapter {
       const fileName = file.name || 'unknown';
       const mimeType = file.mimetype || '';
       const fileUrl = file.url_private_download || file.url_private;
+      if (!fileUrl) continue;
 
-      if (isImageMimeType(mimeType) && fileUrl) {
-        // Download image for passthrough to backend
-        const downloaded = await downloadToBase64(fileUrl, {
-          Authorization: `Bearer ${botToken}`,
-        });
-        if (downloaded) {
-          const staging = saveToStagingDir(downloaded.base64, downloaded.mediaType, fileName);
-          images.push({
-            base64: downloaded.base64,
-            mediaType: downloaded.mediaType,
-            kind: 'image',
-            uploadId: staging.uploadId,
-            filename: staging.filename,
-            stagingPath: staging.stagingPath,
-          });
-          console.log(`[slack] downloaded image ${fileName} (${downloaded.mediaType}, staged as ${staging.uploadId})`);
-        } else {
-          fileDescriptions.push(`[Uploaded image: ${fileName} (download failed)]`);
+      const attachment = await downloadAndStageFile(fileUrl, fileName, mimeType, {
+        Authorization: `Bearer ${botToken}`,
+      });
+
+      if (attachment) {
+        attachments.push(attachment);
+        // Include text file contents inline so the AI can read them
+        if (attachment.kind === 'text' && attachment.stagingPath) {
+          try {
+            const content = fs.readFileSync(attachment.stagingPath, 'utf8');
+            textInclusions.push(`\`\`\`${attachment.filename}\n${content}\n\`\`\``);
+          } catch { /* skip inline inclusion on read error */ }
         }
-      } else if (fileUrl) {
-        fileDescriptions.push(`[Uploaded file: ${fileName}]`);
+        console.log(`[slack] downloaded ${attachment.kind} file ${fileName} (${attachment.mediaType}, staged as ${attachment.uploadId})`);
+      } else {
+        textInclusions.push(`[Uploaded file: ${fileName} (download failed)]`);
       }
     }
 
-    // Combine non-image file descriptions with the message text
-    const combinedText = fileDescriptions.length > 0
-      ? `${text}\n\n${fileDescriptions.join('\n')}`
+    // Combine text inclusions with the message text
+    const combinedText = textInclusions.length > 0
+      ? `${text}\n\n${textInclusions.join('\n\n')}`
       : text;
 
-    // Route the combined message with images
+    // Route with all file attachments
     let result: RouteResult;
     try {
       result = await this.router.send(
         channelId, threadTs, combinedText,
-        images.length > 0 ? images : undefined,
+        attachments.length > 0 ? attachments : undefined,
       );
     } catch (err: any) {
       await this.postError(channelId, threadTs, err.message, client);
