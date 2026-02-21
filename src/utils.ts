@@ -18,6 +18,39 @@ export function getEnvPath(): string {
   return path.join(getConfigDir(), '.env.local');
 }
 
+/** MIME types we recognize as images for passthrough to backends. */
+const IMAGE_MIME_TYPES = new Set([
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp',
+]);
+
+/** Check if a MIME type is a supported image type. */
+export function isImageMimeType(mimeType: string | undefined | null): boolean {
+  if (!mimeType) return false;
+  // Handle "image/png; charset=..." etc.
+  const base = mimeType.split(';')[0].trim().toLowerCase();
+  return IMAGE_MIME_TYPES.has(base);
+}
+
+/**
+ * Download a URL to a base64 string. Returns null on failure.
+ * Uses Node 18+ built-in fetch.
+ */
+export async function downloadToBase64(
+  url: string,
+  headers?: Record<string, string>,
+): Promise<{ base64: string; mediaType: string } | null> {
+  try {
+    const response = await fetch(url, { headers });
+    if (!response.ok) return null;
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const mediaType = (response.headers.get('content-type') || 'application/octet-stream')
+      .split(';')[0].trim();
+    return { base64: buffer.toString('base64'), mediaType };
+  } catch {
+    return null;
+  }
+}
+
 /** Split text into chunks at word boundaries, respecting a character limit. */
 export function splitText(text: string, limit: number): string[] {
   const chunks: string[] = [];

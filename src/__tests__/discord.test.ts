@@ -81,7 +81,7 @@ function createMockMessage(overrides: {
   parentId?: string;
   threadId?: string;
   messageId?: string;
-  attachments?: { name: string; url: string }[];
+  attachments?: { name: string; url: string; contentType?: string }[];
 } = {}) {
   const isThread = overrides.isThread ?? false;
   const channelId = overrides.channelId ?? (isThread ? 'thread-123' : 'C_BOUND');
@@ -125,7 +125,7 @@ function createMockMessage(overrides: {
   const attachmentMap = new Map<string, any>();
   if (overrides.attachments) {
     for (const a of overrides.attachments) {
-      attachmentMap.set(a.name, { name: a.name, url: a.url });
+      attachmentMap.set(a.name, { name: a.name, url: a.url, contentType: a.contentType ?? null });
     }
   }
 
@@ -1261,6 +1261,102 @@ describe('DiscordAdapter', () => {
       expect(mockClient._mockSendableChannel.send).toHaveBeenCalledWith({
         content: 'Hello from MCP',
       });
+    });
+  });
+
+  describe('P12.11: Discord adapter image handling', () => {
+    it('downloads images from Discord and passes to backend', async () => {
+      // Mock global fetch to return fake image data
+      const originalFetch = globalThis.fetch;
+      const fakeImageData = Buffer.from('fake-discord-img');
+      globalThis.fetch = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => fakeImageData.buffer.slice(
+          fakeImageData.byteOffset,
+          fakeImageData.byteOffset + fakeImageData.byteLength,
+        ),
+        headers: new Headers({ 'content-type': 'image/jpeg' }),
+      })) as any;
+
+      try {
+        let capturedImages: any[] | undefined;
+        const imgBackend = vi.fn(() => ({
+          start: vi.fn(async () => {}),
+          send: vi.fn(async (_text: string, images?: any[]) => {
+            capturedImages = images;
+            return {
+              events: [{ type: 'assistant_text' as const, text: 'I see the image' }],
+              sessionId: 'session-img',
+            };
+          }),
+          getSessionId: vi.fn(() => 'session-img'),
+          setSessionId: vi.fn(),
+          setAllowedTools: vi.fn(),
+          stop: vi.fn(async () => {}),
+        }));
+
+        createAdapter({ backendFactory: imgBackend });
+        await adapter.start();
+        store.createProject('C_BOUND', '/test/project', 'claude');
+
+        const { message } = createMockMessage({
+          channelId: 'thread-img',
+          content: 'what is this?',
+          isThread: true,
+          parentId: 'C_BOUND',
+          attachments: [
+            { name: 'photo.jpg', url: 'https://cdn.discord.com/photo.jpg', contentType: 'image/jpeg' },
+          ],
+        });
+
+        await triggerMessage(message);
+
+        expect(capturedImages).toBeDefined();
+        expect(capturedImages).toHaveLength(1);
+        expect(capturedImages![0].mediaType).toBe('image/jpeg');
+        expect(capturedImages![0].base64).toBe(fakeImageData.toString('base64'));
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    it('non-image attachments are described as text', async () => {
+      let capturedText = '';
+      let capturedImages: any[] | undefined;
+      const mixBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async (text: string, images?: any[]) => {
+          capturedText = text;
+          capturedImages = images;
+          return {
+            events: [{ type: 'assistant_text' as const, text: 'Got it' }],
+            sessionId: 'session-mix',
+          };
+        }),
+        getSessionId: vi.fn(() => 'session-mix'),
+        setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
+        stop: vi.fn(async () => {}),
+      }));
+
+      createAdapter({ backendFactory: mixBackend });
+      await adapter.start();
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      const { message } = createMockMessage({
+        channelId: 'thread-pdf',
+        content: 'review this doc',
+        isThread: true,
+        parentId: 'C_BOUND',
+        attachments: [
+          { name: 'report.pdf', url: 'https://cdn.discord.com/report.pdf', contentType: 'application/pdf' },
+        ],
+      });
+
+      await triggerMessage(message);
+
+      expect(capturedText).toContain('report.pdf');
+      expect(capturedImages).toBeUndefined();
     });
   });
 });

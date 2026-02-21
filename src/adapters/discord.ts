@@ -27,7 +27,8 @@ import * as fs from 'node:fs';
 import type { Router, RouteResult } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
-import { splitText } from '../utils.js';
+import { splitText, isImageMimeType, downloadToBase64 } from '../utils.js';
+import type { ImageAttachment } from '../types/backend.js';
 import { resolvePermission } from '../mcp/ipc-server.js';
 
 const DISCORD_MESSAGE_LIMIT = 2000;
@@ -188,6 +189,7 @@ export class DiscordAdapter {
       const files = Array.from(message.attachments.values()).map((a) => ({
         name: a.name ?? 'unknown',
         url: a.url,
+        contentType: a.contentType ?? undefined,
       }));
       await this.handleFileUpload(channelId, threadId ?? message.id, files, text, message);
       return;
@@ -947,21 +949,33 @@ export class DiscordAdapter {
     }
   }
 
-  /** Handle file uploads in messages. */
+  /** Handle file uploads in messages — downloads images for backend passthrough. */
   async handleFileUpload(
     channelId: string,
     threadId: string,
-    files: { name: string; url: string }[],
+    files: { name: string; url: string; contentType?: string }[],
     text: string,
     context: Message
   ): Promise<void> {
     const project = this.store.getProjectByChannelId(channelId);
     if (!project) return;
 
+    const images: ImageAttachment[] = [];
     const fileDescriptions: string[] = [];
 
     for (const file of files) {
-      fileDescriptions.push(`[Uploaded file: ${file.name}]`);
+      if (isImageMimeType(file.contentType)) {
+        // Download image for passthrough to backend (Discord URLs are public)
+        const downloaded = await downloadToBase64(file.url);
+        if (downloaded) {
+          images.push({ base64: downloaded.base64, mediaType: downloaded.mediaType });
+          console.log(`[discord] downloaded image ${file.name} (${downloaded.mediaType})`);
+        } else {
+          fileDescriptions.push(`[Uploaded image: ${file.name} (download failed)]`);
+        }
+      } else {
+        fileDescriptions.push(`[Uploaded file: ${file.name}]`);
+      }
     }
 
     const combinedText =
@@ -969,7 +983,10 @@ export class DiscordAdapter {
 
     let result: RouteResult;
     try {
-      result = await this.router.send(channelId, threadId, combinedText);
+      result = await this.router.send(
+        channelId, threadId, combinedText,
+        images.length > 0 ? images : undefined,
+      );
     } catch (err: any) {
       await this.postError(channelId, threadId, err.message, context);
       return;

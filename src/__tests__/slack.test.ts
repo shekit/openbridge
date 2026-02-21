@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SlackAdapter, splitText, createBoltApp } from '../adapters/slack.js';
+import { isImageMimeType } from '../utils.js';
 import { Router } from '../router.js';
 import { Store } from '../store.js';
 import * as path from 'node:path';
@@ -1302,6 +1303,111 @@ describe('SlackAdapter', () => {
 
       const updated = store.getProjectById(project.id)!;
       expect(updated.permission_mode).toBe('supervised');
+    });
+  });
+
+  describe('P12.11: Adapter image handling', () => {
+    it('isImageMimeType recognizes supported image types', () => {
+      expect(isImageMimeType('image/png')).toBe(true);
+      expect(isImageMimeType('image/jpeg')).toBe(true);
+      expect(isImageMimeType('image/gif')).toBe(true);
+      expect(isImageMimeType('image/webp')).toBe(true);
+      expect(isImageMimeType('image/png; charset=utf-8')).toBe(true);
+      expect(isImageMimeType('application/pdf')).toBe(false);
+      expect(isImageMimeType('text/plain')).toBe(false);
+      expect(isImageMimeType(undefined)).toBe(false);
+      expect(isImageMimeType(null)).toBe(false);
+      expect(isImageMimeType('')).toBe(false);
+    });
+
+    it('downloads images from Slack and passes to backend', async () => {
+      // Mock global fetch to return fake image data
+      const originalFetch = globalThis.fetch;
+      const fakeImageData = Buffer.from('fake-png-data');
+      globalThis.fetch = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => fakeImageData.buffer.slice(
+          fakeImageData.byteOffset,
+          fakeImageData.byteOffset + fakeImageData.byteLength,
+        ),
+        headers: new Headers({ 'content-type': 'image/png' }),
+      })) as any;
+
+      try {
+        let capturedImages: any[] | undefined;
+        const imgBackend = vi.fn(() => ({
+          start: vi.fn(async () => {}),
+          send: vi.fn(async (_text: string, images?: any[]) => {
+            capturedImages = images;
+            return {
+              events: [{ type: 'assistant_text' as const, text: 'I see the image' }],
+              sessionId: 'session-img',
+            };
+          }),
+          getSessionId: vi.fn(() => 'session-img'),
+          setSessionId: vi.fn(),
+          setAllowedTools: vi.fn(),
+          stop: vi.fn(async () => {}),
+        }));
+
+        createAdapter({ backendFactory: imgBackend });
+        await adapter.start();
+        store.createProject('C_IMG', '/test/img', 'claude');
+
+        await adapter.handleFileUpload(
+          'C_IMG',
+          '1234567890.IMG001',
+          [
+            { name: 'photo.png', mimetype: 'image/png', url_private_download: 'https://files.slack.com/img/photo.png' },
+          ],
+          'what is in this image?',
+          mockApp.client,
+        );
+
+        expect(capturedImages).toBeDefined();
+        expect(capturedImages).toHaveLength(1);
+        expect(capturedImages![0].mediaType).toBe('image/png');
+        expect(capturedImages![0].base64).toBe(fakeImageData.toString('base64'));
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    it('non-image files are described as text, not downloaded', async () => {
+      let capturedText = '';
+      let capturedImages: any[] | undefined;
+      const mixBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async (text: string, images?: any[]) => {
+          capturedText = text;
+          capturedImages = images;
+          return {
+            events: [{ type: 'assistant_text' as const, text: 'Got it' }],
+            sessionId: 'session-mix',
+          };
+        }),
+        getSessionId: vi.fn(() => 'session-mix'),
+        setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
+        stop: vi.fn(async () => {}),
+      }));
+
+      createAdapter({ backendFactory: mixBackend });
+      await adapter.start();
+      store.createProject('C_MIX', '/test/mix', 'claude');
+
+      await adapter.handleFileUpload(
+        'C_MIX',
+        '1234567890.MIX001',
+        [
+          { name: 'report.pdf', mimetype: 'application/pdf', url_private_download: 'https://files.slack.com/report.pdf' },
+        ],
+        'review this',
+        mockApp.client,
+      );
+
+      expect(capturedText).toContain('report.pdf');
+      expect(capturedImages).toBeUndefined();
     });
   });
 });

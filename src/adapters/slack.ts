@@ -12,7 +12,8 @@ import { App, type LogLevel } from '@slack/bolt';
 import type { Router, RouteResult } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
-import { splitText } from '../utils.js';
+import { splitText, isImageMimeType, downloadToBase64 } from '../utils.js';
+import type { ImageAttachment } from '../types/backend.js';
 import { resolvePermission } from '../mcp/ipc-server.js';
 
 const SLACK_MESSAGE_LIMIT = 4000;
@@ -1231,7 +1232,7 @@ export class SlackAdapter {
     }
   }
 
-  /** Handle file uploads in messages. */
+  /** Handle file uploads in messages — downloads images for backend passthrough. */
   async handleFileUpload(
     channelId: string,
     threadTs: string,
@@ -1242,26 +1243,46 @@ export class SlackAdapter {
     const project = this.store.getProjectByChannelId(channelId);
     if (!project) return;
 
+    const images: ImageAttachment[] = [];
     const fileDescriptions: string[] = [];
+
+    // Get the bot token for authenticated downloads from Slack
+    const botToken = (this.app as any).client?.token
+      ?? (this.app as any).token;
 
     for (const file of files) {
       const fileName = file.name || 'unknown';
+      const mimeType = file.mimetype || '';
       const fileUrl = file.url_private_download || file.url_private;
 
-      if (fileUrl) {
+      if (isImageMimeType(mimeType) && fileUrl) {
+        // Download image for passthrough to backend
+        const downloaded = await downloadToBase64(fileUrl, {
+          Authorization: `Bearer ${botToken}`,
+        });
+        if (downloaded) {
+          images.push({ base64: downloaded.base64, mediaType: downloaded.mediaType });
+          console.log(`[slack] downloaded image ${fileName} (${downloaded.mediaType})`);
+        } else {
+          fileDescriptions.push(`[Uploaded image: ${fileName} (download failed)]`);
+        }
+      } else if (fileUrl) {
         fileDescriptions.push(`[Uploaded file: ${fileName}]`);
       }
     }
 
-    // Combine file descriptions with the message text
+    // Combine non-image file descriptions with the message text
     const combinedText = fileDescriptions.length > 0
       ? `${text}\n\n${fileDescriptions.join('\n')}`
       : text;
 
-    // Route the combined message
+    // Route the combined message with images
     let result: RouteResult;
     try {
-      result = await this.router.send(channelId, threadTs, combinedText);
+      result = await this.router.send(
+        channelId, threadTs, combinedText,
+        images.length > 0 ? images : undefined,
+      );
     } catch (err: any) {
       await this.postError(channelId, threadTs, err.message, client);
       return;
