@@ -1730,6 +1730,23 @@
           "status": "passing"
         }
       ]
+    },
+    {
+      "id": "P15",
+      "name": "Bugfixes — Permission Hook",
+      "outcome": "PreToolUse hook output format corrected, Allow button works",
+      "features": [
+        {
+          "id": "P15.1",
+          "description": "Add required hookEventName field to PreToolUse hook output",
+          "verification": [
+            "Hook outputs hookEventName: 'PreToolUse' in hookSpecificOutput",
+            "All hook tests pass with hookEventName assertions",
+            "Build passes"
+          ],
+          "status": "passing"
+        }
+      ]
     }
   ]
 }

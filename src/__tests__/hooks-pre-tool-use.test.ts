@@ -53,6 +53,7 @@ describe('PreToolUse hook script', () => {
     });
     expect(output).not.toBeNull();
     const decision = (output as any)?.hookSpecificOutput;
+    expect(decision.hookEventName).toBe('PreToolUse');
     expect(decision.permissionDecision).toBe('allow');
   });
 
@@ -62,6 +63,7 @@ describe('PreToolUse hook script', () => {
       tool_input: { directory: '.' },
     });
     expect(output).not.toBeNull();
+    expect((output as any)?.hookSpecificOutput?.hookEventName).toBe('PreToolUse');
     expect((output as any)?.hookSpecificOutput?.permissionDecision).toBe('allow');
   });
 
@@ -141,6 +143,7 @@ describe('PreToolUse hook script', () => {
 
       expect(exitCode).toBe(0);
       expect(output).not.toBeNull();
+      expect((output as any)?.hookSpecificOutput?.hookEventName).toBe('PreToolUse');
       expect((output as any)?.hookSpecificOutput?.permissionDecision).toBe('allow');
       expect(stderr).toContain('waiting for decision');
       expect(stderr).toContain('decision: allow');
@@ -171,6 +174,7 @@ describe('PreToolUse hook script', () => {
 
       expect(exitCode).toBe(0);
       expect(output).not.toBeNull();
+      expect((output as any)?.hookSpecificOutput?.hookEventName).toBe('PreToolUse');
       expect((output as any)?.hookSpecificOutput?.permissionDecision).toBe('deny');
     }, 15000);
   });

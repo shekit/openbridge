@@ -91,6 +91,7 @@ async function pollForDecision(
 function allowOutput(reason: string): string {
   return JSON.stringify({
     hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
       permissionDecision: 'allow',
       permissionDecisionReason: reason,
     },
@@ -101,6 +102,7 @@ function allowOutput(reason: string): string {
 function denyOutput(reason: string): string {
   return JSON.stringify({
     hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
       permissionDecision: 'deny',
       permissionDecisionReason: reason,
     },
