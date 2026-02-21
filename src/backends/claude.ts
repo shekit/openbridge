@@ -39,17 +39,20 @@ export interface SpawnHandle {
 /** Spawn a process and collect stdout/stderr until exit. Returns a handle with kill().
  *  Uses detached: true so the child gets its own process group — kill() sends
  *  SIGTERM to the entire group, cleaning up any grandchild processes (e.g., dev servers).
- *  If stderrLogPath is provided, stderr is also streamed to that file in real-time. */
+ *  If stderrLogPath is provided, stderr is also streamed to that file in real-time.
+ *  If env is provided, it is merged with process.env for the child process. */
 export function spawnCollect(
   command: string,
   args: string[],
   cwd: string,
   stderrLogPath?: string,
+  env?: Record<string, string>,
 ): SpawnHandle {
   const proc = spawn(command, args, {
     cwd,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
+    ...(env ? { env: { ...process.env, ...env } } : {}),
   });
 
   let stdout = '';

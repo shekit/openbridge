@@ -35,6 +35,18 @@ describe('Claude Code backend', () => {
       expect(result.stderr).toContain('err output');
     });
 
+    it('spawnCollect passes env vars to child process', async () => {
+      const handle = spawnCollect(
+        'node',
+        ['-e', 'process.stdout.write(process.env.TEST_OPENBRIDGE_VAR || "missing")'],
+        process.cwd(),
+        undefined,
+        { TEST_OPENBRIDGE_VAR: 'hello_from_env' },
+      );
+      const result = await handle.result;
+      expect(result.stdout).toBe('hello_from_env');
+    });
+
     it('spawnCollect kill() terminates the child process', async () => {
       const handle = spawnCollect('node', ['-e', 'setTimeout(() => {}, 30000)'], process.cwd());
       handle.kill();

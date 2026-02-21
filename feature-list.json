@@ -1332,6 +1332,16 @@
             "Unit tests verify MCP tools always present in args"
           ],
           "status": "passing"
+        },
+        {
+          "id": "P11.2",
+          "description": "Add env param to spawnCollect() — child process inherits custom env vars for hook scripts",
+          "verification": [
+            "spawnCollect() accepts optional env parameter",
+            "env vars merged with process.env for child process",
+            "Unit test verifies env var passed to child"
+          ],
+          "status": "passing"
         }
       ]
     }
