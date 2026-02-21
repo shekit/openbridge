@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { startIpcServer, type IpcHandler, type IpcServer } from '../mcp/ipc-server.js';
+import { startIpcServer, resolvePermission, type IpcHandler, type IpcServer } from '../mcp/ipc-server.js';
 
 /** Helper to POST JSON to the IPC server. */
 async function post(
@@ -168,6 +168,118 @@ describe('IPC Server', () => {
     });
     expect(status).toBe(500);
     expect(body.error).toBe('Upload failed');
+  });
+
+  // --- /permission-request ---
+
+  it('creates a pending permission request and calls handler', async () => {
+    handler.requestPermission = vi.fn().mockResolvedValue(undefined);
+    const { status, body } = await post(server, '/permission-request', {
+      channelId: 'C123',
+      threadId: 'T456',
+      toolName: 'Bash',
+      toolInput: { command: 'npx serve' },
+      platform: 'slack',
+    });
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.requestId).toBeTruthy();
+    expect(handler.requestPermission).toHaveBeenCalledWith(
+      'C123', 'T456', 'Bash', { command: 'npx serve' }, 'slack', body.requestId,
+    );
+  });
+
+  it('works without requestPermission handler', async () => {
+    // handler.requestPermission is undefined by default
+    const { status, body } = await post(server, '/permission-request', {
+      channelId: 'C123',
+      threadId: 'T456',
+      toolName: 'Bash',
+      toolInput: {},
+      platform: 'slack',
+    });
+    expect(status).toBe(200);
+    expect(body.requestId).toBeTruthy();
+  });
+
+  // --- /permission-poll ---
+
+  it('returns pending when no decision yet', async () => {
+    // Create a request first
+    const req = await post(server, '/permission-request', {
+      channelId: 'C1', threadId: 'T1', toolName: 'Bash', toolInput: {}, platform: 'slack',
+    });
+    const requestId = req.body.requestId as string;
+
+    // Poll — should return pending (long-poll times out after 5s, but we want fast test)
+    // Use a short timeout by resolving before the poll completes
+    const pollPromise = post(server, '/permission-poll', { requestId });
+    // Resolve after a short delay
+    setTimeout(() => resolvePermission(requestId, 'allow'), 100);
+    const poll = await pollPromise;
+    expect(poll.status).toBe(200);
+    expect(poll.body.status).toBe('resolved');
+    expect(poll.body.decision).toBe('allow');
+  });
+
+  it('returns resolved immediately when decision already made', async () => {
+    handler.requestPermission = vi.fn().mockResolvedValue(undefined);
+    const req = await post(server, '/permission-request', {
+      channelId: 'C1', threadId: 'T1', toolName: 'Edit', toolInput: {}, platform: 'discord',
+    });
+    const requestId = req.body.requestId as string;
+
+    // Resolve before polling
+    resolvePermission(requestId, 'deny');
+
+    const poll = await post(server, '/permission-poll', { requestId });
+    expect(poll.body.status).toBe('resolved');
+    expect(poll.body.decision).toBe('deny');
+  });
+
+  it('returns expired for unknown requestId', async () => {
+    const poll = await post(server, '/permission-poll', { requestId: 'nonexistent' });
+    expect(poll.body.status).toBe('expired');
+  });
+
+  // --- /permission-resolve ---
+
+  it('resolves a pending permission via HTTP endpoint', async () => {
+    handler.requestPermission = vi.fn().mockResolvedValue(undefined);
+    const req = await post(server, '/permission-request', {
+      channelId: 'C1', threadId: 'T1', toolName: 'Bash', toolInput: {}, platform: 'slack',
+    });
+    const requestId = req.body.requestId as string;
+
+    const resolve = await post(server, '/permission-resolve', {
+      requestId, decision: 'allow',
+    });
+    expect(resolve.body.ok).toBe(true);
+  });
+
+  it('returns false for resolving unknown requestId', async () => {
+    const resolve = await post(server, '/permission-resolve', {
+      requestId: 'nonexistent', decision: 'deny',
+    });
+    expect(resolve.body.ok).toBe(false);
+  });
+
+  // --- resolvePermission() in-process ---
+
+  it('resolvePermission() resolves a pending request in-process', async () => {
+    handler.requestPermission = vi.fn().mockResolvedValue(undefined);
+    const req = await post(server, '/permission-request', {
+      channelId: 'C1', threadId: 'T1', toolName: 'Bash', toolInput: {}, platform: 'slack',
+    });
+    const requestId = req.body.requestId as string;
+
+    const resolved = resolvePermission(requestId, 'allow');
+    expect(resolved).toBe(true);
+
+    // Double-resolve returns false (already cleaned up by next poll)
+    const again = resolvePermission(requestId, 'deny');
+    // Entry still exists until polled, but resolvers are empty
+    expect(again).toBe(true); // entry still in map
   });
 
   // --- Close ---

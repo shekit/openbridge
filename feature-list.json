@@ -1354,6 +1354,19 @@
             "Unit tests verify all cases"
           ],
           "status": "passing"
+        },
+        {
+          "id": "P11.4",
+          "description": "Permission endpoints on IPC server — /permission-request, /permission-poll (long-poll), /permission-resolve, plus in-process resolvePermission()",
+          "verification": [
+            "POST /permission-request creates pending entry and calls handler.requestPermission()",
+            "POST /permission-poll long-polls for decision, returns resolved or pending",
+            "POST /permission-resolve resolves a pending request via HTTP",
+            "resolvePermission() resolves in-process (for adapters)",
+            "Stale entries cleaned up after 10 minutes",
+            "Unit tests verify all endpoints"
+          ],
+          "status": "passing"
         }
       ]
     }

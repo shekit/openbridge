@@ -17,6 +17,48 @@ export interface IpcHandler {
   openTunnel(port: number, ttl: number): Promise<string>;
   serveFileBrowser(directory: string): Promise<string>;
   postMessage(channelId: string, threadId: string, text: string, platform: string): Promise<void>;
+  /** Send a permission prompt to the user and return immediately (non-blocking). */
+  requestPermission?(channelId: string, threadId: string, toolName: string,
+    toolInput: Record<string, unknown>, platform: string, requestId: string): Promise<void>;
+}
+
+/** Pending permission request — waiting for user to click Allow/Deny. */
+interface PendingPermission {
+  decision: 'allow' | 'deny' | null;
+  resolvers: Array<(decision: 'allow' | 'deny') => void>;
+  createdAt: number;
+}
+
+/** In-memory store for pending permission requests. */
+const pendingPermissions = new Map<string, PendingPermission>();
+
+/** Stale entry cleanup interval (10 minutes). */
+const STALE_TIMEOUT_MS = 10 * 60 * 1000;
+
+/** Resolve a pending permission request (called by adapters in-process). */
+export function resolvePermission(requestId: string, decision: 'allow' | 'deny'): boolean {
+  const entry = pendingPermissions.get(requestId);
+  if (!entry) return false;
+  entry.decision = decision;
+  for (const resolver of entry.resolvers) {
+    resolver(decision);
+  }
+  entry.resolvers = [];
+  return true;
+}
+
+/** Clean up stale permission entries older than STALE_TIMEOUT_MS. */
+function cleanupStalePermissions(): void {
+  const now = Date.now();
+  for (const [id, entry] of pendingPermissions) {
+    if (now - entry.createdAt > STALE_TIMEOUT_MS) {
+      // Resolve any waiting pollers with deny
+      for (const resolver of entry.resolvers) {
+        resolver('deny');
+      }
+      pendingPermissions.delete(id);
+    }
+  }
 }
 
 export interface IpcServer {
@@ -103,6 +145,72 @@ export function startIpcServer(handler: IpcHandler): Promise<IpcServer> {
           await handler.postMessage(channelId, threadId, text, platform);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true }));
+          break;
+        }
+
+        case '/permission-request': {
+          const { channelId, threadId, toolName, toolInput, platform } = data as {
+            channelId: string; threadId: string; toolName: string;
+            toolInput: Record<string, unknown>; platform: string;
+          };
+          const requestId = randomUUID();
+          pendingPermissions.set(requestId, {
+            decision: null,
+            resolvers: [],
+            createdAt: Date.now(),
+          });
+          console.log(`[ipc] permission-request: ${toolName} (${requestId})`);
+          // Notify adapter to show Allow/Deny buttons
+          if (handler.requestPermission) {
+            await handler.requestPermission(channelId, threadId, toolName, toolInput, platform, requestId);
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, requestId }));
+          break;
+        }
+
+        case '/permission-poll': {
+          const { requestId } = data as { requestId: string };
+          cleanupStalePermissions();
+          const entry = pendingPermissions.get(requestId);
+          if (!entry) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'expired' }));
+            break;
+          }
+          if (entry.decision) {
+            // Already resolved — return immediately
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'resolved', decision: entry.decision }));
+            pendingPermissions.delete(requestId);
+            break;
+          }
+          // Long-poll: wait up to 5 seconds for a decision
+          const decision = await new Promise<'allow' | 'deny' | 'pending'>((resolve) => {
+            const timeout = setTimeout(() => resolve('pending'), 5000);
+            entry.resolvers.push((d) => {
+              clearTimeout(timeout);
+              resolve(d);
+            });
+          });
+          if (decision === 'pending') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'pending' }));
+          } else {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'resolved', decision }));
+            pendingPermissions.delete(requestId);
+          }
+          break;
+        }
+
+        case '/permission-resolve': {
+          const { requestId: resolveId, decision: resolveDecision } = data as {
+            requestId: string; decision: 'allow' | 'deny';
+          };
+          const resolved = resolvePermission(resolveId, resolveDecision);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: resolved }));
           break;
         }
 
