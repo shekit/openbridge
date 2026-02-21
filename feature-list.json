@@ -1678,6 +1678,58 @@
           "status": "passing"
         }
       ]
+    },
+    {
+      "id": "P14",
+      "name": "Universal File Upload Support",
+      "outcome": "All uploaded file types (images, PDFs, text, binary) are downloaded, staged, and appropriately passed to backends",
+      "features": [
+        {
+          "id": "P14.1",
+          "description": "Rename ImageAttachment to FileAttachment with kind field, add classifyMimeType and downloadAndStageFile utilities, rename all references across codebase",
+          "verification": [
+            "FileAttachment has kind: FileKind ('image' | 'pdf' | 'text' | 'binary')",
+            "classifyMimeType correctly classifies images, PDFs, text, and binary MIME types",
+            "downloadAndStageFile downloads, classifies, and stages in one call",
+            "No ImageAttachment references remain in src/",
+            "Unit tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P14.2",
+          "description": "Adapters download ALL file types using shared downloadAndStageFile, include text file contents inline in prompt",
+          "verification": [
+            "Non-image files are downloaded and staged (not just described as text)",
+            "Text files have their contents included inline in the prompt",
+            "Both adapters use downloadAndStageFile (DRY)",
+            "Unit tests pass"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P14.3",
+          "description": "Claude backend passes PDFs as type:document content blocks alongside images",
+          "verification": [
+            "PDFs produce type:document content blocks with application/pdf media type",
+            "Images still produce type:image content blocks",
+            "Text and binary files produce no content blocks",
+            "useStreamJson only activates for images or PDFs",
+            "Unit tests pass"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P14.4",
+          "description": "Codex backend filters to images-only for --image flag, other file types pass through staging only",
+          "verification": [
+            "Only kind:image files produce --image flags",
+            "PDFs, text, and binary files are not passed to Codex via --image",
+            "Unit tests pass"
+          ],
+          "status": "failing"
+        }
+      ]
     }
   ]
 }

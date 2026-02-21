@@ -12,15 +12,20 @@ export interface SendResult {
   sessionId: string | null;
 }
 
-/** An image attachment to include in a message to the backend. */
-export interface ImageAttachment {
-  /** Base64-encoded image data. */
+/** Discriminator for how a file attachment is passed to backends. */
+export type FileKind = 'image' | 'pdf' | 'text' | 'binary';
+
+/** A file attachment to include in a message to the backend. */
+export interface FileAttachment {
+  /** Base64-encoded file data. */
   base64: string;
-  /** MIME type (e.g., 'image/png', 'image/jpeg', 'image/gif', 'image/webp'). */
+  /** MIME type (e.g., 'image/png', 'application/pdf', 'text/plain'). */
   mediaType: string;
-  /** Upload ID for referencing this image in the save_uploaded_file MCP tool. */
+  /** How this file should be handled by backends. */
+  kind: FileKind;
+  /** Upload ID for referencing this file in the save_uploaded_file MCP tool. */
   uploadId?: string;
-  /** Original filename of the uploaded image. */
+  /** Original filename of the uploaded file. */
   filename?: string;
   /** Full path to the staging file in ~/.openbridge-ai/uploads/. */
   stagingPath?: string;
@@ -56,8 +61,8 @@ export interface Backend {
   start(options: BackendOptions): Promise<void>;
 
   /** Send a prompt and return normalized events + session ID.
-   *  Optional images are passed as base64 content blocks (Claude stream-json, Codex --image). */
-  send(text: string, images?: ImageAttachment[]): Promise<SendResult>;
+   *  Optional file attachments are passed as content blocks (Claude stream-json, Codex --image). */
+  send(text: string, files?: FileAttachment[]): Promise<SendResult>;
 
   /** Return the current session ID for resume, or null if none. */
   getSessionId(): string | null;

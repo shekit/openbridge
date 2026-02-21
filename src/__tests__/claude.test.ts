@@ -612,8 +612,8 @@ describe('Claude Code backend', () => {
 
     it('produces valid JSONL with images and text', () => {
       const images = [
-        { base64: 'aW1hZ2UxZGF0YQ==', mediaType: 'image/png' },
-        { base64: 'aW1hZ2UyZGF0YQ==', mediaType: 'image/jpeg' },
+        { base64: 'aW1hZ2UxZGF0YQ==', mediaType: 'image/png', kind: 'image' as const },
+        { base64: 'aW1hZ2UyZGF0YQ==', mediaType: 'image/jpeg', kind: 'image' as const },
       ];
       const input = buildStreamJsonInput('describe these images', images);
       const parsed = JSON.parse(input);

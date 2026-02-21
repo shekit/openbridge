@@ -11,7 +11,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { Backend, BackendOptions, ImageAttachment, McpServerEntry, SendResult } from '../types/backend.js';
+import type { Backend, BackendOptions, FileAttachment, McpServerEntry, SendResult } from '../types/backend.js';
 import type { NormalizedEvent } from '../types/events.js';
 import { spawnCollect, type SpawnHandle, type SpawnResult } from './claude.js';
 
@@ -148,7 +148,7 @@ export function mimeToExtension(mediaType: string): string {
  * Save images to temp files and return their paths.
  * Caller is responsible for cleaning up the files.
  */
-export function saveImagesToTemp(images: ImageAttachment[]): string[] {
+export function saveImagesToTemp(images: FileAttachment[]): string[] {
   const tmpDir = os.tmpdir();
   const paths: string[] = [];
   for (let i = 0; i < images.length; i++) {
@@ -285,7 +285,7 @@ export class CodexBackend implements Backend {
     console.log(`[codex] initialized for project: ${this.projectDir} (sandbox: ${this.sandbox})`);
   }
 
-  async send(text: string, images?: ImageAttachment[]): Promise<SendResult> {
+  async send(text: string, images?: FileAttachment[]): Promise<SendResult> {
     // Determine image file paths for --image flags
     let imagePaths: string[] | undefined;
     let shouldCleanupImages = false;

@@ -28,7 +28,7 @@ import type { Router, RouteResult } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
 import { splitText, isImageMimeType, downloadToBase64, saveToStagingDir } from '../utils.js';
-import type { ImageAttachment } from '../types/backend.js';
+import type { FileAttachment } from '../types/backend.js';
 import { resolvePermission } from '../mcp/ipc-server.js';
 
 const DISCORD_MESSAGE_LIMIT = 2000;
@@ -960,7 +960,7 @@ export class DiscordAdapter {
     const project = this.store.getProjectByChannelId(channelId);
     if (!project) return;
 
-    const images: ImageAttachment[] = [];
+    const images: FileAttachment[] = [];
     const fileDescriptions: string[] = [];
 
     for (const file of files) {
@@ -972,6 +972,7 @@ export class DiscordAdapter {
           images.push({
             base64: downloaded.base64,
             mediaType: downloaded.mediaType,
+            kind: 'image',
             uploadId: staging.uploadId,
             filename: staging.filename,
             stagingPath: staging.stagingPath,

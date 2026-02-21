@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
@@ -6,6 +6,8 @@ import {
   saveToStagingDir,
   cleanupStagingFiles,
   isImageMimeType,
+  classifyMimeType,
+  downloadAndStageFile,
   splitText,
 } from '../utils.js';
 
@@ -54,7 +56,7 @@ describe('Utils', () => {
       const result = saveToStagingDir(data, 'image/png', '');
       createdFiles.push(result.stagingPath);
 
-      expect(result.filename).toBe('image.png');
+      expect(result.filename).toBe('file.dat');
     });
 
     it('saveToStagingDir generates unique upload IDs', () => {
@@ -97,6 +99,109 @@ describe('Utils', () => {
     it('handles null/undefined', () => {
       expect(isImageMimeType(null)).toBe(false);
       expect(isImageMimeType(undefined)).toBe(false);
+    });
+  });
+
+  describe('classifyMimeType', () => {
+    it('classifies image MIME types', () => {
+      expect(classifyMimeType('image/png')).toBe('image');
+      expect(classifyMimeType('image/jpeg')).toBe('image');
+      expect(classifyMimeType('image/gif')).toBe('image');
+      expect(classifyMimeType('image/webp')).toBe('image');
+    });
+
+    it('classifies PDF', () => {
+      expect(classifyMimeType('application/pdf')).toBe('pdf');
+    });
+
+    it('classifies text/* MIME types', () => {
+      expect(classifyMimeType('text/plain')).toBe('text');
+      expect(classifyMimeType('text/csv')).toBe('text');
+      expect(classifyMimeType('text/html')).toBe('text');
+    });
+
+    it('classifies application text types', () => {
+      expect(classifyMimeType('application/json')).toBe('text');
+      expect(classifyMimeType('application/xml')).toBe('text');
+      expect(classifyMimeType('application/javascript')).toBe('text');
+    });
+
+    it('uses filename extension as fallback', () => {
+      expect(classifyMimeType('application/octet-stream', 'data.csv')).toBe('text');
+      expect(classifyMimeType('application/octet-stream', 'script.py')).toBe('text');
+      expect(classifyMimeType('application/octet-stream', 'config.yaml')).toBe('text');
+    });
+
+    it('returns binary for unknown types', () => {
+      expect(classifyMimeType('application/octet-stream')).toBe('binary');
+      expect(classifyMimeType('application/zip')).toBe('binary');
+      expect(classifyMimeType('video/mp4')).toBe('binary');
+    });
+
+    it('returns binary for null/undefined', () => {
+      expect(classifyMimeType(null)).toBe('binary');
+      expect(classifyMimeType(undefined)).toBe('binary');
+    });
+
+    it('handles MIME types with parameters', () => {
+      expect(classifyMimeType('text/plain; charset=utf-8')).toBe('text');
+      expect(classifyMimeType('image/png; name=logo.png')).toBe('image');
+    });
+  });
+
+  describe('downloadAndStageFile', () => {
+    const createdFiles: string[] = [];
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+      for (const f of createdFiles) {
+        try { fs.unlinkSync(f); } catch { /* ignore */ }
+      }
+      createdFiles.length = 0;
+    });
+
+    it('downloads, classifies, and stages a file', async () => {
+      const fakeData = Buffer.from('pdf content');
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(fakeData.buffer.slice(fakeData.byteOffset, fakeData.byteOffset + fakeData.byteLength)),
+        headers: new Headers({ 'content-type': 'application/pdf' }),
+      } as any);
+
+      const result = await downloadAndStageFile('https://example.com/doc.pdf', 'doc.pdf', 'application/pdf');
+      expect(result).not.toBeNull();
+      createdFiles.push(result!.stagingPath!);
+
+      expect(result!.kind).toBe('pdf');
+      expect(result!.filename).toBe('doc.pdf');
+      expect(result!.uploadId).toMatch(/^upload_[a-f0-9]{12}$/);
+      expect(fs.existsSync(result!.stagingPath!)).toBe(true);
+    });
+
+    it('returns null on download failure', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: false,
+        status: 404,
+      } as any);
+
+      const result = await downloadAndStageFile('https://example.com/missing.pdf', 'missing.pdf', 'application/pdf');
+      expect(result).toBeNull();
+    });
+
+    it('classifies text files correctly', async () => {
+      const fakeData = Buffer.from('col1,col2\na,b');
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(fakeData.buffer.slice(fakeData.byteOffset, fakeData.byteOffset + fakeData.byteLength)),
+        headers: new Headers({ 'content-type': 'text/csv' }),
+      } as any);
+
+      const result = await downloadAndStageFile('https://example.com/data.csv', 'data.csv', 'text/csv');
+      expect(result).not.toBeNull();
+      createdFiles.push(result!.stagingPath!);
+
+      expect(result!.kind).toBe('text');
+      expect(result!.mediaType).toBe('text/csv');
     });
   });
 

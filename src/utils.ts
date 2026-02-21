@@ -6,6 +6,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import type { FileAttachment, FileKind } from './types/backend.js';
 
 /** Canonical config directory: ~/.openbridge-ai/ */
 export function getConfigDir(): string {
@@ -72,7 +73,7 @@ export function saveToStagingDir(
   fs.mkdirSync(uploadsDir, { recursive: true });
 
   const uploadId = `upload_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
-  const safeName = path.basename(originalFilename) || 'image.png';
+  const safeName = path.basename(originalFilename) || 'file.dat';
   const stagingPath = path.join(uploadsDir, `${uploadId}-${safeName}`);
 
   fs.writeFileSync(stagingPath, Buffer.from(base64, 'base64'));
@@ -89,6 +90,70 @@ export function cleanupStagingFiles(stagingPaths: string[]): void {
       console.log(`[uploads] cleaned up staging file: ${p}`);
     } catch { /* file may already be gone */ }
   }
+}
+
+/** MIME types treated as text when extension-based detection isn't enough. */
+const TEXT_APP_MIME_TYPES = new Set([
+  'application/json', 'application/xml', 'application/javascript',
+  'application/typescript', 'application/x-yaml', 'application/toml',
+]);
+
+/** File extensions we consider text, even with generic MIME types. */
+const TEXT_EXTENSIONS = new Set([
+  '.json', '.csv', '.md', '.txt', '.ts', '.js', '.jsx', '.tsx',
+  '.py', '.rb', '.go', '.rs', '.java', '.c', '.cpp', '.h', '.hpp',
+  '.yaml', '.yml', '.toml', '.xml', '.html', '.css', '.scss',
+  '.sh', '.bash', '.zsh', '.sql', '.graphql', '.env', '.ini',
+  '.cfg', '.conf', '.log', '.svg',
+]);
+
+/**
+ * Classify a MIME type (and optionally filename) into a FileKind.
+ * Used to determine how a file attachment is passed to backends.
+ */
+export function classifyMimeType(mimeType: string | undefined | null, filename?: string): FileKind {
+  if (!mimeType) return 'binary';
+  const base = mimeType.split(';')[0].trim().toLowerCase();
+
+  if (IMAGE_MIME_TYPES.has(base)) return 'image';
+  if (base === 'application/pdf') return 'pdf';
+  if (base.startsWith('text/')) return 'text';
+  if (TEXT_APP_MIME_TYPES.has(base)) return 'text';
+
+  // Fallback: check extension for common text types with generic MIME
+  if (filename) {
+    const ext = path.extname(filename).toLowerCase();
+    if (TEXT_EXTENSIONS.has(ext)) return 'text';
+  }
+
+  return 'binary';
+}
+
+/**
+ * Download a file from a URL, classify it, and save to staging.
+ * Returns a complete FileAttachment or null on download failure.
+ * This is the shared DRY utility used by both adapters.
+ */
+export async function downloadAndStageFile(
+  url: string,
+  filename: string,
+  mimeType: string | undefined,
+  authHeaders?: Record<string, string>,
+): Promise<FileAttachment | null> {
+  const downloaded = await downloadToBase64(url, authHeaders);
+  if (!downloaded) return null;
+
+  const kind = classifyMimeType(downloaded.mediaType, filename);
+  const staging = saveToStagingDir(downloaded.base64, downloaded.mediaType, filename);
+
+  return {
+    base64: downloaded.base64,
+    mediaType: downloaded.mediaType,
+    kind,
+    uploadId: staging.uploadId,
+    filename: staging.filename,
+    stagingPath: staging.stagingPath,
+  };
 }
 
 /** Split text into chunks at word boundaries, respecting a character limit. */

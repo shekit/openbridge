@@ -11,7 +11,7 @@ import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import type { Backend, BackendOptions, ImageAttachment, McpServerEntry, SendResult } from '../types/backend.js';
+import type { Backend, BackendOptions, FileAttachment, McpServerEntry, SendResult } from '../types/backend.js';
 import type { NormalizedEvent } from '../types/events.js';
 
 /** Directory for backend log files. */
@@ -255,7 +255,7 @@ export function buildHookSettings(hookScriptDir: string): string {
  * Used when passing images — text-only messages don't need this (use --input-format text).
  * Format matches Anthropic API content blocks inside a stream-json user message.
  */
-export function buildStreamJsonInput(text: string, images?: ImageAttachment[]): string {
+export function buildStreamJsonInput(text: string, images?: FileAttachment[]): string {
   const content: Array<Record<string, unknown>> = [];
 
   // Add images first (model sees them before the text prompt)
@@ -402,7 +402,7 @@ export class ClaudeBackend implements Backend {
     console.log(`[claude] initialized for project: ${this.projectDir}`);
   }
 
-  async send(text: string, images?: ImageAttachment[]): Promise<SendResult> {
+  async send(text: string, images?: FileAttachment[]): Promise<SendResult> {
     // Build MCP config JSON for explicit --mcp-config flag
     let mcpConfigJson: string | undefined;
     if (this.mcpConfig) {

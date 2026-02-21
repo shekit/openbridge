@@ -5,7 +5,7 @@
  * lifecycle, and enforces session state machine transitions.
  */
 
-import type { Backend, ImageAttachment, SendResult, McpServerEntry } from './types/backend.js';
+import type { Backend, FileAttachment, SendResult, McpServerEntry } from './types/backend.js';
 import type { NormalizedEvent } from './types/events.js';
 import { Store, type Project, type Session } from './store.js';
 import { cleanupStagingFiles } from './utils.js';
@@ -67,15 +67,15 @@ export class Router {
   }
 
   /** Send with timeout — races backend.send() against a timeout. */
-  private async sendWithTimeout(backend: Backend, text: string, images?: ImageAttachment[]): Promise<SendResult> {
+  private async sendWithTimeout(backend: Backend, text: string, files?: FileAttachment[]): Promise<SendResult> {
     if (this.timeoutMs <= 0) {
-      return backend.send(text, images);
+      return backend.send(text, files);
     }
 
     let timer: ReturnType<typeof setTimeout>;
 
     const result = await Promise.race([
-      backend.send(text, images).then((r) => {
+      backend.send(text, files).then((r) => {
         clearTimeout(timer);
         return r;
       }),
@@ -118,15 +118,15 @@ export class Router {
     return { project, session };
   }
 
-  /** Augment prompt text with upload info for images that have staging metadata. */
-  private augmentTextWithUploadInfo(text: string, images?: ImageAttachment[]): string {
-    if (!images || images.length === 0) return text;
+  /** Augment prompt text with upload info for files that have staging metadata. */
+  private augmentTextWithUploadInfo(text: string, files?: FileAttachment[]): string {
+    if (!files || files.length === 0) return text;
 
     const uploadLines: string[] = [];
-    for (const img of images) {
-      if (img.uploadId && img.filename) {
+    for (const f of files) {
+      if (f.uploadId && f.filename) {
         uploadLines.push(
-          `[Uploaded image: ${img.filename} (upload_id: ${img.uploadId}). ` +
+          `[Uploaded file: ${f.filename} (upload_id: ${f.uploadId}). ` +
           `To save this file to the project, use the save_uploaded_file tool.]`,
         );
       }
@@ -136,11 +136,11 @@ export class Router {
     return `${text}\n\n${uploadLines.join('\n')}`;
   }
 
-  /** Clean up staging files from image attachments. */
-  private cleanupImageStaging(images?: ImageAttachment[]): void {
-    if (!images) return;
-    const paths = images
-      .map((img) => img.stagingPath)
+  /** Clean up staging files from file attachments. */
+  private cleanupFileStaging(files?: FileAttachment[]): void {
+    if (!files) return;
+    const paths = files
+      .map((f) => f.stagingPath)
       .filter((p): p is string => !!p);
     if (paths.length > 0) {
       cleanupStagingFiles(paths);
@@ -151,7 +151,7 @@ export class Router {
    * Send a message through the backend and return normalized events.
    * Manages session state transitions and persists backend session ID.
    */
-  async send(channelId: string, threadId: string, text: string, images?: ImageAttachment[]): Promise<RouteResult> {
+  async send(channelId: string, threadId: string, text: string, files?: FileAttachment[]): Promise<RouteResult> {
     const resolved = this.resolve(channelId, threadId);
     if (!resolved) {
       throw new Error(`Channel ${channelId} is not connected to a project`);
@@ -206,18 +206,18 @@ export class Router {
       backend.setSessionId(storedSession.backend_session_id);
     }
 
-    // Augment prompt with upload info so backend knows about staged images
-    const augmentedText = this.augmentTextWithUploadInfo(text, images);
+    // Augment prompt with upload info so backend knows about staged files
+    const augmentedText = this.augmentTextWithUploadInfo(text, files);
 
     let result: SendResult;
     try {
-      result = await this.sendWithTimeout(backend, augmentedText, images);
+      result = await this.sendWithTimeout(backend, augmentedText, files);
     } catch (err) {
       // Backend crashed or timed out — clean up and transition to dead
       // But if cancelBackend already cleaned up, skip state transition
       try { await backend.stop(); } catch { /* ignore stop errors */ }
       this.activeBackends.delete(session.thread_id);
-      this.cleanupImageStaging(images);
+      this.cleanupFileStaging(files);
       const currentState = this.store.getSessionById(session.id)?.state;
       if (currentState === 'running') {
         this.store.updateSessionState(session.id, 'dead');
@@ -255,7 +255,7 @@ export class Router {
     }
 
     // Clean up staging files after backend turn
-    this.cleanupImageStaging(images);
+    this.cleanupFileStaging(files);
 
     // Fetch the updated session
     const updatedSession = this.store.getSessionById(session.id)!;

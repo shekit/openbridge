@@ -535,6 +535,7 @@ describe('Router', () => {
         {
           base64: 'abc123',
           mediaType: 'image/png',
+          kind: 'image' as const,
           uploadId: 'upload_aabbccddee11',
           filename: 'logo.png',
           stagingPath: '/tmp/fake-staging.png',
@@ -569,7 +570,7 @@ describe('Router', () => {
       store.createProject('CH_NOAUG', '/tmp/noaug', 'claude', 'slack');
 
       await r.send('CH_NOAUG', 'T_NOAUG', 'what is this?', [
-        { base64: 'abc123', mediaType: 'image/png' },
+        { base64: 'abc123', mediaType: 'image/png', kind: 'image' as const },
       ]);
 
       expect(capturedText).toBe('what is this?');
@@ -601,7 +602,7 @@ describe('Router', () => {
       expect(fs.existsSync(tmpPath)).toBe(true);
 
       await r.send('CH_CLN', 'T_CLN', 'hello', [
-        { base64: 'abc', mediaType: 'image/png', stagingPath: tmpPath },
+        { base64: 'abc', mediaType: 'image/png', kind: 'image' as const, stagingPath: tmpPath },
       ]);
 
       expect(fs.existsSync(tmpPath)).toBe(false);
@@ -630,7 +631,7 @@ describe('Router', () => {
 
       await expect(
         r.send('CH_FAIL', 'T_FAIL', 'hello', [
-          { base64: 'abc', mediaType: 'image/png', stagingPath: tmpPath },
+          { base64: 'abc', mediaType: 'image/png', kind: 'image' as const, stagingPath: tmpPath },
         ]),
       ).rejects.toThrow('backend crashed');
 
