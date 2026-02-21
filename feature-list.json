@@ -1876,6 +1876,16 @@
             "Build passes, all tests pass"
           ],
           "status": "passing"
+        },
+        {
+          "id": "P18.2",
+          "description": "Discord bot: pass clientId for slash commands, add Ready handler with online presence",
+          "verification": [
+            "clientId extracted from bot token and passed to DiscordAdapter in start.ts",
+            "Events.ClientReady handler sets presence to online with activity",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
         }
       ]
     }

@@ -17,7 +17,7 @@ import * as os from 'node:os';
 function createMockDiscordClient() {
   const eventHandlers: Record<string, Function[]> = {};
 
-  const mockUser = { id: 'BOT_USER_123', tag: 'TestBot#1234' };
+  const mockUser = { id: 'BOT_USER_123', tag: 'TestBot#1234', setPresence: vi.fn() };
 
   const mockSendableChannel = {
     send: vi.fn(async () => ({ id: 'msg_123', delete: vi.fn(async () => {}) })),
@@ -327,6 +327,27 @@ describe('DiscordAdapter', () => {
       await adapter.start();
       expect(spy).toHaveBeenCalledWith('[discord] connected via gateway');
       spy.mockRestore();
+    });
+
+    it('registers a ClientReady handler that sets presence', () => {
+      createAdapter();
+      // The adapter registers a 'clientReady' handler in registerHandlers()
+      const readyHandlers = mockClient._eventHandlers['clientReady'];
+      expect(readyHandlers).toBeDefined();
+      expect(readyHandlers.length).toBeGreaterThan(0);
+
+      // Trigger the ready handler with a mock readyClient
+      readyHandlers[0]({ user: mockClient.user });
+
+      // Should set presence to online with "Listening to messages" activity
+      expect(mockClient.user.setPresence).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: expect.any(String),
+          activities: expect.arrayContaining([
+            expect.objectContaining({ name: 'for messages' }),
+          ]),
+        })
+      );
     });
   });
 

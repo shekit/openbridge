@@ -10,6 +10,8 @@ import {
   Client,
   GatewayIntentBits,
   Events,
+  ActivityType,
+  PresenceUpdateStatus,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -157,6 +159,15 @@ export class DiscordAdapter {
 
   /** Register all Discord event handlers. */
   private registerHandlers(): void {
+    // Ready handler — set online presence when connected
+    this.client.once(Events.ClientReady, (readyClient) => {
+      console.log(`[discord] ready — logged in as ${readyClient.user.tag}`);
+      readyClient.user.setPresence({
+        status: PresenceUpdateStatus.Online,
+        activities: [{ name: 'for messages', type: ActivityType.Listening }],
+      });
+    });
+
     // Message handler
     this.client.on(Events.MessageCreate, async (message: Message) => {
       await this.handleMessage(message);

@@ -22,6 +22,7 @@ import {
   detectBackend,
   mergeEnvFile,
   detectTunnelTools,
+  extractDiscordAppId,
 } from './init.js';
 import { startIpcServer } from '../mcp/ipc-server.js';
 import { createCallbackHandler, closeAllFileBrowsers } from '../mcp/callbacks.js';
@@ -454,10 +455,16 @@ export async function runStart(deps?: StartDeps): Promise<void> {
       return;
     }
 
+    const clientId = extractDiscordAppId(botToken) ?? undefined;
+    if (!clientId) {
+      console.warn('[start] could not extract Discord application ID from bot token — slash commands will not be registered');
+    }
+
     const discord = new DiscordAdapter({
       botToken,
       router,
       store,
+      clientId,
     });
     adapterMap.set('discord', discord);
     adapterList.push({ name: 'discord', start: () => discord.start(), stop: () => discord.stop() });
