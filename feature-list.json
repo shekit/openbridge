@@ -1504,7 +1504,7 @@
             "Also resolves the current permission request (same as Allow)",
             "Unit tests verify pattern storage and permission resolution"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P12.6",

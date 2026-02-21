@@ -136,6 +136,11 @@ export class SlackAdapter {
       await this.handleProjectConnect(channelId, projectDir, { user_id: (body as any).user?.id }, client as any);
     });
 
+    this.app.action('permission_always_allow', async ({ body, ack, client }) => {
+      await ack();
+      await this.handlePermissionAction(body as any, 'always_allow', client);
+    });
+
     this.app.action('perm_mode_trusted', async ({ body, ack, client }) => {
       await ack();
       await this.handlePermModeAction(body as any, 'trusted', client);
@@ -366,7 +371,7 @@ export class SlackAdapter {
     await this.renderEvents(channelId, threadTs, result.events, client);
   }
 
-  /** Handle permission Allow/Deny button clicks.
+  /** Handle permission Allow/Deny/Always Allow button clicks.
    *  Button value is "toolName|requestId" (hook flow) or "toolName" (legacy). */
   private async handlePermissionAction(body: any, action: string, client: any): Promise<void> {
     const channelId = body.channel?.id;
@@ -383,8 +388,20 @@ export class SlackAdapter {
     const toolName = pipeIdx >= 0 ? rawValue.slice(0, pipeIdx) : rawValue;
     const requestId = pipeIdx >= 0 ? rawValue.slice(pipeIdx + 1) : undefined;
 
+    // For "always_allow", persist the tool pattern for future sessions
+    if (action === 'always_allow' && toolName) {
+      const project = this.store.getProjectByChannelId(channelId);
+      if (project) {
+        this.store.addAllowedTool(project.id, toolName);
+        console.log(`[slack] added always-allow tool '${toolName}' for project ${project.id}`);
+      }
+    }
+
+    // Determine display label and effective action
+    const isAllow = action === 'allow' || action === 'always_allow';
+    const actionLabel = action === 'always_allow' ? 'Always Allowed' : (isAllow ? 'Allowed' : 'Denied');
+
     // Update the original message to show which action was taken
-    const actionLabel = action === 'allow' ? 'Allowed' : 'Denied';
     try {
       await client.chat.update({
         channel: channelId,
@@ -406,7 +423,7 @@ export class SlackAdapter {
 
     // Hook-based flow: resolve in-process, no need to call router.respond()
     if (requestId) {
-      const decision = action === 'allow' ? 'allow' : 'deny';
+      const decision = isAllow ? 'allow' : 'deny';
       resolvePermission(requestId, decision);
       console.log(`[slack] resolved permission ${requestId} → ${decision}`);
       return;
@@ -425,8 +442,8 @@ export class SlackAdapter {
       // Non-fatal — continue without indicator
     }
 
-    const responseText = action === 'allow' ? 'yes' : 'no';
-    const allowedTools = action === 'allow' && toolName ? [toolName] : undefined;
+    const responseText = isAllow ? 'yes' : 'no';
+    const allowedTools = isAllow && toolName ? [toolName] : undefined;
     let result: RouteResult;
     try {
       result = await this.router.respond(channelId, threadTs, responseText, allowedTools);
@@ -546,6 +563,12 @@ export class SlackAdapter {
               text: { type: 'plain_text', text: 'Allow' },
               style: 'primary',
               action_id: 'permission_allow',
+              value: buttonValue,
+            },
+            {
+              type: 'button',
+              text: { type: 'plain_text', text: 'Always Allow' },
+              action_id: 'permission_always_allow',
               value: buttonValue,
             },
             {

@@ -334,7 +334,8 @@ export class DiscordAdapter {
       return;
     }
 
-    if (!customId.startsWith('permission_allow') && !customId.startsWith('permission_deny')) {
+    if (!customId.startsWith('permission_allow') && !customId.startsWith('permission_deny')
+      && !customId.startsWith('permission_always_allow')) {
       return;
     }
 
@@ -346,13 +347,25 @@ export class DiscordAdapter {
       return;
     }
 
-    const isAllow = customId.startsWith('permission_allow');
+    const isAlwaysAllow = customId.startsWith('permission_always_allow');
+    const isAllow = isAlwaysAllow || customId.startsWith('permission_allow');
+
     // Parse customId: "permission_allow:toolName|requestId" or "permission_allow:toolName"
     const afterColon = customId.split(':').slice(1).join(':');
     const pipeIdx = afterColon.indexOf('|');
     const toolName = pipeIdx >= 0 ? afterColon.slice(0, pipeIdx) : (afterColon || undefined);
     const requestId = pipeIdx >= 0 ? afterColon.slice(pipeIdx + 1) : undefined;
-    const actionLabel = isAllow ? 'Allowed' : 'Denied';
+
+    // For "always_allow", persist the tool pattern for future sessions
+    if (isAlwaysAllow && toolName) {
+      const project = this.store.getProjectByChannelId(channelId);
+      if (project) {
+        this.store.addAllowedTool(project.id, toolName);
+        console.log(`[discord] added always-allow tool '${toolName}' for project ${project.id}`);
+      }
+    }
+
+    const actionLabel = isAlwaysAllow ? 'Always Allowed' : (isAllow ? 'Allowed' : 'Denied');
 
     // Update the original message to show which action was taken
     try {
@@ -490,6 +503,10 @@ export class DiscordAdapter {
         .setCustomId(`permission_allow:${idSuffix}`)
         .setLabel('Allow')
         .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`permission_always_allow:${idSuffix}`)
+        .setLabel('Always Allow')
+        .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`permission_deny:${idSuffix}`)
         .setLabel('Deny')

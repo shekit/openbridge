@@ -469,9 +469,10 @@ describe('SlackAdapter', () => {
       expect(sectionBlock.text.text).toContain('Edit');
 
       const actionsBlock = blocks.find((b: any) => b.type === 'actions');
-      expect(actionsBlock.elements).toHaveLength(2);
+      expect(actionsBlock.elements).toHaveLength(3);
       expect(actionsBlock.elements[0].action_id).toBe('permission_allow');
-      expect(actionsBlock.elements[1].action_id).toBe('permission_deny');
+      expect(actionsBlock.elements[1].action_id).toBe('permission_always_allow');
+      expect(actionsBlock.elements[2].action_id).toBe('permission_deny');
 
       const contextBlock = blocks.find((b: any) => b.type === 'context');
       expect(contextBlock.elements[0].text).toContain('custom response');
@@ -1085,6 +1086,103 @@ describe('SlackAdapter', () => {
         thread_ts: 'T_THREAD',
         text: 'Hello from MCP',
       });
+    });
+  });
+
+  describe('P12.5: Always Allow button stores tool pattern', () => {
+    it('registers permission_always_allow action handler', () => {
+      createAdapter();
+      expect(mockApp._actionHandlers['permission_always_allow']).toBeDefined();
+    });
+
+    it('stores tool in allowed_tools when Always Allow is clicked', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const project = store.createProject('C_AA', '/test/aa', 'claude');
+      const session = store.createSession('1234567890.AA001', project.id);
+      store.updateSessionState(session.id, 'running');
+      store.updateSessionState(session.id, 'waiting_for_input');
+      store.updateBackendSessionId(session.id, 'backend-session-aa');
+
+      await triggerAction('permission_always_allow', {
+        actions: [{ value: 'Bash' }],
+        channel: { id: 'C_AA' },
+        message: {
+          thread_ts: '1234567890.AA001',
+          ts: '1234567890.AA005',
+        },
+      });
+
+      const tools = store.getAllowedTools(project.id);
+      expect(tools).toHaveLength(1);
+      expect(tools[0].tool_pattern).toBe('Bash');
+    });
+
+    it('updates message to show Always Allowed', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const project = store.createProject('C_AA2', '/test/aa2', 'claude');
+      const session = store.createSession('1234567890.AA002', project.id);
+      store.updateSessionState(session.id, 'running');
+      store.updateSessionState(session.id, 'waiting_for_input');
+      store.updateBackendSessionId(session.id, 'backend-session-aa2');
+
+      await triggerAction('permission_always_allow', {
+        actions: [{ value: 'Write' }],
+        channel: { id: 'C_AA2' },
+        message: {
+          thread_ts: '1234567890.AA002',
+          ts: '1234567890.AA006',
+        },
+      });
+
+      expect(mockApp.client.chat.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: 'Permission: Always Allowed',
+        })
+      );
+    });
+
+    it('permission prompt includes Always Allow button between Allow and Deny', async () => {
+      const permBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => ({
+          events: [
+            {
+              type: 'permission_denied' as const,
+              toolName: 'Bash',
+              toolInput: { command: 'ls' },
+            },
+          ],
+          sessionId: 'session-123',
+        })),
+        getSessionId: vi.fn(() => 'session-123'),
+        setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
+        stop: vi.fn(async () => {}),
+      }));
+
+      createAdapter({ backendFactory: permBackend });
+      await adapter.start();
+      store.createProject('C_AA3', '/test/aa3', 'claude');
+
+      await triggerMessage({
+        channel: 'C_AA3',
+        text: 'run ls',
+        user: 'U_USER1',
+        ts: '1234567890.000002',
+        thread_ts: '1234567890.000001',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      const permCall = calls.find(
+        (c: any) => c[0].blocks?.some((b: any) => b.type === 'actions')
+      );
+      const actionsBlock = permCall![0].blocks.find((b: any) => b.type === 'actions');
+      expect(actionsBlock.elements[1].action_id).toBe('permission_always_allow');
+      expect(actionsBlock.elements[1].text.text).toBe('Always Allow');
     });
   });
 
