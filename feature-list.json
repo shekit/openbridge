@@ -1808,5 +1808,59 @@
         }
       ]
     }
+    },
+    {
+      "id": "P17",
+      "name": "Consolidated Preview Server",
+      "outcome": "Single MCP tool starts a server + tunnel in one call, eliminating port collisions and silent failures",
+      "features": [
+        {
+          "id": "P17.1",
+          "description": "preview-server.ts module — findFreePort, built-in static server, command runner, tunnel integration, cleanup",
+          "verification": [
+            "findFreePort() returns valid free port via net.createServer(0)",
+            "Static server serves files with correct MIME types, index.html for dirs, path traversal blocked",
+            "Command mode spawns command with PORT env var, waits for port, tunnels",
+            "Command early exit rejects with descriptive error",
+            "closeAllPreviews() cleans up all active servers and tunnels",
+            "13 unit tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P17.2",
+          "description": "Wire preview_server through callbacks, IPC server, and entry.ts",
+          "verification": [
+            "IpcHandler interface has previewServer(directory, command, ttl) method",
+            "IPC server has /preview-server endpoint",
+            "callbacks.ts routes to startPreviewServer()",
+            "entry.ts wires callback to IPC endpoint",
+            "Build passes, all tests pass"
+          ],
+          "status": "pending"
+        },
+        {
+          "id": "P17.3",
+          "description": "Register preview_server MCP tool, update open_tunnel description to reference preview_server",
+          "verification": [
+            "preview_server tool registered with directory, command, ttl inputs",
+            "open_tunnel description updated to suggest preview_server for starting new servers",
+            "MCP server log includes preview_server in tool list",
+            "Build passes, all tests pass"
+          ],
+          "status": "pending"
+        },
+        {
+          "id": "P17.4",
+          "description": "Add mcp__openbridge__preview_server to MCP_TOOLS, add closeAllPreviews to shutdown",
+          "verification": [
+            "MCP_TOOLS includes mcp__openbridge__preview_server",
+            "start.ts shutdown calls closeAllPreviews()",
+            "Build passes, all tests pass"
+          ],
+          "status": "pending"
+        }
+      ]
+    }
   ]
 }
