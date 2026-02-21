@@ -392,6 +392,42 @@ describe('Claude Code backend', () => {
     });
   });
 
+  describe('buildClaudeArgs with allowedTools', () => {
+    it('includes --allowedTools flag when tools are provided', () => {
+      const args = buildClaudeArgs('yes', 'sess_abc', ['Bash']);
+      expect(args).toContain('--allowedTools');
+      const atIndex = args.indexOf('--allowedTools');
+      expect(args[atIndex + 1]).toBe('Bash');
+    });
+
+    it('prompt text is NOT consumed by variadic --allowedTools', () => {
+      const args = buildClaudeArgs('yes', 'sess_abc', ['Bash']);
+      // The prompt must be the last element, separated by '--'
+      expect(args[args.length - 1]).toBe('yes');
+      expect(args).toContain('--');
+      const dashDashIndex = args.indexOf('--');
+      expect(args[dashDashIndex + 1]).toBe('yes');
+    });
+
+    it('handles multiple allowed tools', () => {
+      const args = buildClaudeArgs('proceed', 'sess_abc', ['Bash', 'Edit']);
+      const atIndices = args.reduce<number[]>((acc, val, idx) => {
+        if (val === '--allowedTools') acc.push(idx);
+        return acc;
+      }, []);
+      expect(atIndices).toHaveLength(2);
+      expect(args[atIndices[0] + 1]).toBe('Bash');
+      expect(args[atIndices[1] + 1]).toBe('Edit');
+      // Prompt is still last, after '--'
+      expect(args[args.length - 1]).toBe('proceed');
+    });
+
+    it('does not include --allowedTools when not provided', () => {
+      const args = buildClaudeArgs('hello', null);
+      expect(args).not.toContain('--allowedTools');
+    });
+  });
+
   describe('edge cases', () => {
     it('every parse result ends with turn_completed', () => {
       const parsed = parseClaudeOutput('', '', 0);

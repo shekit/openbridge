@@ -194,7 +194,10 @@ export function buildClaudeArgs(
     }
   }
 
-  args.push(text);
+  // Use '--' to separate options from the prompt text.
+  // Without this, commander.js variadic options like --allowedTools (<tools...>)
+  // consume the prompt as another tool name, leaving Claude with no prompt.
+  args.push('--', text);
   return args;
 }
 
