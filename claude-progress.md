@@ -14,6 +14,10 @@ Phase 10 — Wire MCP Server to Runtime (complete)
 Phase 11 — Manual Test Bug Fixes (complete)
 Phase 12 — Permission Modes, Image Support, Sandbox Upgrades (complete)
 Phase 13 — Image Upload Staging & save_uploaded_file MCP Tool (complete)
+Phase 14 — Universal File Upload Support (complete)
+Phase 15 — Hook Bugfix (complete)
+Phase 16 — post_message MCP Tool + Output Cleanup (complete)
+Phase 17 — Consolidated Preview Server (complete)
 
 ## Session Log
 
@@ -551,4 +555,24 @@ Four features addressing two user-facing problems: (1) permission prompts crashi
 
 **Test count:** 602 tests passing across 23 test files
 - All features (P15.1, P16.1–P16.5) committed individually, all marked passing
-- Total: 121 features across 16 phases (P0–P7, P9–P16), all passing
+
+### Session 22 — Phase 17: Consolidated Preview Server
+
+**Problem:** When Claude wanted to preview a website, it had to: (1) Bash `npx serve -p 3000 &` (backgrounded, can fail silently with EADDRINUSE), (2) call `open_tunnel(3000)`, (3) call `post_message` with URL. Port collisions between different projects caused the second tunnel to serve the first project's content.
+
+**Solution:** New `preview_server` MCP tool that consolidates server startup + port allocation + tunneling into a single call.
+
+- **P17.1: preview-server.ts module** — `findFreePort()` via `net.createServer(0)` for collision-free port allocation. Built-in static file server with MIME types, index.html, directory listing. Command mode spawns arbitrary shell command with `PORT` env var injected. Waits for port to respond before tunneling. `closeAllPreviews()` for shutdown cleanup. 13 unit tests.
+- **P17.2: IPC/callback wiring** — Added `previewServer()` to IpcHandler, BridgeCallbacks, `/preview-server` IPC endpoint, entry.ts callback. Updated all test mocks.
+- **P17.3: MCP tool registration** — Registered `preview_server` tool with `directory`, `command`, `ttl` inputs. Updated `open_tunnel` description to reference `preview_server` for new servers. 6 new tests.
+- **P17.4: Pre-approval + shutdown** — Added `mcp__openbridge__preview_server` to MCP_TOOLS. Added `closeAllPreviews()` to shutdown in start.ts. Hook auto-approves via `mcp__openbridge__` prefix.
+
+**Key design:**
+- Static mode: `preview_server({ directory: "./dist" })` — bridge starts built-in HTTP server
+- Command mode: `preview_server({ command: "npm run dev" })` — bridge spawns command with `PORT` env var
+- OS picks free port → no collisions possible
+- Bridge monitors process → no silent failures
+- One tool call instead of three
+
+**Test count:** 621 tests passing across 24 test files
+- All features (P17.1–P17.4) committed individually, all marked passing
