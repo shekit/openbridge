@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ClaudeBackend, spawnCollect, parseClaudeOutput, buildClaudeArgs } from '../backends/claude.js';
+import { ClaudeBackend, spawnCollect, parseClaudeOutput, buildClaudeArgs, MCP_TOOLS } from '../backends/claude.js';
 import type { Backend } from '../types/backend.js';
 
 describe('Claude Code backend', () => {
@@ -393,11 +393,14 @@ describe('Claude Code backend', () => {
   });
 
   describe('buildClaudeArgs with allowedTools', () => {
-    it('includes --allowedTools flag when tools are provided', () => {
+    it('includes user-approved tools alongside MCP tools', () => {
       const args = buildClaudeArgs('yes', 'sess_abc', ['Bash']);
       expect(args).toContain('--allowedTools');
-      const atIndex = args.indexOf('--allowedTools');
-      expect(args[atIndex + 1]).toBe('Bash');
+      expect(args).toContain('Bash');
+      // MCP tools always included
+      for (const tool of MCP_TOOLS) {
+        expect(args).toContain(tool);
+      }
     });
 
     it('prompt text is NOT consumed by variadic --allowedTools', () => {
@@ -409,22 +412,33 @@ describe('Claude Code backend', () => {
       expect(args[dashDashIndex + 1]).toBe('yes');
     });
 
-    it('handles multiple allowed tools', () => {
+    it('handles multiple user-approved tools alongside MCP tools', () => {
       const args = buildClaudeArgs('proceed', 'sess_abc', ['Bash', 'Edit']);
+      expect(args).toContain('Bash');
+      expect(args).toContain('Edit');
+      // MCP tools + Bash + Edit = MCP_TOOLS.length + 2 occurrences of --allowedTools
       const atIndices = args.reduce<number[]>((acc, val, idx) => {
         if (val === '--allowedTools') acc.push(idx);
         return acc;
       }, []);
-      expect(atIndices).toHaveLength(2);
-      expect(args[atIndices[0] + 1]).toBe('Bash');
-      expect(args[atIndices[1] + 1]).toBe('Edit');
+      expect(atIndices).toHaveLength(MCP_TOOLS.length + 2);
       // Prompt is still last, after '--'
       expect(args[args.length - 1]).toBe('proceed');
     });
 
-    it('does not include --allowedTools when not provided', () => {
+    it('always includes MCP tools in --allowedTools even when none provided', () => {
       const args = buildClaudeArgs('hello', null);
-      expect(args).not.toContain('--allowedTools');
+      expect(args).toContain('--allowedTools');
+      for (const tool of MCP_TOOLS) {
+        expect(args).toContain(tool);
+      }
+    });
+
+    it('deduplicates when user-approved tools overlap with MCP tools', () => {
+      const args = buildClaudeArgs('yes', 'sess_abc', ['Bash', MCP_TOOLS[0]]);
+      const occurrences = args.filter((a) => a === MCP_TOOLS[0]);
+      expect(occurrences).toHaveLength(1); // not duplicated
+      expect(args).toContain('Bash');
     });
   });
 
@@ -456,6 +470,8 @@ describe('Claude Code backend', () => {
     it('does not include --mcp-config when not provided', () => {
       const args = buildClaudeArgs('hello', null);
       expect(args).not.toContain('--mcp-config');
+      // But MCP tools are still always pre-approved
+      expect(args).toContain('--allowedTools');
     });
   });
 

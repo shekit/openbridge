@@ -1316,6 +1316,24 @@
           "status": "passing"
         }
       ]
+    },
+    {
+      "id": "P11",
+      "name": "Real-Time Permission Handling via Claude Code Hooks",
+      "outcome": "Claude Code permission prompts surface in Slack/Discord in real-time via hooks, MCP tools pre-approved",
+      "features": [
+        {
+          "id": "P11.1",
+          "description": "Pre-approve MCP tools in --allowedTools — MCP_TOOLS constant always merged into buildClaudeArgs allowedTools",
+          "verification": [
+            "MCP_TOOLS exported from claude.ts with 4 tool names",
+            "buildClaudeArgs() always includes MCP tools in --allowedTools",
+            "Deduplication when user-approved tools overlap with MCP tools",
+            "Unit tests verify MCP tools always present in args"
+          ],
+          "status": "passing"
+        }
+      ]
     }
   ]
 }
