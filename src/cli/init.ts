@@ -286,7 +286,10 @@ export async function detectBackend(io: PromptIO | null): Promise<string> {
 
   if (!hasClaude && !hasCodex) {
     if (!io) {
-      clack.log.warn('No coding backends found. Install Claude Code or Codex CLI first.');
+      clack.log.warn('No coding backends found on PATH.');
+      clack.log.info('Install one before sending messages:');
+      clack.log.info('  Claude Code: npm i -g @anthropic-ai/claude-code');
+      clack.log.info('  Codex CLI:   npm i -g @openai/codex');
       clack.log.info('Defaulting to "claude" — you can change this later with /settings.');
     } else {
       console.log('[init] no coding backends found — defaulting to "claude".');
