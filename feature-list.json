@@ -1651,7 +1651,7 @@
             "Auth required, returns 401 without secret",
             "Unit tests pass"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P13.7",

@@ -20,6 +20,8 @@ export interface IpcHandler {
   /** Send a permission prompt to the user and return immediately (non-blocking). */
   requestPermission?(channelId: string, threadId: string, toolName: string,
     toolInput: Record<string, unknown>, platform: string, requestId: string): Promise<void>;
+  /** Copy a staged uploaded file to a destination in the project directory. */
+  saveUploadedFile?(uploadId: string, destination: string, projectDir: string): Promise<string>;
 }
 
 /** Pending permission request — waiting for user to click Allow/Deny. */
@@ -211,6 +213,21 @@ export function startIpcServer(handler: IpcHandler): Promise<IpcServer> {
           const resolved = resolvePermission(resolveId, resolveDecision);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: resolved }));
+          break;
+        }
+
+        case '/save-uploaded-file': {
+          const { uploadId, destination, projectDir } = data as {
+            uploadId: string; destination: string; projectDir: string;
+          };
+          if (!handler.saveUploadedFile) {
+            res.writeHead(501, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'saveUploadedFile not implemented' }));
+            break;
+          }
+          const savedPath = await handler.saveUploadedFile(uploadId, destination, projectDir);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, path: savedPath }));
           break;
         }
 

@@ -299,4 +299,41 @@ describe('IPC Server', () => {
     // Prevent afterEach from double-closing
     server = { port: 0, secret: '', close: async () => {} };
   });
+
+  describe('P13.6: /save-uploaded-file endpoint', () => {
+    it('returns 501 when handler not implemented', async () => {
+      // Default handler has no saveUploadedFile
+      const res = await post(server, '/save-uploaded-file', {
+        uploadId: 'upload_abc123',
+        destination: 'public/logo.png',
+        projectDir: '/tmp/proj',
+      });
+      expect(res.status).toBe(501);
+      expect(res.body.error).toContain('not implemented');
+    });
+
+    it('returns 200 with saved path when handler succeeds', async () => {
+      handler.saveUploadedFile = vi.fn().mockResolvedValue('/tmp/proj/public/logo.png');
+      const res = await post(server, '/save-uploaded-file', {
+        uploadId: 'upload_abc123',
+        destination: 'public/logo.png',
+        projectDir: '/tmp/proj',
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
+      expect(res.body.path).toBe('/tmp/proj/public/logo.png');
+      expect(handler.saveUploadedFile).toHaveBeenCalledWith(
+        'upload_abc123', 'public/logo.png', '/tmp/proj',
+      );
+    });
+
+    it('requires auth', async () => {
+      const res = await post(server, '/save-uploaded-file', {
+        uploadId: 'upload_abc123',
+        destination: 'public/logo.png',
+        projectDir: '/tmp/proj',
+      }, 'wrong-secret');
+      expect(res.status).toBe(401);
+    });
+  });
 });
