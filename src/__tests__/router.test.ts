@@ -313,6 +313,54 @@ describe('Router', () => {
     });
   });
 
+  describe('cancelBackend', () => {
+    it('kills a running backend and resets session to idle', async () => {
+      const stopSpy = vi.fn(async () => {});
+      let sendResolve: (value: SendResult) => void;
+      const backend: Backend = {
+        start: vi.fn(async () => {}),
+        send: vi.fn(() => new Promise<SendResult>((resolve) => { sendResolve = resolve; })),
+        getSessionId: vi.fn(() => null),
+        setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
+        stop: stopSpy,
+      };
+      const factory: BackendFactory = () => backend;
+      const router = new Router(store, factory);
+
+      store.createProject('CH_CANCEL', '/tmp/cancel', 'claude');
+
+      // Start a send that will block until we resolve it
+      const sendPromise = router.send('CH_CANCEL', 'T_CANCEL', 'hello').catch(() => {});
+
+      // Wait for backend.send to be called (backend is now tracked in activeBackends)
+      await vi.waitFor(() => expect(backend.send).toHaveBeenCalled());
+
+      // Cancel should kill the backend
+      const cancelled = await router.cancelBackend('CH_CANCEL', 'T_CANCEL');
+      expect(cancelled).toBe(true);
+      expect(stopSpy).toHaveBeenCalled();
+
+      // Session should be back to idle
+      const session = store.getSessionByThreadId('T_CANCEL');
+      expect(session?.state).toBe('idle');
+
+      // Resolve the dangling send so the promise settles
+      sendResolve!({ events: [], sessionId: null });
+      await sendPromise;
+    });
+
+    it('returns false when no backend is running', async () => {
+      const factory: BackendFactory = () => createMockBackend();
+      const router = new Router(store, factory);
+
+      store.createProject('CH_CN', '/tmp/cancel-none', 'claude');
+
+      const cancelled = await router.cancelBackend('CH_CN', 'T_NONE');
+      expect(cancelled).toBe(false);
+    });
+  });
+
   describe('P10.8: mcpConfigFactory', () => {
     it('passes mcpConfig to backend.start when factory is set', async () => {
       const startSpy = vi.fn(async () => {});

@@ -139,6 +139,9 @@ export class DiscordAdapter {
         .addStringOption((option) =>
           option.setName('args').setDescription('Setting to change (e.g. "backend codex", "root /path")').setRequired(false)
         ),
+      new SlashCommandBuilder()
+        .setName('cancel')
+        .setDescription('Cancel the running task in this thread'),
     ];
 
     const rest = new REST().setToken(this.botToken);
@@ -249,6 +252,9 @@ export class DiscordAdapter {
           break;
         case 'settings':
           await this.handleSettingsCommand(interaction);
+          break;
+        case 'cancel':
+          await this.handleCancelCommand(interaction);
           break;
       }
     } else if (interaction.isButton()) {
@@ -554,6 +560,11 @@ export class DiscordAdapter {
       '- `/project connect` — connect an existing project to a channel',
       '- `/project list` — show all connected projects',
       '- `/project disconnect` — disconnect this channel',
+      '',
+      '**Other commands:**',
+      '- `/new` — reset the session in a thread',
+      '- `/cancel` — stop a running task in a thread',
+      '- `/settings` — view or change bridge settings',
     ].join('\n'));
   }
 
@@ -713,6 +724,32 @@ export class DiscordAdapter {
     try {
       this.router.resetSession(parentChannelId, threadId);
       await interaction.reply('Session reset. Your next message will start a fresh conversation.');
+    } catch (err: any) {
+      await interaction.reply(`:warning: ${err.message}`);
+    }
+  }
+
+  /** Handle /cancel slash command — kill a stuck backend process. */
+  private async handleCancelCommand(interaction: any): Promise<void> {
+    const channelId = interaction.channelId;
+    const channel = interaction.channel;
+
+    const threadId = channel?.isThread?.() ? channel.id : null;
+
+    if (!threadId) {
+      await interaction.reply('Use `/cancel` inside a thread to stop a running task.');
+      return;
+    }
+
+    const parentChannelId = channel.parentId || channelId;
+
+    try {
+      const cancelled = await this.router.cancelBackend(parentChannelId, threadId);
+      if (cancelled) {
+        await interaction.reply('Task cancelled. The running process has been stopped.');
+      } else {
+        await interaction.reply('Nothing to cancel — no task is currently running in this thread.');
+      }
     } catch (err: any) {
       await interaction.reply(`:warning: ${err.message}`);
     }

@@ -24,7 +24,9 @@ export interface SpawnHandle {
   kill(): void;
 }
 
-/** Spawn a process and collect stdout/stderr until exit. Returns a handle with kill(). */
+/** Spawn a process and collect stdout/stderr until exit. Returns a handle with kill().
+ *  Uses detached: true so the child gets its own process group — kill() sends
+ *  SIGTERM to the entire group, cleaning up any grandchild processes (e.g., dev servers). */
 export function spawnCollect(
   command: string,
   args: string[],
@@ -33,6 +35,7 @@ export function spawnCollect(
   const proc = spawn(command, args, {
     cwd,
     stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
   });
 
   let stdout = '';
@@ -55,7 +58,12 @@ export function spawnCollect(
   return {
     result,
     kill() {
-      try { proc.kill('SIGTERM'); } catch { /* already exited */ }
+      // Kill the entire process group (negative PID) to clean up grandchildren
+      try {
+        if (proc.pid) {
+          process.kill(-proc.pid, 'SIGTERM');
+        }
+      } catch { /* already exited */ }
     },
   };
 }

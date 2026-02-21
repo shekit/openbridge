@@ -307,6 +307,39 @@ export class Router {
   }
 
   /**
+   * Cancel a running backend for a thread. Kills the process (and all its
+   * children via process group) and transitions the session back to idle.
+   * Returns true if a backend was cancelled, false if nothing was running.
+   */
+  async cancelBackend(channelId: string, threadId: string): Promise<boolean> {
+    const backend = this.activeBackends.get(threadId);
+    if (!backend) {
+      return false;
+    }
+
+    console.log(`[router] cancelling backend for thread ${threadId}`);
+    try {
+      await backend.stop();
+    } catch {
+      // Ignore stop errors during cancel
+    }
+    this.activeBackends.delete(threadId);
+
+    // Transition session back to idle
+    const resolved = this.resolve(channelId, threadId);
+    if (resolved) {
+      const { session } = resolved;
+      if (session.state === 'running') {
+        this.store.updateSessionState(session.id, 'dead');
+        this.store.updateSessionState(session.id, 'idle');
+        console.log(`[router] session ${session.id} cancelled and reset to idle`);
+      }
+    }
+
+    return true;
+  }
+
+  /**
    * Graceful shutdown — stop all active backend sessions.
    */
   async shutdown(): Promise<void> {

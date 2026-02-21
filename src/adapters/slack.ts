@@ -161,6 +161,12 @@ export class SlackAdapter {
       if (!(await this.ensureInChannel(command.channel_id, client))) return;
       await this.handleSettingsCommand(command, client);
     });
+
+    this.app.command('/cancel', async ({ command, ack, client }) => {
+      await ack();
+      if (!(await this.ensureInChannel(command.channel_id, client))) return;
+      await this.handleCancelCommand(command, client);
+    });
   }
 
   /**
@@ -485,6 +491,11 @@ export class SlackAdapter {
       }
       lines.push('• `/project list` — show all connected projects');
       lines.push('• `/project disconnect` — disconnect this channel');
+      lines.push('');
+      lines.push('*Other commands:*');
+      lines.push('• `/new` — reset the session in a thread');
+      lines.push('• `/cancel` — stop a running task in a thread');
+      lines.push('• `/settings` — view or change bridge settings');
       await client.chat.postMessage({
         channel: channelId,
         text: lines.join('\n'),
@@ -898,6 +909,43 @@ export class SlackAdapter {
         thread_ts: threadTs,
         text: 'Session reset. Your next message will start a fresh conversation.',
       });
+    } catch (err: any) {
+      await client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: `:warning: ${err.message}`,
+      });
+    }
+  }
+
+  /** Handle /cancel slash command — kill a stuck backend process. */
+  private async handleCancelCommand(command: any, client: any): Promise<void> {
+    const channelId = command.channel_id;
+    const threadTs = command.thread_ts || null;
+
+    if (!threadTs) {
+      await client.chat.postMessage({
+        channel: channelId,
+        text: 'Use `/cancel` inside a thread to stop a running task.',
+      });
+      return;
+    }
+
+    try {
+      const cancelled = await this.router.cancelBackend(channelId, threadTs);
+      if (cancelled) {
+        await client.chat.postMessage({
+          channel: channelId,
+          thread_ts: threadTs,
+          text: 'Task cancelled. The running process has been stopped.',
+        });
+      } else {
+        await client.chat.postMessage({
+          channel: channelId,
+          thread_ts: threadTs,
+          text: 'Nothing to cancel — no task is currently running in this thread.',
+        });
+      }
     } catch (err: any) {
       await client.chat.postMessage({
         channel: channelId,

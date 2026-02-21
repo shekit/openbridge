@@ -862,6 +862,47 @@ describe('SlackAdapter', () => {
     });
   });
 
+  describe('/cancel stops a running task', () => {
+    it('registers /cancel command handler', () => {
+      createAdapter();
+      adapter.start();
+      expect(mockApp._commandHandlers['/cancel']).toBeDefined();
+    });
+
+    it('tells user to use /cancel in a thread when used outside', async () => {
+      createAdapter();
+      await adapter.start();
+
+      await triggerCommand('/cancel', {
+        channel_id: 'C_BOUND',
+      });
+
+      expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining('inside a thread'),
+        })
+      );
+    });
+
+    it('reports nothing to cancel when no task is running', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_CANCEL', '/test/cancel', 'claude');
+
+      await triggerCommand('/cancel', {
+        channel_id: 'C_CANCEL',
+        thread_ts: '9999.000001',
+      });
+
+      expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining('Nothing to cancel'),
+        })
+      );
+    });
+  });
+
   describe('P3.17: /settings displays and modifies bridge configuration', () => {
     it('displays current project settings', async () => {
       createAdapter();

@@ -26,6 +26,11 @@
         "description": "View or change bridge settings",
         "usage_hint": "backend claude | root /path",
         "should_escape": false
+      },
+      {
+        "command": "/cancel",
+        "description": "Stop a running task in this thread",
+        "should_escape": false
       }
     ]
   },

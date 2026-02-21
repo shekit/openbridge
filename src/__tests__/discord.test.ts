@@ -1020,6 +1020,43 @@ describe('DiscordAdapter', () => {
     });
   });
 
+  describe('Discord — /cancel stops a running task', () => {
+    it('tells user to use /cancel in a thread when used outside', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const { interaction, replies } = createMockInteraction({
+        commandName: 'cancel',
+        channelId: 'C_BOUND',
+        isThread: false,
+      });
+
+      await triggerInteraction(interaction);
+
+      const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
+      expect(text).toContain('inside a thread');
+    });
+
+    it('reports nothing to cancel when no task is running', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_CANCEL', '/test/cancel', 'claude');
+
+      const { interaction, replies } = createMockInteraction({
+        commandName: 'cancel',
+        channelId: 'thread-cancel',
+        isThread: true,
+        parentId: 'C_CANCEL',
+      });
+
+      await triggerInteraction(interaction);
+
+      const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
+      expect(text).toContain('Nothing to cancel');
+    });
+  });
+
   describe('P4.13: Discord — /settings command', () => {
     it('displays current project settings', async () => {
       createAdapter();
