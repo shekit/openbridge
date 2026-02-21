@@ -522,3 +522,33 @@ Extended file upload handling from images-only to all file types (PDFs, text, CS
 **Test count:** 588 tests passing across 22 test files
 - All 4 features (P14.1–P14.4) committed individually, all marked passing
 - Total: 115 features across 14 phases (P0–P7, P9–P14), all passing
+
+### Session 21 — Phase 15 & 16: Hook Bugfix, post_message MCP Tool, Output Cleanup
+
+**Phase 15: Hook output bugfix (P15.1)**
+- Fixed missing `hookEventName: 'PreToolUse'` in pre-tool-use.ts `allowOutput()` and `denyOutput()` functions
+- Without this field, Claude Code ignored the hook's allow/deny decision → auto-deny in `-p` mode → infinite permission prompt loop
+- Updated hook tests to assert hookEventName is present
+
+**Phase 16: post_message MCP tool + output cleanup (P16.1–P16.4)**
+
+Four features addressing two user-facing problems: (1) permission prompts crashing on large Write inputs, (2) Claude dumping verbose internal monologue to the chat thread.
+
+- **P16.1: Permission prompt truncation** — Both adapters truncate `JSON.stringify(toolInput)` to 500 chars in `postPermissionPrompt()`. Prevents Slack's 3000-char block text limit crash when Claude writes large files.
+- **P16.2: Register `post_message` MCP tool** — Added `server.registerTool('post_message', ...)` in server.ts. Infrastructure (IPC endpoint, callback handler, adapter.sendMessage) already existed; only the MCP tool registration was missing.
+- **P16.3: Remove hardcoded postMessage** — Removed `callbacks.postMessage()` calls from `open_tunnel` and `serve_file_browser` handlers. Claude now calls `post_message` explicitly to share URLs. Updated tool descriptions accordingly.
+- **P16.4: Track post_message per turn, suppress assistant_text** — Module-level `Set<string>` in callbacks.ts tracks threads where `post_message` was called. Both adapters clear flag before `router.send()`/`respond()`, check after. If post_message was used → suppress all assistant_text. If not → render only last assistant_text block.
+
+**Modified files:**
+- `src/hooks/pre-tool-use.ts` — added hookEventName field
+- `src/mcp/server.ts` — registered post_message tool, removed hardcoded postMessage from open_tunnel/serve_file_browser
+- `src/mcp/callbacks.ts` — added clearPostMessageFlag(), wasPostMessageCalled(), markPostMessageCalled()
+- `src/adapters/slack.ts` — truncation in postPermissionPrompt, clearPostMessageFlag before routing, assistant_text suppression in renderEvents
+- `src/adapters/discord.ts` — same changes as slack.ts
+- Test files updated for all features
+
+- **P16.5: Fallback assistant_text truncation** — When the last assistant_text block is rendered as fallback (no post_message used), text >500 chars is truncated from the top, keeping the ending (most useful part) with a "..." prefix. Constant is `MAX_FALLBACK = 500` in each adapter's `renderEvents()`.
+
+**Test count:** 602 tests passing across 23 test files
+- All features (P15.1, P16.1–P16.5) committed individually, all marked passing
+- Total: 121 features across 16 phases (P0–P7, P9–P16), all passing
