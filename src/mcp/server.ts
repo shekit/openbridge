@@ -25,6 +25,8 @@ export interface BridgeCallbacks {
   openTunnel(port: number, ttl: number): Promise<string>;
   /** Serve a file browser for a directory behind a tunnel and return the URL. */
   serveFileBrowser(directory: string): Promise<string>;
+  /** Start a preview server (static or command) and tunnel it. Returns { url, port }. */
+  previewServer(directory: string, command: string | undefined, ttl: number): Promise<{ url: string; port: number }>;
   /** Post a text message in the originating thread. */
   postMessage(channelId: string, threadId: string, text: string): Promise<void>;
   /** Copy a staged uploaded file to a destination in the project directory. */

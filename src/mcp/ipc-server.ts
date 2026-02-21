@@ -16,6 +16,8 @@ export interface IpcHandler {
   uploadFile(channelId: string, threadId: string, filePath: string, platform: string): Promise<void>;
   openTunnel(port: number, ttl: number): Promise<string>;
   serveFileBrowser(directory: string): Promise<string>;
+  /** Start a preview server (static or command) and tunnel it. Returns { url, port }. */
+  previewServer(directory: string, command: string | undefined, ttl: number): Promise<{ url: string; port: number }>;
   postMessage(channelId: string, threadId: string, text: string, platform: string): Promise<void>;
   /** Send a permission prompt to the user and return immediately (non-blocking). */
   requestPermission?(channelId: string, threadId: string, toolName: string,
@@ -137,6 +139,16 @@ export function startIpcServer(handler: IpcHandler): Promise<IpcServer> {
           const url = await handler.serveFileBrowser(directory);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, url }));
+          break;
+        }
+
+        case '/preview-server': {
+          const { directory, command, ttl } = data as {
+            directory: string; command?: string; ttl: number;
+          };
+          const result = await handler.previewServer(directory, command ?? undefined, ttl);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, url: result.url, port: result.port }));
           break;
         }
 

@@ -1837,7 +1837,7 @@
             "entry.ts wires callback to IPC endpoint",
             "Build passes, all tests pass"
           ],
-          "status": "pending"
+          "status": "passing"
         },
         {
           "id": "P17.3",

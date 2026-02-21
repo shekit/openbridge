@@ -11,6 +11,7 @@ import type { IpcHandler } from './ipc-server.js';
 import type { Adapter } from '../types/adapter.js';
 import { openTunnel } from './tunnel.js';
 import { startFileBrowser, type FileBrowser } from './file-browser.js';
+import { startPreviewServer } from './preview-server.js';
 import { getUploadsDir } from '../utils.js';
 
 export interface CallbackHandlerOptions {
@@ -75,6 +76,11 @@ export function createCallbackHandler(options: CallbackHandlerOptions): IpcHandl
       // Tunnel the file browser so it's accessible externally
       const tunnel = await openTunnel(browser.port, 3600); // 1 hour default TTL
       return tunnel.url;
+    },
+
+    async previewServer(directory, command, ttl) {
+      const preview = await startPreviewServer(directory, command, ttl);
+      return { url: preview.url, port: preview.port };
     },
 
     async postMessage(channelId, threadId, text, platform) {

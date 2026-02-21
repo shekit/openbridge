@@ -24,6 +24,7 @@ function createMockCallbacks(): BridgeCallbacks {
     uploadFile: vi.fn().mockResolvedValue(undefined),
     openTunnel: vi.fn().mockResolvedValue('https://tunnel.example.com'),
     serveFileBrowser: vi.fn().mockResolvedValue('https://browser.example.com'),
+    previewServer: vi.fn().mockResolvedValue({ url: 'https://preview.example.com', port: 8042 }),
     postMessage: vi.fn().mockResolvedValue(undefined),
     saveUploadedFile: vi.fn().mockResolvedValue('/tmp/project/public/logo.png'),
   };

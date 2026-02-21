@@ -26,6 +26,14 @@ vi.mock('../mcp/file-browser.js', () => ({
   })),
 }));
 
+vi.mock('../mcp/preview-server.js', () => ({
+  startPreviewServer: vi.fn(async () => ({
+    url: 'https://mock-preview.example.com',
+    port: 9876,
+    close: vi.fn(),
+  })),
+}));
+
 function createMockAdapter(): Adapter {
   return {
     start: vi.fn(),

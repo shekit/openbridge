@@ -56,6 +56,7 @@ describe('PermissionRequest hook script', () => {
       uploadFile: vi.fn().mockResolvedValue(undefined),
       openTunnel: vi.fn().mockResolvedValue(''),
       serveFileBrowser: vi.fn().mockResolvedValue(''),
+      previewServer: vi.fn().mockResolvedValue({ url: '', port: 0 }),
       postMessage: vi.fn().mockResolvedValue(undefined),
       requestPermission: vi.fn().mockImplementation(
         async (_ch, _th, _tool, _input, _platform, requestId) => {
@@ -89,6 +90,7 @@ describe('PermissionRequest hook script', () => {
       uploadFile: vi.fn().mockResolvedValue(undefined),
       openTunnel: vi.fn().mockResolvedValue(''),
       serveFileBrowser: vi.fn().mockResolvedValue(''),
+      previewServer: vi.fn().mockResolvedValue({ url: '', port: 0 }),
       postMessage: vi.fn().mockResolvedValue(undefined),
       requestPermission: vi.fn().mockImplementation(
         async (_ch, _th, _tool, _input, _platform, requestId) => {

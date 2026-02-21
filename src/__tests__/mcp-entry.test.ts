@@ -54,6 +54,7 @@ describe('MCP entry → IPC integration', () => {
       uploadFile: vi.fn().mockResolvedValue(undefined),
       openTunnel: vi.fn().mockResolvedValue('https://tunnel.test'),
       serveFileBrowser: vi.fn().mockResolvedValue('https://browser.test'),
+      previewServer: vi.fn().mockResolvedValue({ url: 'https://preview.test', port: 9000 }),
       postMessage: vi.fn().mockResolvedValue(undefined),
     };
     server = await startIpcServer(handler);

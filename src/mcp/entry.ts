@@ -90,6 +90,11 @@ async function main(): Promise<void> {
       return result.url as string;
     },
 
+    async previewServer(directory, command, ttl) {
+      const result = await ipcPost(ipcPort, ipcSecret, '/preview-server', { directory, command, ttl });
+      return { url: result.url as string, port: result.port as number };
+    },
+
     async postMessage(chId, thId, text) {
       await ipcPost(ipcPort, ipcSecret, '/post-message', {
         channelId: chId,
