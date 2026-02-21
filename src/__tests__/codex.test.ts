@@ -522,4 +522,27 @@ describe('Codex CLI backend', () => {
       expect(parsed.events).toHaveLength(1); // just turn_completed
     });
   });
+
+  describe('P13.5: Codex reuses staging files for --image', () => {
+    it('uses stagingPath directly when all images have it', () => {
+      const images = [
+        { base64: 'abc', mediaType: 'image/png', stagingPath: '/staging/upload_abc-logo.png' },
+        { base64: 'def', mediaType: 'image/jpeg', stagingPath: '/staging/upload_def-photo.jpg' },
+      ];
+      const args = buildCodexArgs('hello', null, 'workspace-write' as any, images.map(i => i.stagingPath));
+      expect(args).toContain('--image');
+      expect(args).toContain('/staging/upload_abc-logo.png');
+      expect(args).toContain('/staging/upload_def-photo.jpg');
+    });
+
+    it('falls back to temp files when stagingPath is absent', () => {
+      const images = [
+        { base64: Buffer.from('test').toString('base64'), mediaType: 'image/png' },
+      ];
+      const paths = saveImagesToTemp(images);
+      expect(paths).toHaveLength(1);
+      expect(fs.existsSync(paths[0])).toBe(true);
+      cleanupTempImages(paths);
+    });
+  });
 });

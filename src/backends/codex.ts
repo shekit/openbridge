@@ -286,11 +286,20 @@ export class CodexBackend implements Backend {
   }
 
   async send(text: string, images?: ImageAttachment[]): Promise<SendResult> {
-    // Save images to temp files if provided
+    // Determine image file paths for --image flags
     let imagePaths: string[] | undefined;
+    let shouldCleanupImages = false;
     if (images && images.length > 0) {
-      imagePaths = saveImagesToTemp(images);
-      console.log(`[codex] saved ${imagePaths.length} image(s) to temp files`);
+      // Use staging paths if all images have them (router handles cleanup)
+      const allHaveStaging = images.every((img) => !!img.stagingPath);
+      if (allHaveStaging) {
+        imagePaths = images.map((img) => img.stagingPath!);
+        console.log(`[codex] reusing ${imagePaths.length} staging file(s) for --image`);
+      } else {
+        imagePaths = saveImagesToTemp(images);
+        shouldCleanupImages = true;
+        console.log(`[codex] saved ${imagePaths.length} image(s) to temp files`);
+      }
     }
 
     const args = buildCodexArgs(text, this.sessionId, this.sandbox, imagePaths);
@@ -304,8 +313,8 @@ export class CodexBackend implements Backend {
       result = await handle.result;
     } catch (err: any) {
       this.activeHandle = null;
-      // Clean up temp images on error
-      if (imagePaths) cleanupTempImages(imagePaths);
+      // Clean up temp images on error (only if we created them)
+      if (imagePaths && shouldCleanupImages) cleanupTempImages(imagePaths);
       if (err?.code === 'ENOENT') {
         throw new Error(
           'Codex CLI not found. Install it with: npm install -g @openai/codex',
@@ -314,8 +323,8 @@ export class CodexBackend implements Backend {
       throw err;
     }
     this.activeHandle = null;
-    // Clean up temp images after process exits
-    if (imagePaths) cleanupTempImages(imagePaths);
+    // Clean up temp images after process exits (only if we created them)
+    if (imagePaths && shouldCleanupImages) cleanupTempImages(imagePaths);
     console.log(`[codex] process exited with code ${result.exitCode}`);
 
     const parsed = parseCodexOutput(result.stdout, result.stderr, result.exitCode);

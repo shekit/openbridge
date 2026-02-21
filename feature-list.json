@@ -1640,7 +1640,7 @@
             "Falls back to temp files when stagingPath absent",
             "Unit tests pass"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P13.6",
