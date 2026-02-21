@@ -248,6 +248,7 @@ export function buildClaudeArgs(
   allowedTools?: string[],
   mcpConfigJson?: string,
   settingsJson?: string,
+  dangerouslySkipPermissions?: boolean,
 ): string[] {
   const args = [
     '-p',
@@ -255,6 +256,11 @@ export function buildClaudeArgs(
     '--output-format', 'stream-json',
     '--input-format', 'text',
   ];
+
+  // Trusted mode — skip all permission prompts (no hooks needed)
+  if (dangerouslySkipPermissions) {
+    args.push('--dangerously-skip-permissions');
+  }
 
   if (sessionId) {
     args.push('-r', sessionId);
@@ -326,6 +332,7 @@ export class ClaudeBackend implements Backend {
   private threadId?: string;
   private platform?: string;
   private hookScriptDir?: string;
+  private permissionMode?: string;
 
   async start(options: BackendOptions): Promise<void> {
     this.projectDir = options.projectDir;
@@ -335,6 +342,7 @@ export class ClaudeBackend implements Backend {
     this.threadId = options.threadId;
     this.platform = options.platform;
     this.hookScriptDir = options.hookScriptDir;
+    this.permissionMode = options.permissionMode;
 
     // Write MCP config if provided so Claude discovers the bridge tools
     if (this.mcpConfig) {
@@ -359,8 +367,11 @@ export class ClaudeBackend implements Backend {
       });
     }
 
-    // Build hook settings if we have a hook script dir
-    const settingsJson = this.hookScriptDir
+    // In trusted mode, skip hooks entirely — all permissions are auto-approved
+    const trusted = this.permissionMode === 'trusted';
+
+    // Build hook settings if we have a hook script dir (supervised mode only)
+    const settingsJson = (!trusted && this.hookScriptDir)
       ? buildHookSettings(this.hookScriptDir)
       : undefined;
 
@@ -370,13 +381,14 @@ export class ClaudeBackend implements Backend {
       this.allowedTools.length > 0 ? this.allowedTools : undefined,
       mcpConfigJson,
       settingsJson,
+      trusted,
     );
     // Clear allowed tools after use (one-shot approval)
     this.allowedTools = [];
 
-    // Build env vars for hook scripts (IPC connection + chat context)
+    // Build env vars for hook scripts (supervised mode only)
     let hookEnv: Record<string, string> | undefined;
-    if (this.ipc) {
+    if (!trusted && this.ipc) {
       hookEnv = {
         OPENBRIDGE_IPC_PORT: String(this.ipc.port),
         OPENBRIDGE_IPC_SECRET: this.ipc.secret,

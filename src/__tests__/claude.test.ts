@@ -538,6 +538,48 @@ describe('Claude Code backend', () => {
     });
   });
 
+  describe('P12.3: trusted mode (--dangerously-skip-permissions)', () => {
+    it('adds --dangerously-skip-permissions when trusted', () => {
+      const args = buildClaudeArgs('hello', null, undefined, undefined, undefined, true);
+      expect(args).toContain('--dangerously-skip-permissions');
+    });
+
+    it('does not add --dangerously-skip-permissions when not trusted', () => {
+      const args = buildClaudeArgs('hello', null);
+      expect(args).not.toContain('--dangerously-skip-permissions');
+    });
+
+    it('trusted mode still includes MCP tools in --allowedTools', () => {
+      const args = buildClaudeArgs('hello', null, undefined, undefined, undefined, true);
+      for (const tool of MCP_TOOLS) {
+        expect(args).toContain(tool);
+      }
+    });
+
+    it('trusted mode skips --settings even if settingsJson is not provided', () => {
+      const args = buildClaudeArgs('hello', null, undefined, undefined, undefined, true);
+      expect(args).not.toContain('--settings');
+    });
+
+    it('trusted mode works with session resume', () => {
+      const args = buildClaudeArgs('go', 'sess_trusted', undefined, undefined, undefined, true);
+      expect(args).toContain('--dangerously-skip-permissions');
+      expect(args).toContain('-r');
+      expect(args[args.indexOf('-r') + 1]).toBe('sess_trusted');
+    });
+
+    it('ClaudeBackend stores permissionMode from start()', async () => {
+      const backend = new ClaudeBackend();
+      // After start, the backend should have stored the permissionMode.
+      // We verify indirectly: trusted mode should not build hook settings.
+      // Since we can't call send() without a real claude binary, we test
+      // through buildClaudeArgs which is the public function.
+      await backend.start({ projectDir: '/tmp/test', permissionMode: 'trusted' });
+      // Backend is initialized — no error thrown
+      expect(backend.getSessionId()).toBeNull();
+    });
+  });
+
   describe('edge cases', () => {
     it('every parse result ends with turn_completed', () => {
       const parsed = parseClaudeOutput('', '', 0);

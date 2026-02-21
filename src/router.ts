@@ -156,6 +156,7 @@ export class Router {
       threadId,
       platform: project.platform,
       hookScriptDir: this.hookScriptDir,
+      permissionMode: project.permission_mode,
     });
 
     // Track as active for graceful shutdown
@@ -256,6 +257,7 @@ export class Router {
       threadId,
       platform: project.platform,
       hookScriptDir: this.hookScriptDir,
+      permissionMode: project.permission_mode,
     });
 
     // Track as active for graceful shutdown

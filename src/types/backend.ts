@@ -31,6 +31,8 @@ export interface BackendOptions {
   platform?: string;
   /** Path to compiled hook scripts directory (dist/hooks/). */
   hookScriptDir?: string;
+  /** Permission mode for the project ('trusted' skips all permission prompts). */
+  permissionMode?: string;
 }
 
 export interface Backend {
