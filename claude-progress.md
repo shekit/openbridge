@@ -12,6 +12,8 @@ Phase 7 — Integration and Polish (complete)
 Phase 9 — Production-Readiness Fixes (complete)
 Phase 10 — Wire MCP Server to Runtime (complete)
 Phase 11 — Manual Test Bug Fixes (complete)
+Phase 12 — Permission Modes, Image Support, Sandbox Upgrades (complete)
+Phase 13 — Image Upload Staging & save_uploaded_file MCP Tool (complete)
 
 ## Session Log
 
@@ -430,3 +432,61 @@ Claude Code (-p mode) → PreToolUse hook → auto-approve MCP tools
 
 **Test count:** 481 tests passing across 22 test files
 - All 9 features (P11.1–P11.9) committed individually, all marked passing
+
+### Session 18 — Phase 12: Permission Modes, Image Support, Sandbox Upgrades
+
+Implemented 11 features for comprehensive permission control and image passthrough:
+
+**Schema & permission modes (P12.1–P12.4):**
+- Schema migration v3: added `permission_mode` and `sandbox_mode` columns to projects table
+- `/project connect` now prompts for permission mode (supervised/trusted) during setup
+- Claude backend: trusted mode passes `--dangerously-skip-permissions`, skips hooks entirely
+- Codex backend: trusted mode uses `danger-full-access` sandbox level
+
+**Permission UX (P12.5–P12.7):**
+- "Always Allow" button added alongside Allow/Deny for permission prompts (both adapters)
+- Accumulated `allowed_tools` stored per-project in SQLite, loaded on every backend spawn
+- Codex sandbox upgrade flow: when sandbox error detected, shows "Upgrade Sandbox" button
+
+**Image passthrough (P12.8–P12.11):**
+- `spawnCollect()` accepts optional `stdinData` parameter for piping data to child process
+- Claude backend: `--input-format stream-json` with Anthropic API content blocks for images
+- Codex backend: `--image <FILE>` flag with temp file lifecycle (create before spawn, cleanup after)
+- Both adapters: download image attachments, convert to base64, pass as `ImageAttachment[]` through router
+- Shared utilities in `utils.ts`: `isImageMimeType()`, `downloadToBase64()`
+
+**New types:**
+- `ImageAttachment { base64: string; mediaType: string }` in `backend.ts`
+- `Backend.send()` extended: `send(text: string, images?: ImageAttachment[])`
+
+**Test count:** 540 tests passing across 22 test files
+- All 11 features (P12.1–P12.11) committed individually, all marked passing
+- Total: 103 features across 12 phases (P0–P7, P9–P12), all passing
+
+### Session 19 — Phase 13: Image Upload Staging & save_uploaded_file MCP Tool
+
+Implemented 8 features enabling models to save uploaded images to the project directory via an MCP tool.
+
+**Problem:** When users upload images to Slack/Discord saying "save this as the logo", models could see the image but had no way to write the raw bytes to disk. Codex's sandbox further restricts file access outside the project directory.
+
+**Solution:** Save uploaded images to a staging directory (`~/.openbridge-ai/uploads/`), pass upload metadata in the prompt text, and provide a `save_uploaded_file` MCP tool that copies from staging to the project directory. The MCP tool runs in the bridge process (unsandboxed), so it works even with Codex's sandbox.
+
+**Features:**
+- P13.1: Staging directory utilities — `getUploadsDir()`, `saveToStagingDir()`, `cleanupStagingFiles()` in utils.ts
+- P13.2: Extended `ImageAttachment` with optional `uploadId`, `filename`, `stagingPath` fields
+- P13.3: Both adapters call `saveToStagingDir()` after downloading images, populating upload metadata
+- P13.4: Router augments prompt text with `[Uploaded image: ... (upload_id: ...)]` and cleans up staging after each turn
+- P13.5: Codex backend reuses staging file paths for `--image` instead of creating temp copies
+- P13.6: Added `/save-uploaded-file` IPC endpoint with `saveUploadedFile?` on IpcHandler
+- P13.7: Implemented `saveUploadedFile()` in callbacks — scans uploads dir, validates path within project, copies file
+- P13.8: Registered `save_uploaded_file` MCP tool, wired through entry.ts, added to MCP_TOOLS for auto-approval
+
+**Key design decisions:**
+- Copy, not move — model can save same image to multiple destinations
+- Router owns cleanup — staging files deleted after every backend turn (success or error)
+- Auto-approved — user explicitly uploaded the file, saving it is expected
+- Backward compatible — all new ImageAttachment fields are optional
+
+**Test count:** 568 tests passing across 22 test files
+- All 8 features (P13.1–P13.8) committed individually, all marked passing
+- Total: 111 features across 13 phases (P0–P7, P9–P13), all passing
