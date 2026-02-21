@@ -18,6 +18,7 @@ Phase 14 — Universal File Upload Support (complete)
 Phase 15 — Hook Bugfix (complete)
 Phase 16 — post_message MCP Tool + Output Cleanup (complete)
 Phase 17 — Consolidated Preview Server (complete)
+Phase 18 — Bug Fixes from Live Testing (complete)
 
 ## Session Log
 
@@ -576,3 +577,18 @@ Four features addressing two user-facing problems: (1) permission prompts crashi
 
 **Test count:** 621 tests passing across 24 test files
 - All features (P17.1–P17.4) committed individually, all marked passing
+
+### Session 23 — P18: Bug Fixes from Live Testing
+
+Four bugs reported from live testing. Three required code fixes, one is a known Codex CLI limitation.
+
+**Bug 1 (Codex not using post_message MCP tool):** Codex CLI may not invoke MCP tools even when configured via `.codex/config.toml`. This is a Codex CLI limitation, not a bridge bug. The fallback behavior (rendering last assistant_text) already handles this case correctly.
+
+**P18.1: Sandbox upgrade resets session** — After upgrading Codex sandbox to full access, `codex exec resume` carried the old sandbox from the initial invocation. Both adapters (Slack and Discord) now call `router.resetSession()` after `store.updateSandboxMode()` to clear the backend_session_id. Next message starts a fresh Codex session with the new sandbox mode.
+
+**P18.2: Discord bot presence + slash commands** — Discord bot appeared offline and `/project` did nothing because `clientId` was not passed to DiscordAdapter in start.ts. Added `extractDiscordAppId(botToken)` call to derive clientId from the token. Added `Events.ClientReady` handler with `setPresence()` to set bot status to Online with "Listening for messages" activity.
+
+**P18.3: Codex image upload crash** — `codex exec --image <path>` flag is not supported, causing exit code 1. Removed `--image` flag support from `buildCodexArgs` and image handling from `CodexBackend.send()`. Images uploaded to Codex are now referenced only via the augmented prompt text (upload_id and staging info).
+
+**Test count:** 621 tests passing across 24 test files
+- All features (P18.1–P18.3) committed individually, all marked passing
