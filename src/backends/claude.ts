@@ -10,8 +10,12 @@
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import type { Backend, BackendOptions, McpServerEntry, SendResult } from '../types/backend.js';
 import type { NormalizedEvent } from '../types/events.js';
+
+/** Directory for backend log files. */
+const LOG_DIR = path.join(os.homedir(), '.openbridge-ai', 'logs');
 
 export interface SpawnResult {
   stdout: string;
@@ -26,11 +30,13 @@ export interface SpawnHandle {
 
 /** Spawn a process and collect stdout/stderr until exit. Returns a handle with kill().
  *  Uses detached: true so the child gets its own process group — kill() sends
- *  SIGTERM to the entire group, cleaning up any grandchild processes (e.g., dev servers). */
+ *  SIGTERM to the entire group, cleaning up any grandchild processes (e.g., dev servers).
+ *  If stderrLogPath is provided, stderr is also streamed to that file in real-time. */
 export function spawnCollect(
   command: string,
   args: string[],
   cwd: string,
+  stderrLogPath?: string,
 ): SpawnHandle {
   const proc = spawn(command, args, {
     cwd,
@@ -41,16 +47,41 @@ export function spawnCollect(
   let stdout = '';
   let stderr = '';
 
+  // Open a write stream for real-time stderr logging
+  let logStream: fs.WriteStream | null = null;
+  if (stderrLogPath) {
+    try {
+      fs.mkdirSync(path.dirname(stderrLogPath), { recursive: true });
+      logStream = fs.createWriteStream(stderrLogPath, { flags: 'w' });
+      logStream.write(`[${new Date().toISOString()}] spawn: ${command} ${args.join(' ').slice(0, 200)}\n`);
+      logStream.write(`[${new Date().toISOString()}] cwd: ${cwd}\n\n`);
+    } catch {
+      // If we can't create the log file, continue without it
+    }
+  }
+
   proc.stdout.on('data', (chunk: Buffer) => {
-    stdout += chunk.toString('utf8');
+    const text = chunk.toString('utf8');
+    stdout += text;
+    if (logStream) {
+      logStream.write(text);
+    }
   });
   proc.stderr.on('data', (chunk: Buffer) => {
-    stderr += chunk.toString('utf8');
+    const text = chunk.toString('utf8');
+    stderr += text;
+    if (logStream) {
+      logStream.write(text);
+    }
   });
 
   const result = new Promise<SpawnResult>((resolve, reject) => {
     proc.on('error', (err) => reject(err));
     proc.on('close', (code) => {
+      if (logStream) {
+        logStream.write(`\n[${new Date().toISOString()}] exited with code ${code}\n`);
+        logStream.end();
+      }
       resolve({ stdout, stderr, exitCode: code ?? 1 });
     });
   });
@@ -289,8 +320,11 @@ export class ClaudeBackend implements Backend {
     // Clear allowed tools after use (one-shot approval)
     this.allowedTools = [];
 
+    // Log file for real-time stderr — readable with: tail -f ~/.openbridge-ai/logs/claude-latest.log
+    const logPath = path.join(LOG_DIR, 'claude-latest.log');
     console.log(`[claude] spawning: claude ${args.join(' ').slice(0, 120)}...`);
-    const handle = spawnCollect('claude', args, this.projectDir);
+    console.log(`[claude] stderr log: ${logPath}`);
+    const handle = spawnCollect('claude', args, this.projectDir, logPath);
     this.activeHandle = handle;
 
     let result: SpawnResult;
@@ -307,17 +341,6 @@ export class ClaudeBackend implements Backend {
     }
     this.activeHandle = null;
     console.log(`[claude] process exited with code ${result.exitCode}`);
-
-    // Log stderr for debugging (MCP connection issues, tool usage, errors)
-    if (result.stderr) {
-      const stderrLines = result.stderr.split('\n').filter((l) => l.trim());
-      for (const line of stderrLines) {
-        // Skip JSON lines (already parsed as events) — only log human-readable text
-        if (!line.trim().startsWith('{')) {
-          console.log(`[claude:stderr] ${line}`);
-        }
-      }
-    }
 
     const parsed = parseClaudeOutput(result.stdout, result.stderr, result.exitCode);
 
