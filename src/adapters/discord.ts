@@ -326,15 +326,25 @@ export class DiscordAdapter {
     }
     if (customId === 'sandbox_upgrade') {
       const channelId = this.getInteractionChannelId(interaction);
+      const threadId = this.getInteractionThreadId(interaction);
       if (channelId) {
         const project = this.store.getProjectByChannelId(channelId);
         if (project) {
           this.store.updateSandboxMode(project.id, 'danger-full-access');
           console.log(`[discord] upgraded sandbox to danger-full-access for project ${project.id}`);
+
+          // Reset the session so the next message starts fresh with the new sandbox mode.
+          // Without this, `codex exec resume` would carry the old sandbox from the initial invocation.
+          if (threadId) {
+            try {
+              this.router.resetSession(channelId, threadId);
+              console.log(`[discord] reset session for thread ${threadId} after sandbox upgrade`);
+            } catch { /* session may not exist yet */ }
+          }
         }
       }
       await interaction.update({
-        content: '**Sandbox upgraded to full access.** Try your request again.',
+        content: '**Sandbox upgraded to full access.** Session reset — your next message will use the new permissions.',
         components: [],
       });
       return;

@@ -1861,6 +1861,23 @@
           "status": "passing"
         }
       ]
+    },
+    {
+      "id": "P18",
+      "name": "Bug Fixes — Live Testing Feedback",
+      "outcome": "Sandbox upgrade, Discord presence, and Codex image handling work correctly",
+      "features": [
+        {
+          "id": "P18.1",
+          "description": "Sandbox upgrade resets session so next message starts fresh with new permissions",
+          "verification": [
+            "Both adapters call router.resetSession() after updating sandbox mode",
+            "Confirmation message mentions session reset",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        }
+      ]
     }
   ]
 }

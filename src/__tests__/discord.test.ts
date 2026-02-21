@@ -1681,4 +1681,43 @@ describe('DiscordAdapter', () => {
       expect(sendCalls[1][0].content).toContain('Something went wrong');
     });
   });
+
+  describe('P18.1: Sandbox upgrade resets session', () => {
+    it('sandbox_upgrade button updates sandbox_mode and resets session', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const project = store.createProject('C_SBU', '/test/sbu', 'codex');
+      const session = store.createSession('thread-sbu', project.id);
+      store.updateBackendSessionId(session.id, 'codex-session-xyz');
+      expect(project.sandbox_mode).toBe('workspace-write');
+
+      const { interaction } = createMockButtonInteraction({
+        customId: 'sandbox_upgrade',
+        channelId: 'C_SBU',
+        isThread: true,
+        parentId: 'C_SBU',
+      });
+      // Override channel.id to match the thread
+      interaction.channel.id = 'thread-sbu';
+
+      await triggerInteraction(interaction);
+
+      // Sandbox mode updated
+      const updatedProject = store.getProjectById(project.id)!;
+      expect(updatedProject.sandbox_mode).toBe('danger-full-access');
+
+      // Session reset — backend_session_id cleared
+      const updatedSession = store.getSessionByThreadId('thread-sbu')!;
+      expect(updatedSession.backend_session_id).toBeNull();
+      expect(updatedSession.state).toBe('idle');
+
+      // Confirmation message mentions session reset
+      expect(interaction.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.stringContaining('Session reset'),
+        })
+      );
+    });
+  });
 });

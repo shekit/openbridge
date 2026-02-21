@@ -1293,6 +1293,37 @@ describe('SlackAdapter', () => {
         })
       );
     });
+
+    it('sandbox_upgrade resets session so next message uses new sandbox mode', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const project = store.createProject('C_SBU2', '/test/sbu2', 'codex');
+      // Create a session with a backend_session_id (simulating an active Codex session)
+      const session = store.createSession('T_SBU_THREAD', project.id);
+      store.updateBackendSessionId(session.id, 'codex-session-abc');
+
+      // Verify session has a backend_session_id before upgrade
+      const beforeUpgrade = store.getSessionByThreadId('T_SBU_THREAD')!;
+      expect(beforeUpgrade.backend_session_id).toBe('codex-session-abc');
+
+      await triggerAction('sandbox_upgrade', {
+        channel: { id: 'C_SBU2' },
+        message: { ts: '1234567890.000006', thread_ts: 'T_SBU_THREAD' },
+      });
+
+      // After upgrade, session should be reset (backend_session_id cleared)
+      const afterUpgrade = store.getSessionByThreadId('T_SBU_THREAD')!;
+      expect(afterUpgrade.backend_session_id).toBeNull();
+      expect(afterUpgrade.state).toBe('idle');
+
+      // Confirmation message mentions session reset
+      expect(mockApp.client.chat.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining('Session reset'),
+        })
+      );
+    });
   });
 
   describe('P12.2: Permission mode selection on project connect', () => {

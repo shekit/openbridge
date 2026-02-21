@@ -964,23 +964,33 @@ export class SlackAdapter {
   private async handleSandboxUpgrade(body: any, client: any): Promise<void> {
     const channelId = body.channel?.id;
     const messageTs = body.message?.ts;
+    const threadTs = body.message?.thread_ts;
     if (!channelId) return;
 
     const project = this.store.getProjectByChannelId(channelId);
     if (project) {
       this.store.updateSandboxMode(project.id, 'danger-full-access');
       console.log(`[slack] upgraded sandbox to danger-full-access for project ${project.id}`);
+
+      // Reset the session so the next message starts fresh with the new sandbox mode.
+      // Without this, `codex exec resume` would carry the old sandbox from the initial invocation.
+      if (threadTs) {
+        try {
+          this.router.resetSession(channelId, threadTs);
+          console.log(`[slack] reset session for thread ${threadTs} after sandbox upgrade`);
+        } catch { /* session may not exist yet */ }
+      }
     }
 
     try {
       await client.chat.update({
         channel: channelId,
         ts: messageTs,
-        text: 'Sandbox upgraded to full access. Try your request again.',
+        text: 'Sandbox upgraded to full access. Session reset — your next message will use the new permissions.',
         blocks: [
           {
             type: 'section',
-            text: { type: 'mrkdwn', text: '*Sandbox upgraded to full access.* Try your request again.' },
+            text: { type: 'mrkdwn', text: '*Sandbox upgraded to full access.* Session reset — your next message will use the new permissions.' },
           },
         ],
       });
