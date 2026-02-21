@@ -1342,6 +1342,18 @@
             "Unit test verifies env var passed to child"
           ],
           "status": "passing"
+        },
+        {
+          "id": "P11.3",
+          "description": "PreToolUse hook script — auto-approves MCP tools, defers to default for others",
+          "verification": [
+            "src/hooks/pre-tool-use.ts reads JSON from stdin",
+            "mcp__openbridge__* tools return permissionDecision: allow",
+            "Other tools exit cleanly (defer to default)",
+            "Invalid input handled gracefully",
+            "Unit tests verify all cases"
+          ],
+          "status": "passing"
         }
       ]
     }
