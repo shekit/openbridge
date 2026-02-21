@@ -31,6 +31,12 @@ import { splitText } from '../utils.js';
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 
+/**
+ * Number of projects to show per page in the project picker.
+ * Capped at 20 (Discord allows max 5 ActionRows × 5 buttons, minus one row for "Show more").
+ */
+const PICKER_PAGE_SIZE = 15;
+
 export interface DiscordAdapterOptions {
   botToken: string;
   router: Router;
@@ -287,6 +293,11 @@ export class DiscordAdapter {
       await this.handleProjectConnect(interaction, channelId, projectDir);
       return;
     }
+    if (customId.startsWith('project_picker_more:')) {
+      const offset = parseInt(customId.slice('project_picker_more:'.length), 10);
+      await this.postProjectPicker(interaction, offset);
+      return;
+    }
 
     if (!customId.startsWith('permission_allow') && !customId.startsWith('permission_deny')) {
       return;
@@ -512,34 +523,7 @@ export class DiscordAdapter {
         // No path — show picker if projects_root is set
         const root = this.store.getSetting('projects_root');
         if (root && fs.existsSync(root)) {
-          const entries = fs.readdirSync(root, { withFileTypes: true })
-            .filter((e: fs.Dirent) => e.isDirectory() && !e.name.startsWith('.'))
-            .map((e: fs.Dirent) => e.name)
-            .sort();
-          if (entries.length === 0) {
-            await interaction.reply(`:warning: No subdirectories found in \`${root}\`. Use \`/project connect path:/absolute/path\` instead.`);
-            return;
-          }
-          const rows: ActionRowBuilder<ButtonBuilder>[] = [];
-          for (let i = 0; i < Math.min(entries.length, 20); i += 5) {
-            const row = new ActionRowBuilder<ButtonBuilder>();
-            for (const name of entries.slice(i, i + 5)) {
-              row.addComponents(
-                new ButtonBuilder()
-                  .setCustomId(`project_pick:${path.join(root, name)}`)
-                  .setLabel(name)
-                  .setStyle(ButtonStyle.Secondary)
-              );
-            }
-            rows.push(row);
-          }
-          const hint = entries.length > 20
-            ? `_Showing 20 of ${entries.length} projects. Use \`/project connect path:/absolute/path\` for others._`
-            : '_Or use `/project connect path:/absolute/path` for a custom directory._';
-          await interaction.reply({
-            content: `**Pick a project from** \`${root}\`:\n${hint}`,
-            components: rows,
-          });
+          await this.postProjectPicker(interaction, 0);
         } else {
           await interaction.reply(':warning: Provide a path: `/project connect path:/absolute/path`\n_Tip: Set a projects root with `/settings args:root /path` to enable the picker._');
         }
@@ -571,6 +555,64 @@ export class DiscordAdapter {
       '- `/project list` — show all connected projects',
       '- `/project disconnect` — disconnect this channel',
     ].join('\n'));
+  }
+
+  /** Post a project picker with pagination support. */
+  private async postProjectPicker(interaction: any, offset: number): Promise<void> {
+    const PAGE_SIZE = Math.min(PICKER_PAGE_SIZE, 20);
+    const root = this.store.getSetting('projects_root');
+    if (!root || !fs.existsSync(root)) return;
+
+    const entries = fs.readdirSync(root, { withFileTypes: true })
+      .filter((e: fs.Dirent) => e.isDirectory() && !e.name.startsWith('.'))
+      .map((e: fs.Dirent) => e.name)
+      .sort();
+
+    if (entries.length === 0) {
+      await interaction.reply(`:warning: No subdirectories found in \`${root}\`. Use \`/project connect path:/absolute/path\` instead.`);
+      return;
+    }
+
+    const page = entries.slice(offset, offset + PAGE_SIZE);
+    const hasMore = offset + PAGE_SIZE < entries.length;
+
+    const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+    for (let i = 0; i < page.length; i += 5) {
+      const row = new ActionRowBuilder<ButtonBuilder>();
+      for (const name of page.slice(i, i + 5)) {
+        row.addComponents(
+          new ButtonBuilder()
+            .setCustomId(`project_pick:${path.join(root, name)}`)
+            .setLabel(name)
+            .setStyle(ButtonStyle.Secondary)
+        );
+      }
+      rows.push(row);
+    }
+
+    // Add "Show more" button if there are more entries (Discord max 5 ActionRows)
+    if (hasMore && rows.length < 5) {
+      const moreRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`project_picker_more:${offset + PAGE_SIZE}`)
+          .setLabel(`Show more (${entries.length - offset - PAGE_SIZE} remaining)`)
+          .setStyle(ButtonStyle.Primary)
+      );
+      rows.push(moreRow);
+    }
+
+    const rangeLabel = offset > 0
+      ? `**Projects from** \`${root}\` **(${offset + 1}–${offset + page.length} of ${entries.length}):**`
+      : `**Pick a project from** \`${root}\`:`;
+    const hint = '_Or use `/project connect path:/absolute/path` for a custom directory._';
+
+    const content = { content: `${rangeLabel}\n${hint}`, components: rows };
+    if (offset === 0) {
+      await interaction.reply(content);
+    } else {
+      // For "Show more", update the original message
+      await interaction.update(content);
+    }
   }
 
   /** Get the default backend, or throw if not configured. */

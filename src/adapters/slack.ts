@@ -16,6 +16,12 @@ import { splitText } from '../utils.js';
 
 const SLACK_MESSAGE_LIMIT = 4000;
 
+/**
+ * Number of projects to show per page in the project picker.
+ * Capped at 20 (Slack allows max 5 action blocks × 5 buttons, minus one row for "Show more").
+ */
+const PICKER_PAGE_SIZE = 15;
+
 export interface SlackAdapterOptions {
   botToken: string;
   appToken: string;
@@ -127,6 +133,14 @@ export class SlackAdapter {
       const projectDir = action?.value;
       if (!projectDir || !channelId) return;
       await this.handleProjectConnect(channelId, projectDir, { user_id: (body as any).user?.id }, client as any);
+    });
+
+    this.app.action('project_picker_more', async ({ body, ack, client }) => {
+      await ack();
+      const channelId = (body as any).channel?.id;
+      const offset = parseInt((body as any).actions?.[0]?.value ?? '0', 10);
+      if (!channelId) return;
+      await this.postProjectPicker(channelId, offset, client as any);
     });
 
     // Slash commands
@@ -578,48 +592,7 @@ export class SlackAdapter {
         // No path given — show picker if projects_root is set
         const root = this.store.getSetting('projects_root');
         if (root && fs.existsSync(root)) {
-          const entries = fs.readdirSync(root, { withFileTypes: true })
-            .filter(e => e.isDirectory() && !e.name.startsWith('.'))
-            .map(e => e.name)
-            .sort();
-          if (entries.length === 0) {
-            await client.chat.postMessage({
-              channel: channelId,
-              text: `:warning: No subdirectories found in \`${root}\`. Use \`/project connect /absolute/path\` instead.`,
-            });
-            return;
-          }
-          const buttons = entries.slice(0, 20).map((name: string) => ({
-            type: 'button' as const,
-            text: { type: 'plain_text' as const, text: name },
-            action_id: `project_pick_${name}`,
-            value: path.join(root, name),
-          }));
-          // Slack actions block allows max 25 elements, split into rows of 5
-          const actionBlocks = [];
-          for (let i = 0; i < buttons.length; i += 5) {
-            actionBlocks.push({
-              type: 'actions' as const,
-              elements: buttons.slice(i, i + 5),
-            });
-          }
-          await client.chat.postMessage({
-            channel: channelId,
-            text: `Pick a project from \`${root}\`:`,
-            blocks: [
-              {
-                type: 'section',
-                text: { type: 'mrkdwn', text: `*Pick a project from* \`${root}\`:` },
-              },
-              ...actionBlocks,
-              {
-                type: 'context',
-                elements: [{ type: 'mrkdwn', text: entries.length > 20
-                  ? `_Showing 20 of ${entries.length} projects. Use \`/project connect /absolute/path\` for others._`
-                  : '_Or use `/project connect /absolute/path` for a custom directory._' }],
-              },
-            ],
-          });
+          await this.postProjectPicker(channelId, 0, client);
         } else {
           await client.chat.postMessage({
             channel: channelId,
@@ -708,6 +681,77 @@ export class SlackAdapter {
         ],
       });
     }
+  }
+
+  /** Post a project picker with pagination support. */
+  private async postProjectPicker(channelId: string, offset: number, client: any): Promise<void> {
+    const PAGE_SIZE = Math.min(PICKER_PAGE_SIZE, 20);
+    const root = this.store.getSetting('projects_root');
+    if (!root || !fs.existsSync(root)) return;
+
+    const entries = fs.readdirSync(root, { withFileTypes: true })
+      .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+      .map(e => e.name)
+      .sort();
+
+    if (entries.length === 0) {
+      await client.chat.postMessage({
+        channel: channelId,
+        text: `:warning: No subdirectories found in \`${root}\`. Use \`/project connect /absolute/path\` instead.`,
+      });
+      return;
+    }
+
+    const page = entries.slice(offset, offset + PAGE_SIZE);
+    const hasMore = offset + PAGE_SIZE < entries.length;
+
+    const buttons = page.map((name: string) => ({
+      type: 'button' as const,
+      text: { type: 'plain_text' as const, text: name },
+      action_id: `project_pick_${name}`,
+      value: path.join(root, name),
+    }));
+
+    const actionBlocks = [];
+    for (let i = 0; i < buttons.length; i += 5) {
+      actionBlocks.push({
+        type: 'actions' as const,
+        elements: buttons.slice(i, i + 5),
+      });
+    }
+
+    // Add "Show more" button if there are more entries
+    if (hasMore) {
+      actionBlocks.push({
+        type: 'actions' as const,
+        elements: [{
+          type: 'button' as const,
+          text: { type: 'plain_text' as const, text: `Show more (${entries.length - offset - PAGE_SIZE} remaining)` },
+          action_id: 'project_picker_more',
+          value: String(offset + PAGE_SIZE),
+        }],
+      });
+    }
+
+    const rangeLabel = offset > 0
+      ? `*Projects from* \`${root}\` *(${offset + 1}–${offset + page.length} of ${entries.length}):*`
+      : `*Pick a project from* \`${root}\`:`;
+
+    await client.chat.postMessage({
+      channel: channelId,
+      text: `Pick a project from \`${root}\`:`,
+      blocks: [
+        {
+          type: 'section',
+          text: { type: 'mrkdwn', text: rangeLabel },
+        },
+        ...actionBlocks,
+        {
+          type: 'context',
+          elements: [{ type: 'mrkdwn', text: '_Or use `/project connect /absolute/path` for a custom directory._' }],
+        },
+      ],
+    });
   }
 
   /** Get the default backend, or throw if not configured. */
