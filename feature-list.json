@@ -1367,6 +1367,19 @@
             "Unit tests verify all endpoints"
           ],
           "status": "passing"
+        },
+        {
+          "id": "P11.5",
+          "description": "PermissionRequest hook script — blocks, sends prompt to IPC, polls for user decision, returns allow/deny",
+          "verification": [
+            "Hook reads JSON from stdin, sends /permission-request to IPC",
+            "Polls /permission-poll until user responds or timeout",
+            "Returns allow when user approves",
+            "Returns deny when user denies or timeout",
+            "Handles missing env vars and invalid input gracefully",
+            "Integration tests with real IPC server verify full flow"
+          ],
+          "status": "passing"
         }
       ]
     }
