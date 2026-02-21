@@ -585,16 +585,23 @@ export class DiscordAdapter {
 
     await interaction.reply([
       ':warning: Unsupported command. Try one of these:',
-      '- `/project new name:my-app` — create a new project and connect it to a channel',
-      '- `/project connect` — connect an existing project to a channel',
-      '- `/project list` — show all connected projects',
-      '- `/project disconnect` — disconnect this channel',
+      ...this.getProjectCommandLines(),
       '',
       '**Other commands:**',
       '- `/new` — reset the session in a thread',
       '- `/cancel` — stop a running task in a thread',
       '- `/settings` — view or change bridge settings',
     ].join('\n'));
+  }
+
+  /** Build the list of /project subcommand descriptions. */
+  private getProjectCommandLines(): string[] {
+    return [
+      '- `/project new name:my-app` — create a new project and connect it to a channel',
+      '- `/project connect` — connect an existing project to a channel',
+      '- `/project list` — show all connected projects',
+      '- `/project disconnect` — disconnect this channel',
+    ];
   }
 
   /** Post a project picker with pagination support. */

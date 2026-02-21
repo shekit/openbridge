@@ -546,6 +546,23 @@ export class SlackAdapter {
     });
   }
 
+  /** Build the list of /project subcommand descriptions. */
+  private getProjectCommandLines(): string[] {
+    const root = this.store.getSetting('projects_root');
+    const lines = [
+      '• `/project new my-app` — create a new project and connect it to a channel',
+    ];
+    if (root) {
+      lines.push('• `/project connect` — pick a project from your projects root');
+      lines.push('• `/project connect /absolute/path` — connect a specific directory');
+    } else {
+      lines.push('• `/project connect /absolute/path` — connect an existing project to a channel');
+    }
+    lines.push('• `/project list` — show all connected projects');
+    lines.push('• `/project disconnect` — disconnect this channel');
+    return lines;
+  }
+
   /** Handle /project slash command. */
   private async handleProjectCommand(command: any, client: any): Promise<void> {
     const channelId = command.channel_id;
@@ -556,22 +573,13 @@ export class SlackAdapter {
 
     // /project (no args) or /project help — show usage
     if (!subcommand || subcommand === 'help') {
-      const root = this.store.getSetting('projects_root');
       const lines = [
         '*`/project` commands:*',
-        '• `/project new my-app` — create a new project and connect it to a channel',
+        ...this.getProjectCommandLines(),
+        '',
+        '*Other commands:*',
+        '• `/settings` — view or change bridge settings',
       ];
-      if (root) {
-        lines.push('• `/project connect` — pick a project from your projects root');
-        lines.push('• `/project connect /absolute/path` — connect a specific directory');
-      } else {
-        lines.push('• `/project connect /absolute/path` — connect an existing project to a channel');
-      }
-      lines.push('• `/project list` — show all connected projects');
-      lines.push('• `/project disconnect` — disconnect this channel');
-      lines.push('');
-      lines.push('*Other commands:*');
-      lines.push('• `/settings` — view or change bridge settings');
       await client.chat.postMessage({
         channel: channelId,
         text: lines.join('\n'),
@@ -719,10 +727,7 @@ export class SlackAdapter {
       channel: channelId,
       text: [
         `:warning: Unsupported command \`${subcommand}\`. Try one of these:`,
-        '• `/project new my-app` — create a new project and connect it to a channel',
-        '• `/project connect /absolute/path` — connect an existing project to a channel',
-        '• `/project list` — show all connected projects',
-        '• `/project disconnect` — disconnect this channel',
+        ...this.getProjectCommandLines(),
       ].join('\n'),
     });
   }
