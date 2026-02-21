@@ -40,20 +40,28 @@ export interface SpawnHandle {
  *  Uses detached: true so the child gets its own process group — kill() sends
  *  SIGTERM to the entire group, cleaning up any grandchild processes (e.g., dev servers).
  *  If stderrLogPath is provided, stderr is also streamed to that file in real-time.
- *  If env is provided, it is merged with process.env for the child process. */
+ *  If env is provided, it is merged with process.env for the child process.
+ *  If stdinData is provided, it is written to stdin and stdin is closed after. */
 export function spawnCollect(
   command: string,
   args: string[],
   cwd: string,
   stderrLogPath?: string,
   env?: Record<string, string>,
+  stdinData?: string,
 ): SpawnHandle {
   const proc = spawn(command, args, {
     cwd,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: [stdinData ? 'pipe' : 'ignore', 'pipe', 'pipe'],
     detached: true,
     ...(env ? { env: { ...process.env, ...env } } : {}),
   });
+
+  // Write stdin data and close
+  if (stdinData && proc.stdin) {
+    proc.stdin.write(stdinData);
+    proc.stdin.end();
+  }
 
   let stdout = '';
   let stderr = '';
@@ -71,14 +79,14 @@ export function spawnCollect(
     }
   }
 
-  proc.stdout.on('data', (chunk: Buffer) => {
+  proc.stdout!.on('data', (chunk: Buffer) => {
     const text = chunk.toString('utf8');
     stdout += text;
     if (logStream) {
       logStream.write(text);
     }
   });
-  proc.stderr.on('data', (chunk: Buffer) => {
+  proc.stderr!.on('data', (chunk: Buffer) => {
     const text = chunk.toString('utf8');
     stderr += text;
     if (logStream) {

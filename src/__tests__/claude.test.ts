@@ -47,6 +47,26 @@ describe('Claude Code backend', () => {
       expect(result.stdout).toBe('hello_from_env');
     });
 
+    it('spawnCollect writes stdinData to child process stdin', async () => {
+      const handle = spawnCollect(
+        'node',
+        ['-e', 'let d=""; process.stdin.on("data", c => d+=c); process.stdin.on("end", () => process.stdout.write(d))'],
+        process.cwd(),
+        undefined,
+        undefined,
+        'hello from stdin',
+      );
+      const result = await handle.result;
+      expect(result.stdout).toBe('hello from stdin');
+      expect(result.exitCode).toBe(0);
+    });
+
+    it('spawnCollect works without stdinData (backward compatible)', async () => {
+      const handle = spawnCollect('echo', ['no stdin'], process.cwd());
+      const result = await handle.result;
+      expect(result.stdout.trim()).toBe('no stdin');
+    });
+
     it('spawnCollect kill() terminates the child process', async () => {
       const handle = spawnCollect('node', ['-e', 'setTimeout(() => {}, 30000)'], process.cwd());
       handle.kill();

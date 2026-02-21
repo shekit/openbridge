@@ -1539,7 +1539,7 @@
             "When not provided, stdin is 'ignore' as before",
             "Unit tests verify stdin piping"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P12.9",
