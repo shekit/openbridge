@@ -490,3 +490,35 @@ Implemented 8 features enabling models to save uploaded images to the project di
 **Test count:** 568 tests passing across 22 test files
 - All 8 features (P13.1–P13.8) committed individually, all marked passing
 - Total: 111 features across 13 phases (P0–P7, P9–P13), all passing
+
+### Session 20 — Phase 14: Universal File Upload Support
+
+Extended file upload handling from images-only to all file types (PDFs, text, CSV, binary, etc.).
+
+**Problem:** Non-image file uploads (PDFs, text files, CSVs, ZIPs) were only described as text labels — they were never downloaded, staged, or passed to the AI. Users expected to upload any file and either ask questions about it or save it to the project.
+
+**Solution:** Four-kind file classification system with DRY utilities shared across both adapters.
+
+**Features:**
+- P14.1: Renamed `ImageAttachment` → `FileAttachment`, added `kind: FileKind` field (`'image' | 'pdf' | 'text' | 'binary'`), added `classifyMimeType()` and `downloadAndStageFile()` utilities, renamed all references across codebase
+- P14.2: Both adapters now download ALL file types using `downloadAndStageFile()` (DRY). Text file contents are included inline in the prompt as markdown code blocks.
+- P14.3: Claude backend `buildStreamJsonInput()` now handles file kinds: images → `type: 'image'`, PDFs → `type: 'document'`, text/binary → no content block. `useStreamJson` only activates for images or PDFs.
+- P14.4: Codex backend filters to `kind === 'image'` only for `--image` flags (Codex CLI has no PDF/document support).
+
+**Key utilities added to `src/utils.ts`:**
+- `classifyMimeType(mimeType, filename?)` — classifies into FileKind using MIME type + extension fallback
+- `downloadAndStageFile(url, filename, mimeType, authHeaders?)` — download + classify + stage in one call
+- `TEXT_EXTENSIONS` set — 30+ extensions (.json, .csv, .md, .ts, .py, etc.)
+- `TEXT_APP_MIME_TYPES` set — application/* types that are actually text (json, xml, javascript, etc.)
+
+**File kind behavior at each layer:**
+| Kind   | Adapter                    | Claude Backend        | Codex Backend     |
+|--------|----------------------------|-----------------------|-------------------|
+| image  | download + stage           | type:image block      | --image flag      |
+| pdf    | download + stage           | type:document block   | staging only      |
+| text   | download + stage + inline  | no content block      | staging only      |
+| binary | download + stage           | no content block      | staging only      |
+
+**Test count:** 588 tests passing across 22 test files
+- All 4 features (P14.1–P14.4) committed individually, all marked passing
+- Total: 115 features across 14 phases (P0–P7, P9–P14), all passing
