@@ -468,10 +468,28 @@ describe('Codex CLI backend', () => {
       cleanupTempImages(['/tmp/nonexistent-openbridge-file-12345.png']);
     });
 
-    it('buildCodexArgs does not include --image (Codex CLI does not support it)', () => {
-      const args = buildCodexArgs('describe images', null, 'workspace-write');
-      expect(args).not.toContain('--image');
+    it('buildCodexArgs includes -i flags for each image path', () => {
+      const args = buildCodexArgs('describe images', null, 'workspace-write', ['/tmp/a.png', '/tmp/b.jpg']);
+      expect(args).toContain('-i');
+      expect(args).not.toContain('--image'); // uses short flag -i, not --image
+      const flagIndices = args.reduce<number[]>((acc, val, idx) => {
+        if (val === '-i') acc.push(idx);
+        return acc;
+      }, []);
+      expect(flagIndices).toHaveLength(2);
+      expect(args[flagIndices[0] + 1]).toBe('/tmp/a.png');
+      expect(args[flagIndices[1] + 1]).toBe('/tmp/b.jpg');
       expect(args[args.length - 1]).toBe('describe images');
+    });
+
+    it('buildCodexArgs omits -i when no images provided', () => {
+      const args = buildCodexArgs('no images', null, 'workspace-write');
+      expect(args).not.toContain('-i');
+    });
+
+    it('buildCodexArgs resume does not include -i', () => {
+      const args = buildCodexArgs('follow-up', 'thread_123', 'workspace-write', ['/tmp/a.png']);
+      expect(args).not.toContain('-i');
     });
   });
 
@@ -505,7 +523,17 @@ describe('Codex CLI backend', () => {
     });
   });
 
-  describe('P13.5: Image utility functions (saveImagesToTemp / cleanupTempImages)', () => {
+  describe('P13.5: Image staging reuse for -i flag', () => {
+    it('uses stagingPath directly when all images have it', () => {
+      const args = buildCodexArgs('hello', null, 'workspace-write', [
+        '/staging/upload_abc-logo.png',
+        '/staging/upload_def-photo.jpg',
+      ]);
+      expect(args).toContain('-i');
+      expect(args).toContain('/staging/upload_abc-logo.png');
+      expect(args).toContain('/staging/upload_def-photo.jpg');
+    });
+
     it('saveImagesToTemp writes to temp and cleanupTempImages removes them', () => {
       const images = [
         { base64: Buffer.from('test').toString('base64'), mediaType: 'image/png' },
@@ -518,15 +546,26 @@ describe('Codex CLI backend', () => {
     });
   });
 
-  describe('P18.3: Codex does not pass --image flag (unsupported)', () => {
-    it('buildCodexArgs never includes --image', () => {
-      const args = buildCodexArgs('analyze', null, 'workspace-write');
-      expect(args).not.toContain('--image');
+  describe('P14.4: Codex filters to images-only for -i flag', () => {
+    it('only image files produce -i flags', () => {
+      const files = [
+        { kind: 'image' as const, stagingPath: '/staging/photo.png' },
+        { kind: 'pdf' as const, stagingPath: '/staging/report.pdf' },
+        { kind: 'text' as const, stagingPath: '/staging/notes.txt' },
+      ];
+      const imageFiles = files.filter((f) => f.kind === 'image');
+      const imagePaths = imageFiles.map((f) => f.stagingPath);
+      const args = buildCodexArgs('analyze', null, 'workspace-write', imagePaths);
+
+      expect(args).toContain('-i');
+      expect(args).toContain('/staging/photo.png');
+      expect(args).not.toContain('/staging/report.pdf');
+      expect(args).not.toContain('/staging/notes.txt');
     });
 
-    it('buildCodexArgs signature has no imagePaths parameter', () => {
-      // buildCodexArgs(text, sessionId, sandbox) — only 3 params
-      expect(buildCodexArgs.length).toBe(3);
+    it('no -i flags when only non-image files are present', () => {
+      const args = buildCodexArgs('analyze', null, 'workspace-write');
+      expect(args).not.toContain('-i');
     });
   });
 });

@@ -1889,10 +1889,10 @@
         },
         {
           "id": "P18.3",
-          "description": "Remove unsupported --image flag from Codex backend — prevents crash on image upload",
+          "description": "Fix Codex image flag: use -i (documented short flag) instead of --image",
           "verification": [
-            "buildCodexArgs no longer accepts imagePaths parameter",
-            "CodexBackend.send() logs a note when images are attached instead of crashing",
+            "buildCodexArgs uses -i flag for image paths, not --image",
+            "Resume mode does not include -i (images persist from initial invocation)",
             "Build passes, all tests pass"
           ],
           "status": "passing"
