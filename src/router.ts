@@ -147,9 +147,9 @@ export class Router {
 
     // If there's a stored backend session ID, set it on the backend for resume
     // (will be null if session was auto-recovered from dead)
-    const currentSession = this.store.getSessionByThreadId(session.thread_id);
-    if (currentSession?.backend_session_id) {
-      backend.setSessionId(currentSession.backend_session_id);
+    const storedSession = this.store.getSessionByThreadId(session.thread_id);
+    if (storedSession?.backend_session_id) {
+      backend.setSessionId(storedSession.backend_session_id);
     }
 
     let result: SendResult;
@@ -157,15 +157,27 @@ export class Router {
       result = await this.sendWithTimeout(backend, text);
     } catch (err) {
       // Backend crashed or timed out — clean up and transition to dead
+      // But if cancelBackend already cleaned up, skip state transition
       try { await backend.stop(); } catch { /* ignore stop errors */ }
       this.activeBackends.delete(session.thread_id);
-      this.store.updateSessionState(session.id, 'dead');
+      const currentState = this.store.getSessionById(session.id)?.state;
+      if (currentState === 'running') {
+        this.store.updateSessionState(session.id, 'dead');
+      }
       console.log(`[router] backend failed for session ${session.id}:`, err);
       throw err;
     }
 
     // Clean up active backend tracking (oneshot — process already exited)
     this.activeBackends.delete(session.thread_id);
+
+    // If cancelBackend already intervened, the session is no longer running.
+    // Skip state transitions and just return the partial events.
+    const postSendSession = this.store.getSessionById(session.id);
+    if (!postSendSession || postSendSession.state !== 'running') {
+      console.log(`[router] session ${session.id} already transitioned (state: ${postSendSession?.state}), skipping post-send transition`);
+      return { events: result.events, session: postSendSession ?? session };
+    }
 
     // Store the backend session ID for future resume
     if (result.sessionId) {
@@ -241,12 +253,22 @@ export class Router {
     } catch (err) {
       try { await backend.stop(); } catch { /* ignore stop errors */ }
       this.activeBackends.delete(session.thread_id);
-      this.store.updateSessionState(session.id, 'dead');
+      const currentState = this.store.getSessionById(session.id)?.state;
+      if (currentState === 'running') {
+        this.store.updateSessionState(session.id, 'dead');
+      }
       throw err;
     }
 
     // Clean up active backend tracking (oneshot — process already exited)
     this.activeBackends.delete(session.thread_id);
+
+    // If cancelBackend already intervened, skip state transitions
+    const postRespondSession = this.store.getSessionById(session.id);
+    if (!postRespondSession || postRespondSession.state !== 'running') {
+      console.log(`[router] session ${session.id} already transitioned (state: ${postRespondSession?.state}), skipping post-respond transition`);
+      return { events: result.events, session: postRespondSession ?? session };
+    }
 
     // Store updated session ID
     if (result.sessionId) {
