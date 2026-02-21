@@ -1848,7 +1848,7 @@
             "MCP server log includes preview_server in tool list",
             "Build passes, all tests pass"
           ],
-          "status": "pending"
+          "status": "passing"
         },
         {
           "id": "P17.4",

@@ -539,6 +539,80 @@ describe('P5.5: serve_file_browser MCP tool', () => {
     });
   });
 
+  describe('P17.3: preview_server MCP tool', () => {
+    it('preview_server tool is registered', () => {
+      const server = createMcpServer(context, callbacks);
+      const tools = (server as any)._registeredTools;
+      expect(tools['preview_server']).toBeDefined();
+    });
+
+    it('calls previewServer callback with directory, command, and ttl', async () => {
+      // Create a dist subdirectory in the temp project
+      fs.mkdirSync(path.join(projectDir, 'dist'));
+
+      const server = createMcpServer(context, callbacks);
+      const tools = (server as any)._registeredTools;
+      const handler = tools['preview_server'].handler;
+
+      const result = await handler({ directory: './dist', command: 'npm run dev', ttl: 1800 }, {});
+
+      const expectedDir = path.resolve(projectDir, './dist');
+      expect(callbacks.previewServer).toHaveBeenCalledWith(
+        expectedDir, 'npm run dev', 1800,
+      );
+      expect(result.content[0].text).toContain('https://preview.example.com');
+      expect(result.content[0].text).toContain('8042');
+      expect(result.isError).toBeUndefined();
+    });
+
+    it('uses default directory and ttl when omitted', async () => {
+      const server = createMcpServer(context, callbacks);
+      const tools = (server as any)._registeredTools;
+      const handler = tools['preview_server'].handler;
+
+      const result = await handler({}, {});
+
+      expect(callbacks.previewServer).toHaveBeenCalledWith(
+        projectDir, undefined, 3600,
+      );
+      expect(result.content[0].text).toContain('https://preview.example.com');
+    });
+
+    it('returns error for non-existent directory', async () => {
+      const server = createMcpServer(context, callbacks);
+      const tools = (server as any)._registeredTools;
+      const handler = tools['preview_server'].handler;
+
+      const result = await handler({ directory: 'nonexistent-dir' }, {});
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Directory not found');
+      expect(callbacks.previewServer).not.toHaveBeenCalled();
+    });
+
+    it('returns error when callback throws', async () => {
+      callbacks.previewServer = vi.fn().mockRejectedValue(
+        new Error('Server command failed'),
+      );
+
+      const server = createMcpServer(context, callbacks);
+      const tools = (server as any)._registeredTools;
+      const handler = tools['preview_server'].handler;
+
+      const result = await handler({}, {});
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Server command failed');
+    });
+
+    it('open_tunnel description references preview_server', () => {
+      const server = createMcpServer(context, callbacks);
+      const tools = (server as any)._registeredTools;
+      const openTunnelDesc = tools['open_tunnel'].description;
+      expect(openTunnelDesc).toContain('preview_server');
+    });
+  });
+
   describe('P16.2: post_message MCP tool', () => {
     it('post_message tool is registered', () => {
       const server = createMcpServer(context, callbacks);

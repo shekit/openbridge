@@ -113,10 +113,10 @@ export function createMcpServer(
     'open_tunnel',
     {
       description:
-        'Expose a local port via a public tunnel (Cloudflare Tunnel or ngrok) and return the public URL. ' +
-        'IMPORTANT: Before calling this, start your dev server in the BACKGROUND using a shell command with & ' +
-        '(e.g. `npm run dev &` or `npx serve -p 3000 &`). Do NOT run the server in the foreground — ' +
-        'it will block forever. Once the server is running in the background, call this tool with its port number. ' +
+        'Expose an already-running local server via a public tunnel. ' +
+        'Only use this if you already have a server running on a specific port. ' +
+        'For starting a NEW server + tunnel, use preview_server instead — it handles port allocation, ' +
+        'server startup, and tunneling in one step. ' +
         'After receiving the URL, use post_message to share it with the user.',
       inputSchema: {
         port: z.number().int().min(1).max(65535).describe('Port number to tunnel'),
@@ -175,6 +175,53 @@ export function createMcpServer(
         const message = err instanceof Error ? err.message : String(err);
         return {
           content: [{ type: 'text', text: `Error serving file browser: ${message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // --- preview_server tool ---
+  server.registerTool(
+    'preview_server',
+    {
+      description:
+        'Start a server for a project directory and expose it via a public tunnel. Returns the tunnel URL and port. ' +
+        'Use this when the user asks to preview, demo, or share their website/app. ' +
+        'For static sites: just provide the directory (e.g. "./dist", "./build", "."). ' +
+        'For dev servers: provide a command (e.g. "npm run dev") — the PORT environment variable is injected automatically, so do NOT hardcode a port. ' +
+        'After receiving the URL, use post_message to share it with the user.',
+      inputSchema: {
+        directory: z.string().default('.').optional()
+          .describe('Directory to serve (relative to project directory, defaults to project root)'),
+        command: z.string().optional()
+          .describe('Optional shell command to start a dev server (e.g. "npm run dev"). PORT env var is injected. If omitted, a built-in static file server is used.'),
+        ttl: z.number().int().min(60).max(86400).default(3600).optional()
+          .describe('Time-to-live in seconds (default 3600, max 86400)'),
+      },
+    },
+    async ({ directory, command, ttl }) => {
+      try {
+        const dir = directory ?? '.';
+        const resolved = validateProjectPath(dir, context.projectDir);
+
+        if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+          return {
+            content: [{ type: 'text', text: `Error: Directory not found: ${resolved}` }],
+            isError: true,
+          };
+        }
+
+        const previewTtl = ttl ?? 3600;
+        const result = await callbacks.previewServer(resolved, command ?? undefined, previewTtl);
+
+        return {
+          content: [{ type: 'text', text: `Preview server started on port ${result.port}.\nPublic URL: ${result.url}\nTTL: ${previewTtl}s` }],
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: 'text', text: `Error starting preview server: ${message}` }],
           isError: true,
         };
       }
@@ -240,7 +287,7 @@ export function createMcpServer(
     },
   );
 
-  console.error('[mcp] server created with tools: upload_file, open_tunnel, serve_file_browser, save_uploaded_file, post_message');
+  console.error('[mcp] server created with tools: upload_file, open_tunnel, serve_file_browser, preview_server, save_uploaded_file, post_message');
   return server;
 }
 
