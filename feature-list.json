@@ -1886,6 +1886,16 @@
             "Build passes, all tests pass"
           ],
           "status": "passing"
+        },
+        {
+          "id": "P18.3",
+          "description": "Remove unsupported --image flag from Codex backend — prevents crash on image upload",
+          "verification": [
+            "buildCodexArgs no longer accepts imagePaths parameter",
+            "CodexBackend.send() logs a note when images are attached instead of crashing",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
         }
       ]
     }

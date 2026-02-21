@@ -174,23 +174,14 @@ export function buildCodexArgs(
   text: string,
   sessionId: string | null,
   sandbox: SandboxMode,
-  imagePaths?: string[],
 ): string[] {
   if (sessionId) {
     // Resume: codex exec resume --skip-git-repo-check --json SESSION_ID "prompt"
-    // Note: --sandbox and --image are NOT included in resume (persists from initial invocation)
+    // Note: --sandbox is NOT included in resume (persists from initial invocation)
     return ['exec', 'resume', '--skip-git-repo-check', '--json', sessionId, text];
   }
 
   const args = ['exec', '--skip-git-repo-check', '--json', '--sandbox', sandbox];
-
-  // Attach images if provided
-  if (imagePaths) {
-    for (const imgPath of imagePaths) {
-      args.push('--image', imgPath);
-    }
-  }
-
   args.push(text);
   return args;
 }
@@ -286,27 +277,15 @@ export class CodexBackend implements Backend {
   }
 
   async send(text: string, files?: FileAttachment[]): Promise<SendResult> {
-    // Codex CLI only supports --image flag — filter to image files only
-    // PDFs, text, and binary files are accessible via staging + prompt text only
-    const imageFiles = files?.filter((f) => f.kind === 'image');
-
-    // Determine image file paths for --image flags
-    let imagePaths: string[] | undefined;
-    let shouldCleanupImages = false;
-    if (imageFiles && imageFiles.length > 0) {
-      // Use staging paths if all images have them (router handles cleanup)
-      const allHaveStaging = imageFiles.every((img) => !!img.stagingPath);
-      if (allHaveStaging) {
-        imagePaths = imageFiles.map((img) => img.stagingPath!);
-        console.log(`[codex] reusing ${imagePaths.length} staging file(s) for --image`);
-      } else {
-        imagePaths = saveImagesToTemp(imageFiles);
-        shouldCleanupImages = true;
-        console.log(`[codex] saved ${imagePaths.length} image(s) to temp files`);
-      }
+    // Codex CLI does not support native image input (no --image flag).
+    // Images and other files are referenced via text (the router augments
+    // the prompt with upload_id and staging info, and the user can use
+    // the save_uploaded_file MCP tool to access them).
+    if (files && files.some((f) => f.kind === 'image')) {
+      console.log(`[codex] note: ${files.filter(f => f.kind === 'image').length} image(s) attached — Codex cannot view images natively; file info included in prompt text`);
     }
 
-    const args = buildCodexArgs(text, this.sessionId, this.sandbox, imagePaths);
+    const args = buildCodexArgs(text, this.sessionId, this.sandbox);
 
     console.log(`[codex] spawning: codex ${args.join(' ').slice(0, 120)}...`);
     const handle = spawnCollect('codex', args, this.projectDir);
@@ -317,8 +296,6 @@ export class CodexBackend implements Backend {
       result = await handle.result;
     } catch (err: any) {
       this.activeHandle = null;
-      // Clean up temp images on error (only if we created them)
-      if (imagePaths && shouldCleanupImages) cleanupTempImages(imagePaths);
       if (err?.code === 'ENOENT') {
         throw new Error(
           'Codex CLI not found. Install it with: npm install -g @openai/codex',
@@ -327,8 +304,6 @@ export class CodexBackend implements Backend {
       throw err;
     }
     this.activeHandle = null;
-    // Clean up temp images after process exits (only if we created them)
-    if (imagePaths && shouldCleanupImages) cleanupTempImages(imagePaths);
     console.log(`[codex] process exited with code ${result.exitCode}`);
 
     const parsed = parseCodexOutput(result.stdout, result.stderr, result.exitCode);

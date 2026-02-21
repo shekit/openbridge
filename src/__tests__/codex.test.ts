@@ -468,28 +468,10 @@ describe('Codex CLI backend', () => {
       cleanupTempImages(['/tmp/nonexistent-openbridge-file-12345.png']);
     });
 
-    it('buildCodexArgs includes --image flags for each image path', () => {
-      const args = buildCodexArgs('describe images', null, 'workspace-write', ['/tmp/a.png', '/tmp/b.jpg']);
-      expect(args).toContain('--image');
-      const imageIndices = args.reduce<number[]>((acc, val, idx) => {
-        if (val === '--image') acc.push(idx);
-        return acc;
-      }, []);
-      expect(imageIndices).toHaveLength(2);
-      expect(args[imageIndices[0] + 1]).toBe('/tmp/a.png');
-      expect(args[imageIndices[1] + 1]).toBe('/tmp/b.jpg');
-      // Prompt is still the last arg
+    it('buildCodexArgs does not include --image (Codex CLI does not support it)', () => {
+      const args = buildCodexArgs('describe images', null, 'workspace-write');
+      expect(args).not.toContain('--image');
       expect(args[args.length - 1]).toBe('describe images');
-    });
-
-    it('buildCodexArgs omits --image when no images provided', () => {
-      const args = buildCodexArgs('no images', null, 'workspace-write');
-      expect(args).not.toContain('--image');
-    });
-
-    it('buildCodexArgs resume does not include --image', () => {
-      const args = buildCodexArgs('follow-up', 'thread_123', 'workspace-write', ['/tmp/a.png']);
-      expect(args).not.toContain('--image');
     });
   });
 
@@ -523,19 +505,8 @@ describe('Codex CLI backend', () => {
     });
   });
 
-  describe('P13.5: Codex reuses staging files for --image', () => {
-    it('uses stagingPath directly when all images have it', () => {
-      const images = [
-        { base64: 'abc', mediaType: 'image/png', stagingPath: '/staging/upload_abc-logo.png' },
-        { base64: 'def', mediaType: 'image/jpeg', stagingPath: '/staging/upload_def-photo.jpg' },
-      ];
-      const args = buildCodexArgs('hello', null, 'workspace-write' as any, images.map(i => i.stagingPath));
-      expect(args).toContain('--image');
-      expect(args).toContain('/staging/upload_abc-logo.png');
-      expect(args).toContain('/staging/upload_def-photo.jpg');
-    });
-
-    it('falls back to temp files when stagingPath is absent', () => {
+  describe('P13.5: Image utility functions (saveImagesToTemp / cleanupTempImages)', () => {
+    it('saveImagesToTemp writes to temp and cleanupTempImages removes them', () => {
       const images = [
         { base64: Buffer.from('test').toString('base64'), mediaType: 'image/png' },
       ];
@@ -543,39 +514,19 @@ describe('Codex CLI backend', () => {
       expect(paths).toHaveLength(1);
       expect(fs.existsSync(paths[0])).toBe(true);
       cleanupTempImages(paths);
+      expect(fs.existsSync(paths[0])).toBe(false);
     });
   });
 
-  describe('P14.4: Codex filters to images-only for --image flag', () => {
-    it('only image files produce --image flags', () => {
-      // Simulate what CodexBackend.send() does: filter to kind=image, then build args
-      const files = [
-        { base64: 'img', mediaType: 'image/png', kind: 'image' as const, stagingPath: '/staging/photo.png' },
-        { base64: 'pdf', mediaType: 'application/pdf', kind: 'pdf' as const, stagingPath: '/staging/report.pdf' },
-        { base64: 'txt', mediaType: 'text/plain', kind: 'text' as const, stagingPath: '/staging/notes.txt' },
-        { base64: 'bin', mediaType: 'application/octet-stream', kind: 'binary' as const, stagingPath: '/staging/data.bin' },
-      ];
-      const imageFiles = files.filter((f) => f.kind === 'image');
-      const imagePaths = imageFiles.map((f) => f.stagingPath);
-      const args = buildCodexArgs('analyze', null, 'workspace-write', imagePaths);
-
-      expect(args).toContain('--image');
-      expect(args).toContain('/staging/photo.png');
-      expect(args).not.toContain('/staging/report.pdf');
-      expect(args).not.toContain('/staging/notes.txt');
-      expect(args).not.toContain('/staging/data.bin');
-    });
-
-    it('no --image flags when only non-image files are present', () => {
-      const files = [
-        { base64: 'pdf', mediaType: 'application/pdf', kind: 'pdf' as const, stagingPath: '/staging/report.pdf' },
-        { base64: 'txt', mediaType: 'text/csv', kind: 'text' as const, stagingPath: '/staging/data.csv' },
-      ];
-      const imageFiles = files.filter((f) => f.kind === 'image');
-      // No images → no --image flags
-      expect(imageFiles).toHaveLength(0);
+  describe('P18.3: Codex does not pass --image flag (unsupported)', () => {
+    it('buildCodexArgs never includes --image', () => {
       const args = buildCodexArgs('analyze', null, 'workspace-write');
       expect(args).not.toContain('--image');
+    });
+
+    it('buildCodexArgs signature has no imagePaths parameter', () => {
+      // buildCodexArgs(text, sessionId, sandbox) — only 3 params
+      expect(buildCodexArgs.length).toBe(3);
     });
   });
 });
