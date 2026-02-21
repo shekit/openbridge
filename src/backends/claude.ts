@@ -21,6 +21,7 @@ const LOG_DIR = path.join(os.homedir(), '.openbridge-ai', 'logs');
 export const MCP_TOOLS = [
   'mcp__openbridge__open_tunnel',
   'mcp__openbridge__serve_file_browser',
+  'mcp__openbridge__preview_server',
   'mcp__openbridge__upload_file',
   'mcp__openbridge__post_message',
   'mcp__openbridge__save_uploaded_file',

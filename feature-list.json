@@ -1858,7 +1858,7 @@
             "start.ts shutdown calls closeAllPreviews()",
             "Build passes, all tests pass"
           ],
-          "status": "pending"
+          "status": "passing"
         }
       ]
     }

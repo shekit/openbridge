@@ -26,6 +26,7 @@ import {
 import { startIpcServer } from '../mcp/ipc-server.js';
 import { createCallbackHandler, closeAllFileBrowsers } from '../mcp/callbacks.js';
 import { closeAllTunnels } from '../mcp/tunnel.js';
+import { closeAllPreviews } from '../mcp/preview-server.js';
 import { getMcpConfig } from '../mcp/server.js';
 import type { Adapter } from '../types/adapter.js';
 
@@ -505,8 +506,9 @@ export async function runStart(deps?: StartDeps): Promise<void> {
     console.log('[start] shutting down...');
     // Stop all active backend sessions
     await router.shutdown();
-    // Close tunnels and file browsers
+    // Close tunnels, file browsers, and preview servers
     closeAllTunnels();
+    closeAllPreviews();
     await closeAllFileBrowsers();
     // Close IPC server
     await ipcServer.close();
