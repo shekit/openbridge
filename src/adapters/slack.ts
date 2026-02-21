@@ -179,7 +179,11 @@ export class SlackAdapter {
   /** Handle an incoming Slack message. */
   private async handleMessage(message: any, client: any): Promise<void> {
     // Ignore bot messages (including our own) and system messages
-    if (message.bot_id || message.subtype) {
+    // Allow file_share subtype through so image+text messages are handled
+    if (message.bot_id) {
+      return;
+    }
+    if (message.subtype && message.subtype !== 'file_share') {
       return;
     }
     if (this.botUserId && message.user === this.botUserId) {
@@ -220,13 +224,36 @@ export class SlackAdapter {
       return;
     }
 
+    // Post a processing indicator for follow-up messages in existing threads
+    let processingTs: string | null = null;
+    if (threadTs !== message.ts) {
+      try {
+        const processingMsg = await client.chat.postMessage({
+          channel: channelId,
+          thread_ts: threadTs,
+          text: 'Processing...',
+        });
+        processingTs = processingMsg.ts ?? null;
+      } catch {
+        // Non-fatal — continue without indicator
+      }
+    }
+
     // Route through the router
     let result: RouteResult;
     try {
       result = await this.router.send(channelId, threadTs, text);
     } catch (err: any) {
+      if (processingTs) {
+        await client.chat.delete({ channel: channelId, ts: processingTs }).catch(() => {});
+      }
       await this.postError(channelId, threadTs, err.message, client);
       return;
+    }
+
+    // Remove the processing indicator before posting real response
+    if (processingTs) {
+      await client.chat.delete({ channel: channelId, ts: processingTs }).catch(() => {});
     }
 
     // Render the response events
@@ -256,6 +283,7 @@ export class SlackAdapter {
     const channelId = body.channel?.id;
     const threadTs = body.message?.thread_ts;
     const messageTs = body.message?.ts;
+    const toolName = body.actions?.[0]?.value;
 
     if (!channelId || !threadTs) {
       return;
@@ -282,11 +310,12 @@ export class SlackAdapter {
       // Non-fatal if update fails
     }
 
-    // Route the response
+    // Route the response with allowed tools when user clicks Allow
     const responseText = action === 'allow' ? 'yes' : 'no';
+    const allowedTools = action === 'allow' && toolName ? [toolName] : undefined;
     let result: RouteResult;
     try {
-      result = await this.router.respond(channelId, threadTs, responseText);
+      result = await this.router.respond(channelId, threadTs, responseText, allowedTools);
     } catch (err: any) {
       await this.postError(channelId, threadTs, err.message, client);
       return;
@@ -302,7 +331,18 @@ export class SlackAdapter {
     events: NormalizedEvent[],
     client: any
   ): Promise<void> {
-    for (const event of events) {
+    // Deduplicate consecutive identical permission_denied events
+    const seenDenials = new Set<string>();
+    const deduped = events.filter((event) => {
+      if (event.type === 'permission_denied') {
+        const key = `${event.toolName}:${JSON.stringify(event.toolInput)}`;
+        if (seenDenials.has(key)) return false;
+        seenDenials.add(key);
+      }
+      return true;
+    });
+
+    for (const event of deduped) {
       switch (event.type) {
         case 'assistant_text':
           await this.postText(channelId, threadTs, event.text, client);
@@ -375,14 +415,14 @@ export class SlackAdapter {
               text: { type: 'plain_text', text: 'Allow' },
               style: 'primary',
               action_id: 'permission_allow',
-              value: 'allow',
+              value: event.toolName,
             },
             {
               type: 'button',
               text: { type: 'plain_text', text: 'Deny' },
               style: 'danger',
               action_id: 'permission_deny',
-              value: 'deny',
+              value: event.toolName,
             },
           ],
         },
@@ -421,16 +461,16 @@ export class SlackAdapter {
       const root = this.store.getSetting('projects_root');
       const lines = [
         '*`/project` commands:*',
-        '• `/project new my-app` — create a new project and bind it to a channel',
+        '• `/project new my-app` — create a new project and connect it to a channel',
       ];
       if (root) {
         lines.push('• `/project connect` — pick a project from your projects root');
-        lines.push('• `/project connect /absolute/path` — bind a specific directory');
+        lines.push('• `/project connect /absolute/path` — connect a specific directory');
       } else {
-        lines.push('• `/project connect /absolute/path` — bind an existing project to a channel');
+        lines.push('• `/project connect /absolute/path` — connect an existing project to a channel');
       }
-      lines.push('• `/project list` — show all project bindings');
-      lines.push('• `/project disconnect` — unbind this channel');
+      lines.push('• `/project list` — show all connected projects');
+      lines.push('• `/project disconnect` — disconnect this channel');
       await client.chat.postMessage({
         channel: channelId,
         text: lines.join('\n'),
@@ -445,14 +485,14 @@ export class SlackAdapter {
         const root = this.store.getSetting('projects_root');
         const hint = root
           ? 'Use `/project connect` to pick one, or `/project connect /absolute/path`.'
-          : 'Use `/project connect /absolute/path` to bind one.';
+          : 'Use `/project connect /absolute/path` to connect one.';
         await client.chat.postMessage({
           channel: channelId,
-          text: `No project bindings found. ${hint}`,
+          text: `No projects connected to any channels yet. ${hint}`,
         });
         return;
       }
-      let text = '*Project Bindings:*\n';
+      let text = '*Connected Projects:*\n';
       for (const p of projects) {
         text += `• <#${p.channel_id}> → \`${p.project_dir}\` (${p.backend_name})\n`;
       }
@@ -466,7 +506,7 @@ export class SlackAdapter {
       if (!project) {
         await client.chat.postMessage({
           channel: channelId,
-          text: 'This channel is not bound to a project.',
+          text: 'This channel is not connected to a project.',
         });
       } else {
         this.store.deleteProject(project.id);
@@ -511,7 +551,7 @@ export class SlackAdapter {
       if (fs.existsSync(targetDir)) {
         await client.chat.postMessage({
           channel: channelId,
-          text: `:warning: Directory already exists: \`${targetDir}\`\nUse \`/project connect ${targetDir}\` to bind to it instead.`,
+          text: `:warning: Directory already exists: \`${targetDir}\`\nUse \`/project connect ${targetDir}\` to connect to it instead.`,
         });
         return;
       }
@@ -574,7 +614,9 @@ export class SlackAdapter {
               ...actionBlocks,
               {
                 type: 'context',
-                elements: [{ type: 'mrkdwn', text: '_Or use `/project connect /absolute/path` for a custom directory._' }],
+                elements: [{ type: 'mrkdwn', text: entries.length > 20
+                  ? `_Showing 20 of ${entries.length} projects. Use \`/project connect /absolute/path\` for others._`
+                  : '_Or use `/project connect /absolute/path` for a custom directory._' }],
               },
             ],
           });
@@ -617,10 +659,10 @@ export class SlackAdapter {
       channel: channelId,
       text: [
         `:warning: Unsupported command \`${subcommand}\`. Try one of these:`,
-        '• `/project new my-app` — create a new project and bind it to a channel',
-        '• `/project connect /absolute/path` — bind an existing project to a channel',
-        '• `/project list` — show all project bindings',
-        '• `/project disconnect` — unbind this channel',
+        '• `/project new my-app` — create a new project and connect it to a channel',
+        '• `/project connect /absolute/path` — connect an existing project to a channel',
+        '• `/project list` — show all connected projects',
+        '• `/project disconnect` — disconnect this channel',
       ].join('\n'),
     });
   }
@@ -637,13 +679,13 @@ export class SlackAdapter {
       const channelName = path.basename(projectDir);
       await client.chat.postMessage({
         channel: channelId,
-        text: `Bind project \`${projectDir}\` to this channel?`,
+        text: `Connect project \`${projectDir}\` to this channel?`,
         blocks: [
           {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `Bind project directory \`${projectDir}\`?`,
+              text: `Connect project directory \`${projectDir}\`?`,
             },
           },
           {
@@ -691,12 +733,12 @@ export class SlackAdapter {
       const label = notifyChannelId ? `<#${channelId}>` : 'this channel';
       await client.chat.postMessage({
         channel: notify,
-        text: `Bound ${label} to project \`${projectDir}\` (${backend})`,
+        text: `Connected ${label} to project \`${projectDir}\` (${backend})`,
       });
     } catch (err: any) {
       await client.chat.postMessage({
         channel: notify,
-        text: `:warning: Failed to bind: ${err.message}`,
+        text: `:warning: Failed to connect: ${err.message}`,
       });
     }
   }
@@ -720,7 +762,7 @@ export class SlackAdapter {
         }
         await client.chat.postMessage({
           channel: sourceChannelId,
-          text: `Created and bound <#${newChannelId}> to project \`${projectDir}\` (${backend})`,
+          text: `Created and connected <#${newChannelId}> to project \`${projectDir}\` (${backend})`,
         });
       }
     } catch (err: any) {
@@ -745,18 +787,18 @@ export class SlackAdapter {
         if (boundProject) {
           await client.chat.postMessage({
             channel: channelId,
-            text: `:warning: Channel <#${existingChannel.id}> is already bound to project \`${boundProject.project_dir}\``,
+            text: `:warning: Channel <#${existingChannel.id}> is already connected to project \`${boundProject.project_dir}\``,
           });
         } else {
           await client.chat.postMessage({
             channel: channelId,
-            text: `Channel <#${existingChannel.id}> already exists. Bind project \`${projectDir}\` to it?`,
+            text: `Channel <#${existingChannel.id}> already exists. Connect project \`${projectDir}\` to it?`,
             blocks: [
               {
                 type: 'section',
                 text: {
                   type: 'mrkdwn',
-                  text: `Channel <#${existingChannel.id}> already exists. Bind project directory \`${projectDir}\` to it?`,
+                  text: `Channel <#${existingChannel.id}> already exists. Connect project directory \`${projectDir}\` to it?`,
                 },
               },
               {
@@ -764,7 +806,7 @@ export class SlackAdapter {
                 elements: [
                   {
                     type: 'button',
-                    text: { type: 'plain_text', text: `Bind to #${channelName}` },
+                    text: { type: 'plain_text', text: `Connect to #${channelName}` },
                     action_id: 'project_bind_existing',
                     value: JSON.stringify({ channelId: existingChannel.id, projectDir }),
                   },
@@ -776,13 +818,13 @@ export class SlackAdapter {
       } else {
         await client.chat.postMessage({
           channel: channelId,
-          text: `:warning: Channel #${channelName} exists but the bot can't see it (likely a private channel). Go to #${channelName} and run \`/project connect ${projectDir}\` to bind it.`,
+          text: `:warning: Channel #${channelName} exists but the bot can't see it (likely a private channel). Go to #${channelName} and run \`/project connect ${projectDir}\` to connect it.`,
         });
       }
     } catch {
       await client.chat.postMessage({
         channel: channelId,
-        text: `:warning: Channel #${channelName} already exists. Go to that channel and run \`/project connect ${projectDir}\` to bind it.`,
+        text: `:warning: Channel #${channelName} already exists. Go to that channel and run \`/project connect ${projectDir}\` to connect it.`,
       });
     }
   }
@@ -829,7 +871,7 @@ export class SlackAdapter {
     if (!project) {
       await client.chat.postMessage({
         channel: channelId,
-        text: 'This channel is not bound to a project. Use `/project <name>` first.',
+        text: 'This channel is not connected to a project. Use `/project connect` first.',
       });
       return;
     }

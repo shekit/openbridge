@@ -22,8 +22,8 @@ export interface RouteResult {
   session: Session;
 }
 
-/** Default timeout for backend.send() in milliseconds (5 minutes). */
-const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
+/** Default timeout for backend.send() in milliseconds (0 = disabled). */
+const DEFAULT_TIMEOUT_MS = 0;
 
 /** Context passed to mcpConfigFactory for generating per-session MCP config. */
 export interface McpConfigContext {
@@ -116,7 +116,7 @@ export class Router {
   async send(channelId: string, threadId: string, text: string): Promise<RouteResult> {
     const resolved = this.resolve(channelId, threadId);
     if (!resolved) {
-      throw new Error(`Channel ${channelId} is not bound to a project`);
+      throw new Error(`Channel ${channelId} is not connected to a project`);
     }
 
     const { project, session } = resolved;
@@ -196,11 +196,12 @@ export class Router {
   /**
    * Handle a user response when a session is waiting_for_input.
    * This resumes the backend with the user's response text.
+   * When allowedTools is provided, the backend will auto-approve those tools.
    */
-  async respond(channelId: string, threadId: string, text: string): Promise<RouteResult> {
+  async respond(channelId: string, threadId: string, text: string, allowedTools?: string[]): Promise<RouteResult> {
     const resolved = this.resolve(channelId, threadId);
     if (!resolved) {
-      throw new Error(`Channel ${channelId} is not bound to a project`);
+      throw new Error(`Channel ${channelId} is not connected to a project`);
     }
 
     const { project, session } = resolved;
@@ -227,6 +228,11 @@ export class Router {
     // Must have a backend session ID for resume
     if (session.backend_session_id) {
       backend.setSessionId(session.backend_session_id);
+    }
+
+    // Set allowed tools if provided (e.g., user clicked Allow on a permission prompt)
+    if (allowedTools && allowedTools.length > 0) {
+      backend.setAllowedTools(allowedTools);
     }
 
     let result: SendResult;
@@ -270,7 +276,7 @@ export class Router {
   resetSession(channelId: string, threadId: string): Session {
     const resolved = this.resolve(channelId, threadId);
     if (!resolved) {
-      throw new Error(`Channel ${channelId} is not bound to a project`);
+      throw new Error(`Channel ${channelId} is not connected to a project`);
     }
 
     const { session } = resolved;

@@ -175,6 +175,7 @@ export function parseClaudeOutput(
 export function buildClaudeArgs(
   text: string,
   sessionId: string | null,
+  allowedTools?: string[],
 ): string[] {
   const args = [
     '-p',
@@ -185,6 +186,12 @@ export function buildClaudeArgs(
 
   if (sessionId) {
     args.push('-r', sessionId);
+  }
+
+  if (allowedTools && allowedTools.length > 0) {
+    for (const tool of allowedTools) {
+      args.push('--allowedTools', tool);
+    }
   }
 
   args.push(text);
@@ -226,6 +233,7 @@ export class ClaudeBackend implements Backend {
   private projectDir: string = '';
   private mcpConfig: McpServerEntry | undefined;
   private activeHandle: SpawnHandle | null = null;
+  private allowedTools: string[] = [];
 
   async start(options: BackendOptions): Promise<void> {
     this.projectDir = options.projectDir;
@@ -240,7 +248,9 @@ export class ClaudeBackend implements Backend {
   }
 
   async send(text: string): Promise<SendResult> {
-    const args = buildClaudeArgs(text, this.sessionId);
+    const args = buildClaudeArgs(text, this.sessionId, this.allowedTools.length > 0 ? this.allowedTools : undefined);
+    // Clear allowed tools after use (one-shot approval)
+    this.allowedTools = [];
 
     console.log(`[claude] spawning: claude ${args.join(' ').slice(0, 120)}...`);
     const handle = spawnCollect('claude', args, this.projectDir);
@@ -279,6 +289,10 @@ export class ClaudeBackend implements Backend {
 
   setSessionId(id: string | null): void {
     this.sessionId = id;
+  }
+
+  setAllowedTools(tools: string[]): void {
+    this.allowedTools = tools;
   }
 
   async stop(): Promise<void> {

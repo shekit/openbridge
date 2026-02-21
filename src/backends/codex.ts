@@ -272,6 +272,10 @@ export class CodexBackend implements Backend {
     this.sessionId = id;
   }
 
+  setAllowedTools(_tools: string[]): void {
+    // Codex uses OS-level sandbox — tool-level approval is not supported
+  }
+
   async stop(): Promise<void> {
     console.log('[codex] stopping');
     if (this.activeHandle) {

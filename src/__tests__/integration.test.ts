@@ -51,6 +51,7 @@ function createMockBackend(
       return sendResults[callIndex - 1]?.sessionId ?? null;
     },
     setSessionId() {},
+    setAllowedTools() {},
     async stop() {
       calls.push({ method: 'stop', args: [] });
     },
@@ -70,6 +71,7 @@ function createMockBoltApp() {
     chat: {
       postMessage: vi.fn(async () => ({ ok: true, ts: '1234567890.123456' })),
       update: vi.fn(async () => ({ ok: true })),
+      delete: vi.fn(async () => ({ ok: true })),
     },
     conversations: {
       create: vi.fn(async () => ({ ok: true, channel: { id: 'C_NEW123' } })),
@@ -326,6 +328,7 @@ describe('P7.2: End-to-end Slack permission denial → Allow button → resume',
       },
       getSessionId() { return 'session-perm-1'; },
       setSessionId() {},
+      setAllowedTools() {},
       async stop() {},
     };
 
@@ -446,6 +449,7 @@ describe('P7.3: End-to-end Slack permission denial → freeform text → resume'
       },
       getSessionId() { return 'session-freeform-1'; },
       setSessionId() {},
+      setAllowedTools() {},
       async stop() {},
     };
 
@@ -544,6 +548,7 @@ describe('P7.4: End-to-end Discord → Codex CLI → response', () => {
       id: 'THREAD_001',
       send: vi.fn(async (opts: any) => {
         threadMessages.push(typeof opts === 'string' ? opts : opts.content);
+        return { id: 'thread-msg-id', delete: vi.fn(async () => {}) };
       }),
       isThread: () => true,
       parentId: 'C_DISCORD_1',
@@ -686,6 +691,7 @@ describe('P7.5: Session persistence across bridge restart', () => {
       },
       getSessionId() { return 'claude-session-persist-123'; },
       setSessionId() {},
+      setAllowedTools() {},
       async stop() {},
     } as any;
 
@@ -733,6 +739,7 @@ describe('P7.5: Session persistence across bridge restart', () => {
       },
       getSessionId() { return 'claude-session-persist-123'; },
       setSessionId(id: string | null) { (this as any)._sessionId = id; },
+      setAllowedTools() {},
       async stop() {},
     } as any;
 
@@ -812,6 +819,7 @@ describe('P7.6: Graceful shutdown', () => {
       },
       getSessionId() { return 'session-shutdown-1'; },
       setSessionId() {},
+      setAllowedTools() {},
       async stop() {
         stopCalls.push('stopped');
       },
@@ -851,6 +859,7 @@ describe('P7.6: Graceful shutdown', () => {
       },
       getSessionId() { return 'session-shutdown-err'; },
       setSessionId() {},
+      setAllowedTools() {},
       async stop() {
         throw new Error('connection already closed');
       },
@@ -873,6 +882,7 @@ describe('P7.6: Graceful shutdown', () => {
       },
       getSessionId() { return null; },
       setSessionId() {},
+      setAllowedTools() {},
       async stop() {},
     }));
 
@@ -923,6 +933,7 @@ describe('P7.7: Error handling — missing CLI tool reported to user', () => {
       },
       getSessionId() { return null; },
       setSessionId() {},
+      setAllowedTools() {},
       async stop() {},
     };
 
@@ -975,6 +986,7 @@ describe('P7.7: Error handling — missing CLI tool reported to user', () => {
       },
       getSessionId() { return null; },
       setSessionId() {},
+      setAllowedTools() {},
       async stop() {},
     };
 
@@ -1067,6 +1079,7 @@ describe('P7.8: Error handling — backend timeout reported to user', () => {
       },
       getSessionId() { return null; },
       setSessionId() {},
+      setAllowedTools() {},
       async stop() {},
     };
 
@@ -1116,6 +1129,7 @@ describe('P7.8: Error handling — backend timeout reported to user', () => {
       },
       getSessionId() { return null; },
       setSessionId() {},
+      setAllowedTools() {},
       async stop() {},
     };
 
@@ -1148,6 +1162,7 @@ describe('P7.8: Error handling — backend timeout reported to user', () => {
       },
       getSessionId() { return 'session-no-to'; },
       setSessionId() {},
+      setAllowedTools() {},
       async stop() {},
     };
 
@@ -1184,6 +1199,7 @@ describe('P7.9: Error handling — backend crash reported to user', () => {
       },
       getSessionId() { return null; },
       setSessionId() {},
+      setAllowedTools() {},
       async stop() {},
     };
 
@@ -1242,6 +1258,7 @@ describe('P7.9: Error handling — backend crash reported to user', () => {
       },
       getSessionId() { return callCount > 1 ? 'new-session-after-crash' : null; },
       setSessionId() {},
+      setAllowedTools() {},
       async stop() {},
     };
 
@@ -1314,6 +1331,7 @@ describe('P7.9: Error handling — backend crash reported to user', () => {
       },
       getSessionId() { return 'session-exit-1'; },
       setSessionId() {},
+      setAllowedTools() {},
       async stop() {},
     };
 
@@ -1393,6 +1411,7 @@ describe('P7.10: Logging — consistent prefixes for all bridge components', () 
       },
       getSessionId() { return 'session-log'; },
       setSessionId() {},
+      setAllowedTools() {},
       async stop() {},
     };
 
@@ -1416,6 +1435,7 @@ describe('P7.10: Logging — consistent prefixes for all bridge components', () 
       },
       getSessionId() { return null; },
       setSessionId() {},
+      setAllowedTools() {},
       async stop() {},
     }));
 
@@ -1449,6 +1469,7 @@ describe('P7.10: Logging — consistent prefixes for all bridge components', () 
       },
       getSessionId() { return null; },
       setSessionId() {},
+      setAllowedTools() {},
       async stop() {},
     }));
 

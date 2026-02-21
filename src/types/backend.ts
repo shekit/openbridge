@@ -38,6 +38,9 @@ export interface Backend {
   /** Set the session ID for resume (used by the router to restore from DB). */
   setSessionId(id: string | null): void;
 
+  /** Set tools to auto-approve on the next send (for permission Allow flow). */
+  setAllowedTools(tools: string[]): void;
+
   /** Clean shutdown — kill any running process. */
   stop(): Promise<void>;
 }

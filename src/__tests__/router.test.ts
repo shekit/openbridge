@@ -144,7 +144,7 @@ describe('Router', () => {
 
     it('throws for unbound channel', async () => {
       await expect(router.send('UNKNOWN', 'T1', 'test')).rejects.toThrow(
-        'Channel UNKNOWN is not bound to a project'
+        'Channel UNKNOWN is not connected to a project'
       );
     });
   });
@@ -308,7 +308,7 @@ describe('Router', () => {
 
     it('throws for unbound channel', () => {
       expect(() => router.resetSession('UNKNOWN', 'T1')).toThrow(
-        'Channel UNKNOWN is not bound to a project'
+        'Channel UNKNOWN is not connected to a project'
       );
     });
   });

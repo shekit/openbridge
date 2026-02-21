@@ -322,7 +322,7 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
 
       case 'rerun_setup': {
         const confirm = await clack.confirm({
-          message: 'This will erase all settings, tokens, and project bindings. Continue?',
+          message: 'This will erase all settings, tokens, and project connections. Continue?',
           initialValue: false,
         });
         if (clack.isCancel(confirm) || !confirm) {
@@ -464,8 +464,17 @@ export async function runStart(deps?: StartDeps): Promise<void> {
     try {
       await adapter.start();
       console.log(`[start] ${adapter.name} adapter started`);
-    } catch (err) {
-      console.error(`[start] failed to start ${adapter.name}:`, err);
+    } catch (err: any) {
+      // Check for Discord "disallowed intents" error (code 4014)
+      const errMsg = String(err?.message ?? err ?? '');
+      if (adapter.name === 'discord' && (errMsg.includes('disallowed intents') || errMsg.includes('Disallowed Intents') || err?.code === 4014)) {
+        console.error(`\n[start] Discord error: Used disallowed intents.`);
+        console.error(`  Fix: Go to discord.com/developers/applications → your app → Bot tab`);
+        console.error(`  → Privileged Gateway Intents → enable "Message Content Intent"`);
+        console.error(`  Then restart the bridge.\n`);
+      } else {
+        console.error(`[start] failed to start ${adapter.name}:`, err);
+      }
     }
   }
 
@@ -480,7 +489,7 @@ export async function runStart(deps?: StartDeps): Promise<void> {
     `  Ready on ${platformNames.join(' and ')}!`,
     '',
     '  Next steps:',
-    '    1. Use /project new my-app to create a project, or /project connect /path to bind an existing one',
+    '    1. Use /project new my-app to create a project, or /project connect /path to connect an existing one',
     '    2. Send a message in that channel — the bot will respond via your coding backend',
     '',
     '  Press Ctrl+C to stop the bridge.',

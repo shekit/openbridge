@@ -105,23 +105,23 @@ export class DiscordAdapter {
     const commands = [
       new SlashCommandBuilder()
         .setName('project')
-        .setDescription('Manage project bindings')
+        .setDescription('Manage project connections')
         .addSubcommand((sub) =>
           sub.setName('connect')
-            .setDescription('Bind a project directory to a channel')
+            .setDescription('Connect a project directory to a channel')
             .addStringOption((opt) => opt.setName('path').setDescription('Absolute path to project directory').setRequired(false))
         )
         .addSubcommand((sub) =>
           sub.setName('list')
-            .setDescription('List all project bindings')
+            .setDescription('List all connected projects')
         )
         .addSubcommand((sub) =>
           sub.setName('disconnect')
-            .setDescription('Unbind this channel from its project')
+            .setDescription('Disconnect this channel from its project')
         )
         .addSubcommand((sub) =>
           sub.setName('new')
-            .setDescription('Create a new project and bind it to a channel')
+            .setDescription('Create a new project and connect it to a channel')
             .addStringOption((opt) => opt.setName('name').setDescription('Project name or absolute path').setRequired(true))
         ),
       new SlashCommandBuilder()
@@ -204,14 +204,28 @@ export class DiscordAdapter {
       return;
     }
 
+    // Post a processing indicator for follow-up messages in threads
+    let processingMsg: Message | null = null;
+    if (message.channel.isThread?.()) {
+      try {
+        processingMsg = await message.channel.send('Processing...');
+      } catch {
+        // Non-fatal
+      }
+    }
+
     // Route through the router
     let result: RouteResult;
     try {
       result = await this.router.send(channelId, threadId, text);
     } catch (err: any) {
+      if (processingMsg) await processingMsg.delete().catch(() => {});
       await this.postError(channelId, threadId, err.message, message);
       return;
     }
+
+    // Remove the processing indicator before posting real response
+    if (processingMsg) await processingMsg.delete().catch(() => {});
 
     // Render the response events
     await this.renderEvents(channelId, threadId, result.events, message);
@@ -274,7 +288,7 @@ export class DiscordAdapter {
       return;
     }
 
-    if (customId !== 'permission_allow' && customId !== 'permission_deny') {
+    if (!customId.startsWith('permission_allow') && !customId.startsWith('permission_deny')) {
       return;
     }
 
@@ -286,8 +300,9 @@ export class DiscordAdapter {
       return;
     }
 
-    const action = customId === 'permission_allow' ? 'allow' : 'deny';
-    const actionLabel = action === 'allow' ? 'Allowed' : 'Denied';
+    const isAllow = customId.startsWith('permission_allow');
+    const toolName = customId.split(':').slice(1).join(':') || undefined;
+    const actionLabel = isAllow ? 'Allowed' : 'Denied';
 
     // Update the original message to show which action was taken
     try {
@@ -299,11 +314,12 @@ export class DiscordAdapter {
       // Non-fatal if update fails
     }
 
-    // Route the response
-    const responseText = action === 'allow' ? 'yes' : 'no';
+    // Route the response with allowed tools when user clicks Allow
+    const responseText = isAllow ? 'yes' : 'no';
+    const allowedTools = isAllow && toolName ? [toolName] : undefined;
     let result: RouteResult;
     try {
-      result = await this.router.respond(channelId, threadId, responseText);
+      result = await this.router.respond(channelId, threadId, responseText, allowedTools);
     } catch (err: any) {
       await this.sendToThread(threadId, interaction, `:warning: **Error:** ${err.message}`);
       return;
@@ -338,7 +354,18 @@ export class DiscordAdapter {
     events: NormalizedEvent[],
     context: any
   ): Promise<void> {
-    for (const event of events) {
+    // Deduplicate consecutive identical permission_denied events
+    const seenDenials = new Set<string>();
+    const deduped = events.filter((event) => {
+      if (event.type === 'permission_denied') {
+        const key = `${event.toolName}:${JSON.stringify(event.toolInput)}`;
+        if (seenDenials.has(key)) return false;
+        seenDenials.add(key);
+      }
+      return true;
+    });
+
+    for (const event of deduped) {
       switch (event.type) {
         case 'assistant_text':
           await this.postText(channelId, threadId, event.text, context);
@@ -382,11 +409,11 @@ export class DiscordAdapter {
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
-        .setCustomId('permission_allow')
+        .setCustomId(`permission_allow:${event.toolName}`)
         .setLabel('Allow')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
-        .setCustomId('permission_deny')
+        .setCustomId(`permission_deny:${event.toolName}`)
         .setLabel('Deny')
         .setStyle(ButtonStyle.Danger)
     );
@@ -413,11 +440,11 @@ export class DiscordAdapter {
         const root = this.store.getSetting('projects_root');
         const hint = root
           ? 'Use `/project connect` to pick one, or `/project connect path:/absolute/path`.'
-          : 'Use `/project connect path:/absolute/path` to bind one.';
-        await interaction.reply(`No project bindings found. ${hint}`);
+          : 'Use `/project connect path:/absolute/path` to connect one.';
+        await interaction.reply(`No projects connected to any channels yet. ${hint}`);
         return;
       }
-      let text = '**Project Bindings:**\n';
+      let text = '**Connected Projects:**\n';
       for (const p of projects) {
         text += `- <#${p.channel_id}> → \`${p.project_dir}\` (${p.backend_name})\n`;
       }
@@ -429,7 +456,7 @@ export class DiscordAdapter {
     if (subcommand === 'disconnect') {
       const project = this.store.getProjectByChannelId(channelId);
       if (!project) {
-        await interaction.reply('This channel is not bound to a project.');
+        await interaction.reply('This channel is not connected to a project.');
       } else {
         this.store.deleteProject(project.id);
         await interaction.reply(`Disconnected this channel from \`${project.project_dir}\`.`);
@@ -462,7 +489,7 @@ export class DiscordAdapter {
       }
 
       if (fs.existsSync(targetDir)) {
-        await interaction.reply(`:warning: Directory already exists: \`${targetDir}\`\nUse \`/project connect path:${targetDir}\` to bind to it instead.`);
+        await interaction.reply(`:warning: Directory already exists: \`${targetDir}\`\nUse \`/project connect path:${targetDir}\` to connect to it instead.`);
         return;
       }
 
@@ -506,8 +533,11 @@ export class DiscordAdapter {
             }
             rows.push(row);
           }
+          const hint = entries.length > 20
+            ? `_Showing 20 of ${entries.length} projects. Use \`/project connect path:/absolute/path\` for others._`
+            : '_Or use `/project connect path:/absolute/path` for a custom directory._';
           await interaction.reply({
-            content: `**Pick a project from** \`${root}\`:\n_Or use \`/project connect path:/absolute/path\` for a custom directory._`,
+            content: `**Pick a project from** \`${root}\`:\n${hint}`,
             components: rows,
           });
         } else {
@@ -536,10 +566,10 @@ export class DiscordAdapter {
 
     await interaction.reply([
       ':warning: Unsupported command. Try one of these:',
-      '- `/project new name:my-app` — create a new project and bind it to a channel',
-      '- `/project connect` — bind an existing project to a channel',
-      '- `/project list` — show all project bindings',
-      '- `/project disconnect` — unbind this channel',
+      '- `/project new name:my-app` — create a new project and connect it to a channel',
+      '- `/project connect` — connect an existing project to a channel',
+      '- `/project list` — show all connected projects',
+      '- `/project disconnect` — disconnect this channel',
     ].join('\n'));
   }
 
@@ -561,9 +591,9 @@ export class DiscordAdapter {
   ): Promise<void> {
     try {
       this.store.createProject(channelId, projectDir, backend, 'discord');
-      await respond(`Bound this channel to project \`${projectDir}\` (${backend})`);
+      await respond(`Connected this channel to project \`${projectDir}\` (${backend})`);
     } catch (err: any) {
-      await respond(`:warning: Failed to bind: ${err.message}`);
+      await respond(`:warning: Failed to connect: ${err.message}`);
     }
   }
 
@@ -585,7 +615,7 @@ export class DiscordAdapter {
         type: ChannelType.GuildText,
       });
       this.store.createProject(newChannel.id, projectDir, backend, 'discord');
-      await respond(`Created and bound <#${newChannel.id}> to project \`${projectDir}\` (${backend})`);
+      await respond(`Created and connected <#${newChannel.id}> to project \`${projectDir}\` (${backend})`);
     } catch (err: any) {
       await respond(`:warning: Failed to create channel: ${err.message}`);
     }
@@ -616,7 +646,7 @@ export class DiscordAdapter {
       );
 
       await interaction.reply({
-        content: `Bind project directory \`${projectPath}\`?`,
+        content: `Connect project directory \`${projectPath}\`?`,
         components: [row],
       });
     }
@@ -652,7 +682,7 @@ export class DiscordAdapter {
     const project = this.store.getProjectByChannelId(channelId);
 
     if (!project) {
-      await interaction.reply('This channel is not bound to a project. Use `/project connect` first.');
+      await interaction.reply('This channel is not connected to a project. Use `/project connect` first.');
       return;
     }
 

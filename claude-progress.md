@@ -11,6 +11,7 @@ Phase 6 — CLI Setup Wizard (complete)
 Phase 7 — Integration and Polish (complete)
 Phase 9 — Production-Readiness Fixes (complete)
 Phase 10 — Wire MCP Server to Runtime (complete)
+Phase 11 — Manual Test Bug Fixes (complete)
 
 ## Session Log
 
@@ -346,3 +347,38 @@ Backend Process (Claude Code / Codex)
 **Test count:** 442 tests passing across 20 test files
 - All 10 features (P10.1–P10.10) committed individually, all marked passing
 - Total: 92 features across 10 phases (P0–P7, P9, P10), all passing
+
+### Session 15 — Manual Test Bug Fixes (12 issues)
+
+Fixed 11 of 12 bugs found during comprehensive manual testing:
+
+**Permission flow (Issues #4, #6, #11):**
+- Allow button now actually grants permission — passes `--allowedTools <toolName>` to Claude Code CLI on resume
+- Added `setAllowedTools()` to Backend interface, implemented in ClaudeBackend (passes `--allowedTools` flag)
+- Router.respond() accepts optional allowedTools parameter
+- Button values/customIds now carry tool name for extraction on click
+- Deduplicated consecutive identical permission_denied events in renderEvents
+
+**Message handling (Issues #5, #7):**
+- Fixed Slack file+text messages silently dropped — allow `file_share` subtype through message filter
+- Added "Processing..." indicator for follow-up messages in threads (both adapters), deleted after response
+
+**UX messaging (Issues #1, #2):**
+- Replaced all user-facing "bind/binding/bound/unbind" with "connect/connected/disconnect" across both adapters, router, CLI, and tests
+- "Project Bindings:" → "Connected Projects:", "not bound to a project" → "not connected to a project"
+- Friendlier empty state: "No projects connected to any channels yet"
+- Fixed `/settings` hint: "Use `/project connect` first" (was referencing `/project <name>`)
+
+**Onboarding (Issues #8, #9):**
+- Token input now trimmed — `promptText()` trims whitespace before validation and return
+- Discord "disallowed intents" error now shows specific fix instructions (enable Message Content Intent)
+
+**Polish (Issues #10, #12):**
+- Project picker shows "Showing 20 of N projects" note when there are >20 projects
+- Removed artificial 5-minute backend timeout (set DEFAULT_TIMEOUT_MS to 0 = disabled)
+
+**Issue #3 (MCP file browser) — investigated, not a code bug:**
+- Architecture is sound: tool registration, config injection, IPC routing all correct
+- Likely a runtime/configuration issue requiring live debugging to identify exact failure point
+
+**Test count:** 442 tests passing across 20 test files

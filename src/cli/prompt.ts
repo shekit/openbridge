@@ -115,9 +115,10 @@ export async function promptText(
     const result = await clack.text({
       message,
       validate: (value) => {
-        if (!value) return 'Input cannot be empty.';
+        const trimmed = (value ?? '').trim();
+        if (!trimmed) return 'Input cannot be empty.';
         if (validate) {
-          const error = validate(value);
+          const error = validate(trimmed);
           if (error) return error;
         }
         return undefined;
@@ -127,7 +128,7 @@ export async function promptText(
       clack.cancel('Setup cancelled.');
       process.exit(0);
     }
-    return result as string;
+    return (result as string).trim();
   }
 
   // Fallback for testing

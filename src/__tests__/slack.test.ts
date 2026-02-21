@@ -26,6 +26,7 @@ function createMockBoltApp() {
     chat: {
       postMessage: vi.fn(async () => ({ ok: true, ts: '1234567890.123456' })),
       update: vi.fn(async () => ({ ok: true })),
+      delete: vi.fn(async () => ({ ok: true })),
     },
     conversations: {
       create: vi.fn(async () => ({ ok: true, channel: { id: 'C_NEW123' } })),
@@ -75,6 +76,7 @@ function createMockBackendFactory() {
     })),
     getSessionId: vi.fn(() => 'session-123'),
     setSessionId: vi.fn(),
+    setAllowedTools: vi.fn(),
     stop: vi.fn(async () => {}),
   }));
 }
@@ -305,7 +307,7 @@ describe('SlackAdapter', () => {
       );
     });
 
-    it('does not post Processing for threaded messages', async () => {
+    it('posts Processing for follow-up messages in threads and deletes it after', async () => {
       createAdapter();
       await adapter.start();
 
@@ -321,7 +323,9 @@ describe('SlackAdapter', () => {
 
       const calls = mockApp.client.chat.postMessage.mock.calls;
       const processingCall = calls.find((c: any) => c[0].text === 'Processing...');
-      expect(processingCall).toBeUndefined();
+      expect(processingCall).toBeDefined();
+      // Processing message should be deleted after response
+      expect(mockApp.client.chat.delete).toHaveBeenCalled();
     });
   });
 
@@ -436,6 +440,7 @@ describe('SlackAdapter', () => {
         })),
         getSessionId: vi.fn(() => 'session-123'),
         setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
         stop: vi.fn(async () => {}),
       }));
 
@@ -619,6 +624,7 @@ describe('SlackAdapter', () => {
         }),
         getSessionId: vi.fn(() => null),
         setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
         stop: vi.fn(async () => {}),
       }));
 
@@ -652,6 +658,7 @@ describe('SlackAdapter', () => {
         })),
         getSessionId: vi.fn(() => null),
         setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
         stop: vi.fn(async () => {}),
       }));
 
@@ -789,7 +796,7 @@ describe('SlackAdapter', () => {
 
       const calls = mockApp.client.chat.postMessage.mock.calls;
       const listCall = calls.find(
-        (c: any) => typeof c[0].text === 'string' && c[0].text.includes('Project Bindings')
+        (c: any) => typeof c[0].text === 'string' && c[0].text.includes('Connected Projects')
       );
       expect(listCall).toBeDefined();
       expect(listCall![0].text).toContain('C_PROJ1');
@@ -808,7 +815,7 @@ describe('SlackAdapter', () => {
       });
 
       const calls = mockApp.client.chat.postMessage.mock.calls;
-      expect(calls[0][0].text).toContain('No project bindings');
+      expect(calls[0][0].text).toContain('No projects connected');
     });
   });
 
@@ -919,7 +926,7 @@ describe('SlackAdapter', () => {
 
       expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
-          text: expect.stringContaining('not bound'),
+          text: expect.stringContaining('not connected'),
         })
       );
     });

@@ -66,6 +66,7 @@ function createMockBackendFactory() {
     })),
     getSessionId: vi.fn(() => 'session-123'),
     setSessionId: vi.fn(),
+    setAllowedTools: vi.fn(),
     stop: vi.fn(async () => {}),
   }));
 }
@@ -105,7 +106,7 @@ function createMockMessage(overrides: {
     parentId: isThread ? parentId : null,
     send: vi.fn(async (opts: any) => {
       sentMessages.push(opts);
-      return { id: 'sent-msg-123' };
+      return { id: 'sent-msg-123', delete: vi.fn(async () => {}) };
     }),
     threads: {
       fetch: vi.fn(async (id: string) => {
@@ -207,7 +208,7 @@ function createMockButtonInteraction(overrides: {
   isThread?: boolean;
   parentId?: string;
   messageId?: string;
-} = { customId: 'permission_allow' }) {
+} = { customId: 'permission_allow:Edit' }) {
   const isThread = overrides.isThread ?? true;
   const channelId = overrides.channelId ?? 'C_BOUND';
   const parentId = overrides.parentId ?? 'C_BOUND';
@@ -568,6 +569,7 @@ describe('DiscordAdapter', () => {
         })),
         getSessionId: vi.fn(() => 'session-123'),
         setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
         stop: vi.fn(async () => {}),
       }));
 
@@ -614,7 +616,7 @@ describe('DiscordAdapter', () => {
       store.updateBackendSessionId(session.id, 'backend-session-123');
 
       const { interaction, updates, threadMessages } = createMockButtonInteraction({
-        customId: 'permission_allow',
+        customId: 'permission_allow:Edit',
         channelId: 'C_BOUND',
         isThread: true,
         parentId: 'C_BOUND',
@@ -644,7 +646,7 @@ describe('DiscordAdapter', () => {
       store.updateBackendSessionId(session.id, 'backend-session-123');
 
       const { interaction } = createMockButtonInteraction({
-        customId: 'permission_deny',
+        customId: 'permission_deny:Edit',
         channelId: 'C_BOUND',
         isThread: true,
         parentId: 'C_BOUND',
@@ -679,6 +681,7 @@ describe('DiscordAdapter', () => {
         })),
         getSessionId: vi.fn(() => 'session-chained'),
         setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
         stop: vi.fn(async () => {}),
       }));
 
@@ -699,7 +702,7 @@ describe('DiscordAdapter', () => {
       store.updateBackendSessionId(session.id, 'session-chained');
 
       const { interaction, threadMessages } = createMockButtonInteraction({
-        customId: 'permission_allow',
+        customId: 'permission_allow:Edit',
         channelId: 'C_CHAIN',
         isThread: true,
         parentId: 'C_CHAIN',
@@ -763,6 +766,7 @@ describe('DiscordAdapter', () => {
         }),
         getSessionId: vi.fn(() => null),
         setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
         stop: vi.fn(async () => {}),
       }));
 
@@ -796,6 +800,7 @@ describe('DiscordAdapter', () => {
         })),
         getSessionId: vi.fn(() => null),
         setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
         stop: vi.fn(async () => {}),
       }));
 
@@ -885,7 +890,7 @@ describe('DiscordAdapter', () => {
 
       expect(replies.length).toBe(1);
       const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
-      expect(text).toContain('Project Bindings');
+      expect(text).toContain('Connected Projects');
       expect(text).toContain('C_PROJ1');
       expect(text).toContain('C_PROJ2');
     });
@@ -902,7 +907,7 @@ describe('DiscordAdapter', () => {
       await triggerInteraction(interaction);
 
       const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
-      expect(text).toContain('No project bindings');
+      expect(text).toContain('No projects connected');
     });
 
     it('creates new channel when invoked from bound channel with absolute path', async () => {
@@ -1087,7 +1092,7 @@ describe('DiscordAdapter', () => {
       await triggerInteraction(interaction);
 
       const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
-      expect(text).toContain('not bound');
+      expect(text).toContain('not connected');
     });
   });
 
@@ -1145,6 +1150,7 @@ describe('DiscordAdapter', () => {
         }),
         getSessionId: vi.fn(() => 'session-123'),
         setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
         stop: vi.fn(async () => {}),
       });
 
