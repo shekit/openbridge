@@ -1564,7 +1564,7 @@
             "Temp files cleaned up after send() completes (success or failure)",
             "Unit tests verify temp file creation, arg construction, and cleanup"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P12.11",

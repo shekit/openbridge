@@ -1,5 +1,6 @@
+import * as fs from 'node:fs';
 import { describe, it, expect } from 'vitest';
-import { CodexBackend, parseCodexOutput, buildCodexArgs } from '../backends/codex.js';
+import { CodexBackend, parseCodexOutput, buildCodexArgs, mimeToExtension, saveImagesToTemp, cleanupTempImages } from '../backends/codex.js';
 import { spawnCollect } from '../backends/claude.js';
 import type { Backend } from '../types/backend.js';
 
@@ -420,6 +421,75 @@ describe('Codex CLI backend', () => {
       const parsed = parseCodexOutput(stdout, '', 0);
       const errors = parsed.events.filter((e) => e.type === 'error');
       expect(errors).toHaveLength(0);
+    });
+  });
+
+  describe('P12.10: image passing via temp file + --image', () => {
+    it('mimeToExtension maps common MIME types', () => {
+      expect(mimeToExtension('image/png')).toBe('.png');
+      expect(mimeToExtension('image/jpeg')).toBe('.jpg');
+      expect(mimeToExtension('image/gif')).toBe('.gif');
+      expect(mimeToExtension('image/webp')).toBe('.webp');
+      expect(mimeToExtension('image/unknown')).toBe('.png'); // fallback
+    });
+
+    it('saveImagesToTemp writes files and returns paths', () => {
+      const images = [
+        { base64: Buffer.from('fake-png-data').toString('base64'), mediaType: 'image/png' },
+        { base64: Buffer.from('fake-jpg-data').toString('base64'), mediaType: 'image/jpeg' },
+      ];
+      const paths = saveImagesToTemp(images);
+      try {
+        expect(paths).toHaveLength(2);
+        expect(paths[0]).toMatch(/\.png$/);
+        expect(paths[1]).toMatch(/\.jpg$/);
+        // Files exist and contain correct data
+        expect(fs.existsSync(paths[0])).toBe(true);
+        expect(fs.existsSync(paths[1])).toBe(true);
+        expect(fs.readFileSync(paths[0]).toString()).toBe('fake-png-data');
+        expect(fs.readFileSync(paths[1]).toString()).toBe('fake-jpg-data');
+      } finally {
+        cleanupTempImages(paths);
+      }
+    });
+
+    it('cleanupTempImages removes files', () => {
+      const images = [
+        { base64: Buffer.from('temp-data').toString('base64'), mediaType: 'image/png' },
+      ];
+      const paths = saveImagesToTemp(images);
+      expect(fs.existsSync(paths[0])).toBe(true);
+      cleanupTempImages(paths);
+      expect(fs.existsSync(paths[0])).toBe(false);
+    });
+
+    it('cleanupTempImages ignores missing files', () => {
+      // Should not throw
+      cleanupTempImages(['/tmp/nonexistent-openbridge-file-12345.png']);
+    });
+
+    it('buildCodexArgs includes --image flags for each image path', () => {
+      const args = buildCodexArgs('describe images', null, 'workspace-write', ['/tmp/a.png', '/tmp/b.jpg']);
+      expect(args).toContain('--image');
+      const imageIndices = args.reduce<number[]>((acc, val, idx) => {
+        if (val === '--image') acc.push(idx);
+        return acc;
+      }, []);
+      expect(imageIndices).toHaveLength(2);
+      expect(args[imageIndices[0] + 1]).toBe('/tmp/a.png');
+      expect(args[imageIndices[1] + 1]).toBe('/tmp/b.jpg');
+      // Prompt is still the last arg
+      expect(args[args.length - 1]).toBe('describe images');
+    });
+
+    it('buildCodexArgs omits --image when no images provided', () => {
+      const args = buildCodexArgs('no images', null, 'workspace-write');
+      expect(args).not.toContain('--image');
+    });
+
+    it('buildCodexArgs resume does not include --image', () => {
+      const args = buildCodexArgs('follow-up', 'thread_123', 'workspace-write', ['/tmp/a.png']);
+      expect(args).not.toContain('--image');
     });
   });
 

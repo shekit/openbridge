@@ -9,8 +9,9 @@
  */
 
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
-import type { Backend, BackendOptions, McpServerEntry, SendResult } from '../types/backend.js';
+import type { Backend, BackendOptions, ImageAttachment, McpServerEntry, SendResult } from '../types/backend.js';
 import type { NormalizedEvent } from '../types/events.js';
 import { spawnCollect, type SpawnHandle, type SpawnResult } from './claude.js';
 
@@ -132,20 +133,66 @@ export function parseCodexOutput(
   return { events, sessionId };
 }
 
+/** Map MIME type to file extension for temp image files. */
+export function mimeToExtension(mediaType: string): string {
+  const map: Record<string, string> = {
+    'image/png': '.png',
+    'image/jpeg': '.jpg',
+    'image/gif': '.gif',
+    'image/webp': '.webp',
+  };
+  return map[mediaType] || '.png';
+}
+
+/**
+ * Save images to temp files and return their paths.
+ * Caller is responsible for cleaning up the files.
+ */
+export function saveImagesToTemp(images: ImageAttachment[]): string[] {
+  const tmpDir = os.tmpdir();
+  const paths: string[] = [];
+  for (let i = 0; i < images.length; i++) {
+    const ext = mimeToExtension(images[i].mediaType);
+    const tmpPath = path.join(tmpDir, `openbridge-img-${Date.now()}-${i}${ext}`);
+    fs.writeFileSync(tmpPath, Buffer.from(images[i].base64, 'base64'));
+    paths.push(tmpPath);
+  }
+  return paths;
+}
+
+/** Clean up temp image files (best-effort, ignores errors). */
+export function cleanupTempImages(paths: string[]): void {
+  for (const p of paths) {
+    try {
+      fs.unlinkSync(p);
+    } catch { /* file may already be gone */ }
+  }
+}
+
 /** Build CLI args for a codex oneshot invocation. */
 export function buildCodexArgs(
   text: string,
   sessionId: string | null,
   sandbox: SandboxMode,
+  imagePaths?: string[],
 ): string[] {
   if (sessionId) {
     // Resume: codex exec resume --skip-git-repo-check --json SESSION_ID "prompt"
-    // Note: --sandbox is NOT included in resume (persists from initial invocation)
+    // Note: --sandbox and --image are NOT included in resume (persists from initial invocation)
     return ['exec', 'resume', '--skip-git-repo-check', '--json', sessionId, text];
   }
 
-  // Initial: codex exec --skip-git-repo-check --json --sandbox MODE "prompt"
-  return ['exec', '--skip-git-repo-check', '--json', '--sandbox', sandbox, text];
+  const args = ['exec', '--skip-git-repo-check', '--json', '--sandbox', sandbox];
+
+  // Attach images if provided
+  if (imagePaths) {
+    for (const imgPath of imagePaths) {
+      args.push('--image', imgPath);
+    }
+  }
+
+  args.push(text);
+  return args;
 }
 
 /**
@@ -238,8 +285,15 @@ export class CodexBackend implements Backend {
     console.log(`[codex] initialized for project: ${this.projectDir} (sandbox: ${this.sandbox})`);
   }
 
-  async send(text: string, _images?: import('../types/backend.js').ImageAttachment[]): Promise<SendResult> {
-    const args = buildCodexArgs(text, this.sessionId, this.sandbox);
+  async send(text: string, images?: ImageAttachment[]): Promise<SendResult> {
+    // Save images to temp files if provided
+    let imagePaths: string[] | undefined;
+    if (images && images.length > 0) {
+      imagePaths = saveImagesToTemp(images);
+      console.log(`[codex] saved ${imagePaths.length} image(s) to temp files`);
+    }
+
+    const args = buildCodexArgs(text, this.sessionId, this.sandbox, imagePaths);
 
     console.log(`[codex] spawning: codex ${args.join(' ').slice(0, 120)}...`);
     const handle = spawnCollect('codex', args, this.projectDir);
@@ -250,6 +304,8 @@ export class CodexBackend implements Backend {
       result = await handle.result;
     } catch (err: any) {
       this.activeHandle = null;
+      // Clean up temp images on error
+      if (imagePaths) cleanupTempImages(imagePaths);
       if (err?.code === 'ENOENT') {
         throw new Error(
           'Codex CLI not found. Install it with: npm install -g @openai/codex',
@@ -258,6 +314,8 @@ export class CodexBackend implements Backend {
       throw err;
     }
     this.activeHandle = null;
+    // Clean up temp images after process exits
+    if (imagePaths) cleanupTempImages(imagePaths);
     console.log(`[codex] process exited with code ${result.exitCode}`);
 
     const parsed = parseCodexOutput(result.stdout, result.stderr, result.exitCode);
