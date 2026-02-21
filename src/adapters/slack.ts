@@ -572,10 +572,6 @@ export class SlackAdapter {
       lines.push('');
       lines.push('*Other commands:*');
       lines.push('• `/settings` — view or change bridge settings');
-      lines.push('');
-      lines.push('*In-thread commands (type as a message):*');
-      lines.push('• `cancel` — stop a running task');
-      lines.push('• `new` — reset the session and start fresh');
       await client.chat.postMessage({
         channel: channelId,
         text: lines.join('\n'),
