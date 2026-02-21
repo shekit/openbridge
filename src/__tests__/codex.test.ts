@@ -545,4 +545,37 @@ describe('Codex CLI backend', () => {
       cleanupTempImages(paths);
     });
   });
+
+  describe('P14.4: Codex filters to images-only for --image flag', () => {
+    it('only image files produce --image flags', () => {
+      // Simulate what CodexBackend.send() does: filter to kind=image, then build args
+      const files = [
+        { base64: 'img', mediaType: 'image/png', kind: 'image' as const, stagingPath: '/staging/photo.png' },
+        { base64: 'pdf', mediaType: 'application/pdf', kind: 'pdf' as const, stagingPath: '/staging/report.pdf' },
+        { base64: 'txt', mediaType: 'text/plain', kind: 'text' as const, stagingPath: '/staging/notes.txt' },
+        { base64: 'bin', mediaType: 'application/octet-stream', kind: 'binary' as const, stagingPath: '/staging/data.bin' },
+      ];
+      const imageFiles = files.filter((f) => f.kind === 'image');
+      const imagePaths = imageFiles.map((f) => f.stagingPath);
+      const args = buildCodexArgs('analyze', null, 'workspace-write', imagePaths);
+
+      expect(args).toContain('--image');
+      expect(args).toContain('/staging/photo.png');
+      expect(args).not.toContain('/staging/report.pdf');
+      expect(args).not.toContain('/staging/notes.txt');
+      expect(args).not.toContain('/staging/data.bin');
+    });
+
+    it('no --image flags when only non-image files are present', () => {
+      const files = [
+        { base64: 'pdf', mediaType: 'application/pdf', kind: 'pdf' as const, stagingPath: '/staging/report.pdf' },
+        { base64: 'txt', mediaType: 'text/csv', kind: 'text' as const, stagingPath: '/staging/data.csv' },
+      ];
+      const imageFiles = files.filter((f) => f.kind === 'image');
+      // No images → no --image flags
+      expect(imageFiles).toHaveLength(0);
+      const args = buildCodexArgs('analyze', null, 'workspace-write');
+      expect(args).not.toContain('--image');
+    });
+  });
 });

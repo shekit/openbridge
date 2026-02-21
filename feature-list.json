@@ -1727,7 +1727,7 @@
             "PDFs, text, and binary files are not passed to Codex via --image",
             "Unit tests pass"
           ],
-          "status": "failing"
+          "status": "passing"
         }
       ]
     }

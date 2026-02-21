@@ -285,18 +285,22 @@ export class CodexBackend implements Backend {
     console.log(`[codex] initialized for project: ${this.projectDir} (sandbox: ${this.sandbox})`);
   }
 
-  async send(text: string, images?: FileAttachment[]): Promise<SendResult> {
+  async send(text: string, files?: FileAttachment[]): Promise<SendResult> {
+    // Codex CLI only supports --image flag — filter to image files only
+    // PDFs, text, and binary files are accessible via staging + prompt text only
+    const imageFiles = files?.filter((f) => f.kind === 'image');
+
     // Determine image file paths for --image flags
     let imagePaths: string[] | undefined;
     let shouldCleanupImages = false;
-    if (images && images.length > 0) {
+    if (imageFiles && imageFiles.length > 0) {
       // Use staging paths if all images have them (router handles cleanup)
-      const allHaveStaging = images.every((img) => !!img.stagingPath);
+      const allHaveStaging = imageFiles.every((img) => !!img.stagingPath);
       if (allHaveStaging) {
-        imagePaths = images.map((img) => img.stagingPath!);
+        imagePaths = imageFiles.map((img) => img.stagingPath!);
         console.log(`[codex] reusing ${imagePaths.length} staging file(s) for --image`);
       } else {
-        imagePaths = saveImagesToTemp(images);
+        imagePaths = saveImagesToTemp(imageFiles);
         shouldCleanupImages = true;
         console.log(`[codex] saved ${imagePaths.length} image(s) to temp files`);
       }
