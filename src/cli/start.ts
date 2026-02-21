@@ -28,6 +28,15 @@ import { createCallbackHandler, closeAllFileBrowsers } from '../mcp/callbacks.js
 import { closeAllTunnels } from '../mcp/tunnel.js';
 import { getMcpConfig } from '../mcp/server.js';
 import type { Adapter } from '../types/adapter.js';
+
+/** Get a required setting or throw if not configured. */
+function requireSetting(store: Store, key: string): string {
+  const value = store.getSetting(key);
+  if (!value) {
+    throw new Error(`Missing required setting '${key}'. Run the setup wizard first.`);
+  }
+  return value;
+}
 import { getDbPath, getEnvPath, getConfigDir } from '../utils.js';
 
 export interface StartDeps {
@@ -95,7 +104,7 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
   try {
     const platformsJson = store.getSetting('platforms');
     const platforms: Platform[] = platformsJson ? JSON.parse(platformsJson) : [];
-    const defaultBackend = store.getSetting('default_backend') ?? 'claude';
+    const defaultBackend = requireSetting(store, 'default_backend');
 
     clack.intro('OpenBridge');
 
@@ -371,7 +380,7 @@ export async function runStart(deps?: StartDeps): Promise<void> {
   }
 
   const platforms: Platform[] = JSON.parse(platformsJson);
-  const defaultBackend = store.getSetting('default_backend') ?? 'claude';
+  const defaultBackend = requireSetting(store, 'default_backend');
 
   console.log(`[start] platforms: ${platforms.join(', ')}`);
   console.log(`[start] default backend: ${defaultBackend}`);

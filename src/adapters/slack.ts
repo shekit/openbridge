@@ -107,7 +107,7 @@ export class SlackAdapter {
       const sourceChannelId = (body as any).channel?.id;
       if (!projectDir || !sourceChannelId) return;
       const userId = (body as any).user?.id;
-      const backend = this.store.getSetting('default_backend') ?? 'claude';
+      const backend = this.getDefaultBackend();
       await this.createChannelAndBind(sourceChannelId, projectDir, backend, userId, client as any);
     });
 
@@ -668,6 +668,15 @@ export class SlackAdapter {
     }
   }
 
+  /** Get the default backend, or throw if not configured. */
+  private getDefaultBackend(): string {
+    const backend = this.store.getSetting('default_backend');
+    if (!backend) {
+      throw new Error('No default backend configured. Run the setup wizard first.');
+    }
+    return backend;
+  }
+
   /** Bind a project to a channel and post confirmation. */
   private async bindProjectToChannel(
     channelId: string,
@@ -675,7 +684,7 @@ export class SlackAdapter {
     client: any,
     notifyChannelId?: string,
   ): Promise<void> {
-    const backend = this.store.getSetting('default_backend') ?? 'claude';
+    const backend = this.getDefaultBackend();
     const notify = notifyChannelId ?? channelId;
     try {
       this.store.createProject(channelId, projectDir, backend, 'slack');

@@ -315,7 +315,7 @@ export class DiscordAdapter {
 
   /** Handle "Use this channel" button for project binding. */
   private async handleProjectBindHere(interaction: any, projectPath: string): Promise<void> {
-    const backend = this.store.getSetting('default_backend') ?? 'claude';
+    const backend = this.getDefaultBackend();
     await this.bindProjectToChannel(
       interaction.channelId, projectPath, backend,
       (text) => interaction.update({ content: text, components: [] }),
@@ -324,7 +324,7 @@ export class DiscordAdapter {
 
   /** Handle "Create #name" button for project creation. */
   private async handleProjectCreateNew(interaction: any, projectPath: string): Promise<void> {
-    const backend = this.store.getSetting('default_backend') ?? 'claude';
+    const backend = this.getDefaultBackend();
     await this.createChannelAndBind(
       interaction.guild, projectPath, backend,
       (text) => interaction.update({ content: text, components: [] }),
@@ -541,6 +541,15 @@ export class DiscordAdapter {
       '- `/project list` — show all project bindings',
       '- `/project disconnect` — unbind this channel',
     ].join('\n'));
+  }
+
+  /** Get the default backend, or throw if not configured. */
+  private getDefaultBackend(): string {
+    const backend = this.store.getSetting('default_backend');
+    if (!backend) {
+      throw new Error('No default backend configured. Run the setup wizard first.');
+    }
+    return backend;
   }
 
   /** Bind a project to a channel and respond with confirmation. */
