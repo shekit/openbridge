@@ -30,6 +30,7 @@ import type { Store } from '../store.js';
 import { splitText, downloadAndStageFile } from '../utils.js';
 import type { FileAttachment } from '../types/backend.js';
 import { resolvePermission } from '../mcp/ipc-server.js';
+import { clearPostMessageFlag, wasPostMessageCalled } from '../mcp/callbacks.js';
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 
@@ -227,6 +228,7 @@ export class DiscordAdapter {
     }
 
     // Route through the router
+    clearPostMessageFlag(threadId);
     let result: RouteResult;
     try {
       result = await this.router.send(channelId, threadId, text);
@@ -282,6 +284,7 @@ export class DiscordAdapter {
       // Non-fatal — continue without indicator
     }
 
+    clearPostMessageFlag(threadId);
     let result: RouteResult;
     try {
       result = await this.router.respond(channelId, threadId, text);
@@ -415,6 +418,7 @@ export class DiscordAdapter {
 
     const responseText = isAllow ? 'yes' : 'no';
     const allowedTools = isAllow && toolName ? [toolName] : undefined;
+    clearPostMessageFlag(threadId);
     let result: RouteResult;
     try {
       result = await this.router.respond(channelId, threadId, responseText, allowedTools);
@@ -466,10 +470,21 @@ export class DiscordAdapter {
       return true;
     });
 
+    // If Claude used post_message during this turn, suppress assistant_text
+    // (Claude already communicated directly). Otherwise, render only the last
+    // assistant_text block as a fallback summary.
+    const postMessageUsed = wasPostMessageCalled(threadId);
+    const assistantTexts = deduped.filter(e => e.type === 'assistant_text');
+    const lastAssistantText = assistantTexts.length > 0
+      ? assistantTexts[assistantTexts.length - 1]
+      : null;
+
     for (const event of deduped) {
       switch (event.type) {
         case 'assistant_text':
-          await this.postText(channelId, threadId, event.text, context);
+          if (!postMessageUsed && event === lastAssistantText) {
+            await this.postText(channelId, threadId, event.text, context);
+          }
           break;
 
         case 'permission_denied':
@@ -991,6 +1006,7 @@ export class DiscordAdapter {
       ? `${text}\n\n${textInclusions.join('\n\n')}`
       : text;
 
+    clearPostMessageFlag(threadId);
     let result: RouteResult;
     try {
       result = await this.router.send(

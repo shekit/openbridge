@@ -15,6 +15,7 @@ import type { Store } from '../store.js';
 import { splitText, downloadAndStageFile } from '../utils.js';
 import type { FileAttachment } from '../types/backend.js';
 import { resolvePermission } from '../mcp/ipc-server.js';
+import { clearPostMessageFlag, wasPostMessageCalled } from '../mcp/callbacks.js';
 
 const SLACK_MESSAGE_LIMIT = 4000;
 
@@ -318,6 +319,7 @@ export class SlackAdapter {
     }
 
     // Route through the router
+    clearPostMessageFlag(threadTs);
     let result: RouteResult;
     try {
       result = await this.router.send(channelId, threadTs, text);
@@ -358,6 +360,7 @@ export class SlackAdapter {
       // Non-fatal — continue without indicator
     }
 
+    clearPostMessageFlag(threadTs);
     let result: RouteResult;
     try {
       result = await this.router.respond(channelId, threadTs, text);
@@ -450,6 +453,7 @@ export class SlackAdapter {
 
     const responseText = isAllow ? 'yes' : 'no';
     const allowedTools = isAllow && toolName ? [toolName] : undefined;
+    clearPostMessageFlag(threadTs);
     let result: RouteResult;
     try {
       result = await this.router.respond(channelId, threadTs, responseText, allowedTools);
@@ -486,10 +490,21 @@ export class SlackAdapter {
       return true;
     });
 
+    // If Claude used post_message during this turn, suppress assistant_text
+    // (Claude already communicated directly). Otherwise, render only the last
+    // assistant_text block as a fallback summary.
+    const postMessageUsed = wasPostMessageCalled(threadTs);
+    const assistantTexts = deduped.filter(e => e.type === 'assistant_text');
+    const lastAssistantText = assistantTexts.length > 0
+      ? assistantTexts[assistantTexts.length - 1]
+      : null;
+
     for (const event of deduped) {
       switch (event.type) {
         case 'assistant_text':
-          await this.postText(channelId, threadTs, event.text, client);
+          if (!postMessageUsed && event === lastAssistantText) {
+            await this.postText(channelId, threadTs, event.text, client);
+          }
           break;
 
         case 'permission_denied':
@@ -1286,6 +1301,7 @@ export class SlackAdapter {
       : text;
 
     // Route with all file attachments
+    clearPostMessageFlag(threadTs);
     let result: RouteResult;
     try {
       result = await this.router.send(

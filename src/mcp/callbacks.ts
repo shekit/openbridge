@@ -21,6 +21,28 @@ export interface CallbackHandlerOptions {
 const activeFileBrowsers: FileBrowser[] = [];
 
 /**
+ * Tracks which threads had post_message called during the current turn.
+ * The adapter clears this before spawning a backend, and checks after
+ * the backend completes to decide whether to suppress assistant_text events.
+ */
+const threadsWithPostMessage = new Set<string>();
+
+/** Clear the post_message flag for a thread. Call before starting a turn. */
+export function clearPostMessageFlag(threadId: string): void {
+  threadsWithPostMessage.delete(threadId);
+}
+
+/** Check if post_message was called for a thread during the current turn. */
+export function wasPostMessageCalled(threadId: string): boolean {
+  return threadsWithPostMessage.has(threadId);
+}
+
+/** Mark that post_message was called for a thread. Used by tests. */
+export function markPostMessageCalled(threadId: string): void {
+  threadsWithPostMessage.add(threadId);
+}
+
+/**
  * Create an IPC handler that routes MCP tool calls to the appropriate
  * adapter, tunnel manager, or file browser.
  */
@@ -56,6 +78,7 @@ export function createCallbackHandler(options: CallbackHandlerOptions): IpcHandl
     },
 
     async postMessage(channelId, threadId, text, platform) {
+      threadsWithPostMessage.add(threadId);
       const adapter = getAdapter(platform);
       await adapter.sendMessage(channelId, threadId, text);
     },

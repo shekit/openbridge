@@ -1794,7 +1794,7 @@
             "Permission_denied and error events always rendered regardless",
             "Build passes, all tests pass"
           ],
-          "status": "failing"
+          "status": "passing"
         }
       ]
     }

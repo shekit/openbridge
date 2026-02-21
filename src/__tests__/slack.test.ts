@@ -1574,4 +1574,148 @@ describe('SlackAdapter', () => {
       expect(capturedFiles).toBeUndefined();
     });
   });
+
+  describe('P16.4: assistant_text suppression with post_message', () => {
+    let capturedTexts: string[];
+
+    beforeEach(() => {
+      capturedTexts = [];
+      (mockApp.client.chat.postMessage as any).mockImplementation(async (args: any) => {
+        if (args.text && args.text !== 'Processing...') {
+          capturedTexts.push(args.text);
+        }
+        return { ts: `msg-${Date.now()}` };
+      });
+    });
+
+    it('renders only the last assistant_text when post_message was NOT used', async () => {
+      const multiTextBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => ({
+          events: [
+            { type: 'assistant_text' as const, text: 'Let me check...' },
+            { type: 'assistant_text' as const, text: 'Building the project...' },
+            { type: 'assistant_text' as const, text: 'Here is the final result.' },
+          ],
+          sessionId: 'session-multi',
+        })),
+        getSessionId: vi.fn(() => 'session-multi'),
+        setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
+        stop: vi.fn(async () => {}),
+      }));
+
+      createAdapter({ backendFactory: multiTextBackend });
+      await adapter.start();
+      store.createProject('C_MULTI', '/test/multi', 'claude');
+
+      await triggerMessage({
+        channel: 'C_MULTI',
+        thread_ts: 'T_MULTI_1',
+        text: 'do something',
+        user: 'U1',
+        subtype: undefined,
+      });
+
+      // Should only render the LAST assistant_text
+      expect(capturedTexts).toHaveLength(1);
+      expect(capturedTexts[0]).toBe('Here is the final result.');
+    });
+
+    it('suppresses all assistant_text when post_message WAS used during turn', async () => {
+      const { markPostMessageCalled } = await import('../mcp/callbacks.js');
+
+      // Backend that simulates post_message being called during the turn
+      const pmBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => {
+          // Simulate: during backend execution, Claude calls post_message MCP tool
+          // → IPC → callbackHandler.postMessage() → markPostMessageCalled
+          markPostMessageCalled('T_PM_1');
+          return {
+            events: [
+              { type: 'assistant_text' as const, text: 'Let me check...' },
+              { type: 'assistant_text' as const, text: 'Done! I posted the result.' },
+            ],
+            sessionId: 'session-pm',
+          };
+        }),
+        getSessionId: vi.fn(() => 'session-pm'),
+        setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
+        stop: vi.fn(async () => {}),
+      }));
+
+      createAdapter({ backendFactory: pmBackend });
+      await adapter.start();
+      store.createProject('C_PM', '/test/pm', 'claude');
+
+      await triggerMessage({
+        channel: 'C_PM',
+        thread_ts: 'T_PM_1',
+        text: 'do something',
+        user: 'U1',
+        subtype: undefined,
+      });
+
+      // All assistant_text events should be suppressed because post_message was used
+      expect(capturedTexts).toHaveLength(0);
+    });
+
+    it('clearPostMessageFlag and wasPostMessageCalled track correctly', async () => {
+      const { clearPostMessageFlag, wasPostMessageCalled, markPostMessageCalled } =
+        await import('../mcp/callbacks.js');
+
+      // Initially no flag
+      expect(wasPostMessageCalled('T_TRACK')).toBe(false);
+
+      // Set it
+      markPostMessageCalled('T_TRACK');
+      expect(wasPostMessageCalled('T_TRACK')).toBe(true);
+
+      // Clear it
+      clearPostMessageFlag('T_TRACK');
+      expect(wasPostMessageCalled('T_TRACK')).toBe(false);
+
+      // Different threads are independent
+      markPostMessageCalled('T_A');
+      expect(wasPostMessageCalled('T_A')).toBe(true);
+      expect(wasPostMessageCalled('T_B')).toBe(false);
+      clearPostMessageFlag('T_A');
+    });
+
+    it('always renders error events regardless of assistant_text suppression', async () => {
+      const errorBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => ({
+          events: [
+            { type: 'assistant_text' as const, text: 'Trying something...' },
+            { type: 'error' as const, message: 'Something went wrong' },
+          ],
+          sessionId: 'session-err',
+        })),
+        getSessionId: vi.fn(() => 'session-err'),
+        setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
+        stop: vi.fn(async () => {}),
+      }));
+
+      createAdapter({ backendFactory: errorBackend });
+      await adapter.start();
+      store.createProject('C_ERR', '/test/err', 'claude');
+
+      await triggerMessage({
+        channel: 'C_ERR',
+        thread_ts: 'T_ERR_1',
+        text: 'break something',
+        user: 'U1',
+        subtype: undefined,
+      });
+
+      // Error is always rendered + the last assistant_text (since no post_message)
+      expect(capturedTexts).toHaveLength(2);
+      expect(capturedTexts[0]).toBe('Trying something...');
+      expect(capturedTexts[1]).toContain('Something went wrong');
+    });
+  });
 });

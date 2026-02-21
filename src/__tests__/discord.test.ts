@@ -1526,4 +1526,121 @@ describe('DiscordAdapter', () => {
       expect(capturedFiles).toBeUndefined();
     });
   });
+
+  describe('P16.4: assistant_text suppression with post_message', () => {
+    it('renders only the last assistant_text when post_message was NOT used', async () => {
+      const multiTextBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => ({
+          events: [
+            { type: 'assistant_text' as const, text: 'Let me check...' },
+            { type: 'assistant_text' as const, text: 'Building the project...' },
+            { type: 'assistant_text' as const, text: 'Here is the final result.' },
+          ],
+          sessionId: 'session-multi',
+        })),
+        getSessionId: vi.fn(() => 'session-multi'),
+        setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
+        stop: vi.fn(async () => {}),
+      }));
+
+      createAdapter({ backendFactory: multiTextBackend });
+      await adapter.start();
+      store.createProject('C_MULTI', '/test/multi', 'claude');
+
+      const { message } = createMockMessage({
+        channelId: 'thread-multi',
+        content: 'do something',
+        isThread: true,
+        parentId: 'C_MULTI',
+      });
+
+      await triggerMessage(message);
+
+      // Should only render the LAST assistant_text
+      const sendCalls = (message.channel.send as any).mock.calls
+        .filter((c: any) => c[0] !== 'Processing...' && c[0]?.content !== 'Processing...');
+      expect(sendCalls).toHaveLength(1);
+      expect(sendCalls[0][0].content).toBe('Here is the final result.');
+    });
+
+    it('suppresses all assistant_text when post_message WAS used during turn', async () => {
+      const { markPostMessageCalled } = await import('../mcp/callbacks.js');
+
+      const pmBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => {
+          // Simulate Claude calling post_message during the turn
+          markPostMessageCalled('thread-pm');
+          return {
+            events: [
+              { type: 'assistant_text' as const, text: 'Let me check...' },
+              { type: 'assistant_text' as const, text: 'Done! I posted the result.' },
+            ],
+            sessionId: 'session-pm',
+          };
+        }),
+        getSessionId: vi.fn(() => 'session-pm'),
+        setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
+        stop: vi.fn(async () => {}),
+      }));
+
+      createAdapter({ backendFactory: pmBackend });
+      await adapter.start();
+      store.createProject('C_PM', '/test/pm', 'claude');
+
+      const { message } = createMockMessage({
+        channelId: 'thread-pm',
+        content: 'do something',
+        isThread: true,
+        parentId: 'C_PM',
+      });
+
+      await triggerMessage(message);
+
+      // All assistant_text events should be suppressed
+      const sendCalls = (message.channel.send as any).mock.calls
+        .filter((c: any) => c[0] !== 'Processing...' && c[0]?.content !== 'Processing...');
+      expect(sendCalls).toHaveLength(0);
+    });
+
+    it('always renders error events regardless of assistant_text suppression', async () => {
+      const errorBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => ({
+          events: [
+            { type: 'assistant_text' as const, text: 'Trying something...' },
+            { type: 'error' as const, message: 'Something went wrong' },
+          ],
+          sessionId: 'session-err',
+        })),
+        getSessionId: vi.fn(() => 'session-err'),
+        setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
+        stop: vi.fn(async () => {}),
+      }));
+
+      createAdapter({ backendFactory: errorBackend });
+      await adapter.start();
+      store.createProject('C_ERR', '/test/err', 'claude');
+
+      const { message } = createMockMessage({
+        channelId: 'thread-err',
+        content: 'break something',
+        isThread: true,
+        parentId: 'C_ERR',
+      });
+
+      await triggerMessage(message);
+
+      // Error should be rendered + last assistant_text (no post_message)
+      const sendCalls = (message.channel.send as any).mock.calls
+        .filter((c: any) => c[0] !== 'Processing...' && c[0]?.content !== 'Processing...');
+      expect(sendCalls).toHaveLength(2);
+      expect(sendCalls[0][0].content).toBe('Trying something...');
+      expect(sendCalls[1][0].content).toContain('Something went wrong');
+    });
+  });
 });
