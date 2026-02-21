@@ -483,19 +483,29 @@ export async function runInit(io?: PromptIO): Promise<void> {
 
   try {
     if (!io) {
-      clack.intro('OpenBridge Setup');
+      clack.intro('OpenBridge');
+      clack.log.info('Chat with your projects from Slack or Discord — from your phone, anywhere.');
     } else {
-      console.log('\n[init] OpenBridge Setup Wizard\n[init] ======================\n');
+      console.log('\n[init] OpenBridge\n');
     }
 
     // Step 1: Platform selection
     const platforms = await selectPlatforms(prompt);
+
+    if (!io) {
+      clack.log.info('Channels are projects. Threads are conversations.');
+    }
 
     // Step 2: Token input with inline setup instructions + verification
     const tokens = await inputTokens(io ? legacyPrompt : prompt as any, platforms);
 
     // Step 3: Backend detection
     const defaultBackend = await detectBackend(prompt);
+
+    if (!io) {
+      const backendLabel = defaultBackend === 'claude' ? 'Claude Code' : 'Codex';
+      clack.log.info(`Uses your existing ${backendLabel} subscription — no extra API fees.`);
+    }
 
     // Step 3b: File previews setup
     await setupFilePreviews(prompt);

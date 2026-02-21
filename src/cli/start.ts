@@ -82,7 +82,7 @@ export function createBackendFactory(): BackendFactory {
   };
 }
 
-type StartMenuAction = 'start' | 'add_platform' | 'update_tokens' | 'change_backend' | 'setup_previews' | 'rerun_setup' | 'exit';
+type StartMenuAction = 'start' | 'add_platform' | 'update_tokens' | 'change_backend' | 'projects_root' | 'setup_previews' | 'rerun_setup' | 'exit';
 
 /**
  * Show the settings menu on subsequent interactive runs.
@@ -129,6 +129,22 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
       value: 'change_backend',
       hint: `current: ${defaultBackend}`,
     });
+
+    // Projects root
+    const currentRoot = store.getSetting('projects_root');
+    if (currentRoot) {
+      options.push({
+        label: 'Change projects root',
+        value: 'projects_root',
+        hint: currentRoot,
+      });
+    } else {
+      options.push({
+        label: 'Set projects root',
+        value: 'projects_root',
+        hint: 'not set',
+      });
+    }
 
     // Show tunnel tool status
     const { hasCloudflared, hasNgrok } = detectTunnelTools();
@@ -228,6 +244,45 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
         const newBackend = await detectBackend(null);
         store.setSetting('default_backend', newBackend);
         clack.log.success(`Default backend changed to ${newBackend}. Starting the bridge...`);
+        return;
+      }
+
+      case 'projects_root': {
+        if (currentRoot) {
+          const rootAction = await clack.select({
+            message: `Projects root is currently: ${currentRoot}`,
+            options: [
+              { label: 'Change', value: 'change' },
+              { label: 'Clear', value: 'clear' },
+              { label: 'Cancel', value: 'cancel' },
+            ],
+          });
+          if (clack.isCancel(rootAction) || rootAction === 'cancel') {
+            clack.log.info('Starting the bridge...');
+            return;
+          }
+          if (rootAction === 'clear') {
+            store.setSetting('projects_root', '');
+            clack.log.success('Projects root cleared. Starting the bridge...');
+            return;
+          }
+        }
+        const newRoot = await clack.text({
+          message: 'Projects root directory (absolute path)',
+          validate: (input) => {
+            if (!input) return 'Path is required';
+            const resolved = path.resolve(input);
+            if (!fs.existsSync(resolved)) {
+              return `Directory does not exist: ${resolved}`;
+            }
+          },
+        });
+        if (clack.isCancel(newRoot)) {
+          clack.log.info('Cancelled. Starting the bridge...');
+          return;
+        }
+        store.setSetting('projects_root', path.resolve(newRoot));
+        clack.log.success(`Projects root set to ${path.resolve(newRoot)}. Starting the bridge...`);
         return;
       }
 
