@@ -92,54 +92,23 @@ export class SlackAdapter {
       await this.handlePermissionAction(body as any, 'deny', client);
     });
 
-    // Project bind/create buttons
+    // Project bind/create buttons — delegate to shared helpers
     this.app.action('project_bind_here', async ({ body, ack, client }) => {
       await ack();
-      const action = (body as any).actions?.[0];
-      const projectDir = action?.value;
+      const projectDir = (body as any).actions?.[0]?.value;
       const channelId = (body as any).channel?.id;
       if (!projectDir || !channelId) return;
-      try {
-        const channelName = path.basename(projectDir);
-        this.store.createProject(channelId, projectDir, this.store.getSetting('default_backend') ?? 'claude', 'slack');
-        await (client as any).chat.postMessage({
-          channel: channelId,
-          text: `Bound this channel to project \`${projectDir}\` (${channelName})`,
-        });
-      } catch (err: any) {
-        await (client as any).chat.postMessage({
-          channel: channelId,
-          text: `:warning: Failed to bind: ${err.message}`,
-        });
-      }
+      await this.bindProjectToChannel(channelId, projectDir, client as any);
     });
 
     this.app.action('project_create_new', async ({ body, ack, client }) => {
       await ack();
-      const action = (body as any).actions?.[0];
-      const projectDir = action?.value;
+      const projectDir = (body as any).actions?.[0]?.value;
       const sourceChannelId = (body as any).channel?.id;
       if (!projectDir || !sourceChannelId) return;
-      try {
-        const channelName = path.basename(projectDir);
-        const result = await (client as any).conversations.create({ name: channelName });
-        const newChannelId = result.channel.id;
-        this.store.createProject(newChannelId, projectDir, this.store.getSetting('default_backend') ?? 'claude', 'slack');
-        // Invite the user who clicked the button
-        const userId = (body as any).user?.id;
-        if (userId) {
-          await (client as any).conversations.invite({ channel: newChannelId, users: userId }).catch(() => {});
-        }
-        await (client as any).chat.postMessage({
-          channel: sourceChannelId,
-          text: `Created and bound <#${newChannelId}> to project \`${projectDir}\` (${this.store.getSetting('default_backend') ?? 'claude'})`,
-        });
-      } catch (err: any) {
-        await (client as any).chat.postMessage({
-          channel: sourceChannelId,
-          text: `:warning: Failed to create channel: ${err.message}`,
-        });
-      }
+      const userId = (body as any).user?.id;
+      const backend = this.store.getSetting('default_backend') ?? 'claude';
+      await this.createChannelAndBind(sourceChannelId, projectDir, backend, userId, client as any);
     });
 
     this.app.action('project_bind_existing', async ({ body, ack, client }) => {
@@ -147,20 +116,8 @@ export class SlackAdapter {
       const action = (body as any).actions?.[0];
       const sourceChannelId = (body as any).channel?.id;
       if (!action?.value || !sourceChannelId) return;
-      try {
-        const { channelId: targetChannelId, projectDir } = JSON.parse(action.value);
-        const backend = this.store.getSetting('default_backend') ?? 'claude';
-        this.store.createProject(targetChannelId, projectDir, backend, 'slack');
-        await (client as any).chat.postMessage({
-          channel: sourceChannelId,
-          text: `Bound <#${targetChannelId}> to project \`${projectDir}\` (${backend})`,
-        });
-      } catch (err: any) {
-        await (client as any).chat.postMessage({
-          channel: sourceChannelId,
-          text: `:warning: Failed to bind: ${err.message}`,
-        });
-      }
+      const { channelId: targetChannelId, projectDir } = JSON.parse(action.value);
+      await this.bindProjectToChannel(targetChannelId, projectDir, client as any, sourceChannelId);
     });
 
     this.app.action(/^project_pick_/, async ({ body, ack, client }) => {
@@ -570,17 +527,7 @@ export class SlackAdapter {
       }
 
       // Bind to this channel (or create a new channel if already bound)
-      const existing = this.store.getProjectByChannelId(channelId);
-      if (existing) {
-        await this.handleProjectConnect(channelId, targetDir, command, client);
-      } else {
-        const backend = this.store.getSetting('default_backend') ?? 'claude';
-        this.store.createProject(channelId, targetDir, backend, 'slack');
-        await client.chat.postMessage({
-          channel: channelId,
-          text: `Created \`${targetDir}\` and bound this channel to it (${backend})`,
-        });
-      }
+      await this.handleProjectConnect(channelId, targetDir, command, client);
       return;
     }
 
@@ -680,37 +627,14 @@ export class SlackAdapter {
 
   /** Handle project connect flow — bind a directory to a channel. */
   private async handleProjectConnect(channelId: string, projectDir: string, command: any, client: any): Promise<void> {
-    const channelName = path.basename(projectDir);
     const existing = this.store.getProjectByChannelId(channelId);
 
     if (existing) {
-      // Channel already bound — try to create a new channel with derived name
-      try {
-        const result = await client.conversations.create({ name: channelName });
-        const newChannelId = result.channel?.id;
-        if (newChannelId) {
-          this.store.createProject(newChannelId, projectDir, existing.backend_name, 'slack');
-          const userId = command.user_id;
-          if (userId) {
-            await client.conversations.invite({ channel: newChannelId, users: userId }).catch(() => {});
-          }
-          await client.chat.postMessage({
-            channel: channelId,
-            text: `Created and bound <#${newChannelId}> to project \`${projectDir}\` (${existing.backend_name})`,
-          });
-        }
-      } catch (err: any) {
-        if (err.data?.error === 'name_taken') {
-          await this.handleNameTaken(channelId, channelName, projectDir, client);
-        } else {
-          await client.chat.postMessage({
-            channel: channelId,
-            text: `:warning: Failed to create channel: ${err.message}`,
-          });
-        }
-      }
+      // Channel already bound — create a new channel for this project
+      await this.createChannelAndBind(channelId, projectDir, existing.backend_name, command.user_id, client);
     } else {
       // Channel is unbound — offer bind options
+      const channelName = path.basename(projectDir);
       await client.chat.postMessage({
         channel: channelId,
         text: `Bind project \`${projectDir}\` to this channel?`,
@@ -741,6 +665,64 @@ export class SlackAdapter {
           },
         ],
       });
+    }
+  }
+
+  /** Bind a project to a channel and post confirmation. */
+  private async bindProjectToChannel(
+    channelId: string,
+    projectDir: string,
+    client: any,
+    notifyChannelId?: string,
+  ): Promise<void> {
+    const backend = this.store.getSetting('default_backend') ?? 'claude';
+    const notify = notifyChannelId ?? channelId;
+    try {
+      this.store.createProject(channelId, projectDir, backend, 'slack');
+      const label = notifyChannelId ? `<#${channelId}>` : 'this channel';
+      await client.chat.postMessage({
+        channel: notify,
+        text: `Bound ${label} to project \`${projectDir}\` (${backend})`,
+      });
+    } catch (err: any) {
+      await client.chat.postMessage({
+        channel: notify,
+        text: `:warning: Failed to bind: ${err.message}`,
+      });
+    }
+  }
+
+  /** Create a new Slack channel, bind a project to it, and invite the user. */
+  private async createChannelAndBind(
+    sourceChannelId: string,
+    projectDir: string,
+    backend: string,
+    userId: string | null,
+    client: any,
+  ): Promise<void> {
+    const channelName = path.basename(projectDir);
+    try {
+      const result = await client.conversations.create({ name: channelName });
+      const newChannelId = result.channel?.id;
+      if (newChannelId) {
+        this.store.createProject(newChannelId, projectDir, backend, 'slack');
+        if (userId) {
+          await client.conversations.invite({ channel: newChannelId, users: userId }).catch(() => {});
+        }
+        await client.chat.postMessage({
+          channel: sourceChannelId,
+          text: `Created and bound <#${newChannelId}> to project \`${projectDir}\` (${backend})`,
+        });
+      }
+    } catch (err: any) {
+      if (err.data?.error === 'name_taken') {
+        await this.handleNameTaken(sourceChannelId, channelName, projectDir, client);
+      } else {
+        await client.chat.postMessage({
+          channel: sourceChannelId,
+          text: `:warning: Failed to create channel: ${err.message}`,
+        });
+      }
     }
   }
 

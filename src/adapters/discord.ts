@@ -315,52 +315,20 @@ export class DiscordAdapter {
 
   /** Handle "Use this channel" button for project binding. */
   private async handleProjectBindHere(interaction: any, projectPath: string): Promise<void> {
-    const channelId = interaction.channelId;
-    const defaultBackend = this.store.getSetting('default_backend') ?? 'claude';
-
-    try {
-      this.store.createProject(channelId, projectPath, defaultBackend, 'discord');
-      await interaction.update({
-        content: `Bound this channel to project \`${projectPath}\` (${defaultBackend})`,
-        components: [],
-      });
-    } catch (err: any) {
-      await interaction.update({
-        content: `:warning: Failed to bind: ${err.message}`,
-        components: [],
-      });
-    }
+    const backend = this.store.getSetting('default_backend') ?? 'claude';
+    await this.bindProjectToChannel(
+      interaction.channelId, projectPath, backend,
+      (text) => interaction.update({ content: text, components: [] }),
+    );
   }
 
   /** Handle "Create #name" button for project creation. */
   private async handleProjectCreateNew(interaction: any, projectPath: string): Promise<void> {
-    const defaultBackend = this.store.getSetting('default_backend') ?? 'claude';
-    const channelName = path.basename(projectPath);
-
-    try {
-      const guild = interaction.guild;
-      if (!guild) {
-        await interaction.update({
-          content: ':warning: This command can only be used in a server.',
-          components: [],
-        });
-        return;
-      }
-      const newChannel = await guild.channels.create({
-        name: channelName,
-        type: ChannelType.GuildText,
-      });
-      this.store.createProject(newChannel.id, projectPath, defaultBackend, 'discord');
-      await interaction.update({
-        content: `Created and bound <#${newChannel.id}> to project \`${projectPath}\` (${defaultBackend})`,
-        components: [],
-      });
-    } catch (err: any) {
-      await interaction.update({
-        content: `:warning: Failed to create channel: ${err.message}`,
-        components: [],
-      });
-    }
+    const backend = this.store.getSetting('default_backend') ?? 'claude';
+    await this.createChannelAndBind(
+      interaction.guild, projectPath, backend,
+      (text) => interaction.update({ content: text, components: [] }),
+    );
   }
 
   /** Render normalized events as Discord messages in a thread. */
@@ -505,14 +473,7 @@ export class DiscordAdapter {
         return;
       }
 
-      const existing = this.store.getProjectByChannelId(channelId);
-      if (existing) {
-        await this.handleProjectConnect(interaction, channelId, targetDir);
-      } else {
-        const backend = this.store.getSetting('default_backend') ?? 'claude';
-        this.store.createProject(channelId, targetDir, backend, 'discord');
-        await interaction.reply(`Created \`${targetDir}\` and bound this channel to it (${backend})`);
-      }
+      await this.handleProjectConnect(interaction, channelId, targetDir);
       return;
     }
 
@@ -582,32 +543,58 @@ export class DiscordAdapter {
     ].join('\n'));
   }
 
+  /** Bind a project to a channel and respond with confirmation. */
+  private async bindProjectToChannel(
+    channelId: string,
+    projectDir: string,
+    backend: string,
+    respond: (text: string) => Promise<void>,
+  ): Promise<void> {
+    try {
+      this.store.createProject(channelId, projectDir, backend, 'discord');
+      await respond(`Bound this channel to project \`${projectDir}\` (${backend})`);
+    } catch (err: any) {
+      await respond(`:warning: Failed to bind: ${err.message}`);
+    }
+  }
+
+  /** Create a new Discord channel, bind a project to it, and respond. */
+  private async createChannelAndBind(
+    guild: any,
+    projectDir: string,
+    backend: string,
+    respond: (text: string) => Promise<void>,
+  ): Promise<void> {
+    if (!guild) {
+      await respond(':warning: This command can only be used in a server.');
+      return;
+    }
+    const channelName = path.basename(projectDir);
+    try {
+      const newChannel = await guild.channels.create({
+        name: channelName,
+        type: ChannelType.GuildText,
+      });
+      this.store.createProject(newChannel.id, projectDir, backend, 'discord');
+      await respond(`Created and bound <#${newChannel.id}> to project \`${projectDir}\` (${backend})`);
+    } catch (err: any) {
+      await respond(`:warning: Failed to create channel: ${err.message}`);
+    }
+  }
+
   /** Handle project connect flow for Discord. */
   private async handleProjectConnect(interaction: any, channelId: string, projectPath: string): Promise<void> {
-    const channelName = path.basename(projectPath);
     const existing = this.store.getProjectByChannelId(channelId);
 
     if (existing) {
-      // Channel already bound — create a new channel
-      try {
-        const guild = interaction.guild;
-        if (!guild) {
-          await interaction.reply(':warning: This command can only be used in a server.');
-          return;
-        }
-        const newChannel = await guild.channels.create({
-          name: channelName,
-          type: ChannelType.GuildText,
-        });
-        this.store.createProject(newChannel.id, projectPath, existing.backend_name, 'discord');
-        await interaction.reply(
-          `Created and bound <#${newChannel.id}> to project \`${projectPath}\` (${existing.backend_name})`
-        );
-      } catch (err: any) {
-        await interaction.reply(`:warning: Failed to create channel: ${err.message}`);
-      }
+      // Channel already bound — create a new channel for this project
+      await this.createChannelAndBind(
+        interaction.guild, projectPath, existing.backend_name,
+        (text) => interaction.reply(text),
+      );
     } else {
       // Channel is unbound — offer bind options
+      const channelName = path.basename(projectPath);
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
           .setCustomId(`project_bind_here:${projectPath}`)
