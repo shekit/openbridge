@@ -86,6 +86,17 @@ describe('Callback Handler', () => {
     expect(openTunnel).toHaveBeenCalledWith(3000, 600);
   });
 
+  it('routes requestPermission to adapter.postPermissionPrompt with requestId', async () => {
+    const handler = createCallbackHandler({ adapters });
+
+    await handler.requestPermission!('C1', 'T1', 'Bash', { command: 'rm -rf' }, 'slack', 'req_abc');
+    expect(slackAdapter.postPermissionPrompt).toHaveBeenCalledWith(
+      'C1', 'T1',
+      { toolName: 'Bash', toolInput: { command: 'rm -rf' }, requestId: 'req_abc' },
+      null,
+    );
+  });
+
   it('routes serveFileBrowser to file browser + tunnel', async () => {
     vi.mocked(startFileBrowser).mockResolvedValue({
       port: 54321,

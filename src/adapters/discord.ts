@@ -28,6 +28,7 @@ import type { Router, RouteResult } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
 import { splitText } from '../utils.js';
+import { resolvePermission } from '../mcp/ipc-server.js';
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 
@@ -332,7 +333,11 @@ export class DiscordAdapter {
     }
 
     const isAllow = customId.startsWith('permission_allow');
-    const toolName = customId.split(':').slice(1).join(':') || undefined;
+    // Parse customId: "permission_allow:toolName|requestId" or "permission_allow:toolName"
+    const afterColon = customId.split(':').slice(1).join(':');
+    const pipeIdx = afterColon.indexOf('|');
+    const toolName = pipeIdx >= 0 ? afterColon.slice(0, pipeIdx) : (afterColon || undefined);
+    const requestId = pipeIdx >= 0 ? afterColon.slice(pipeIdx + 1) : undefined;
     const actionLabel = isAllow ? 'Allowed' : 'Denied';
 
     // Update the original message to show which action was taken
@@ -345,7 +350,15 @@ export class DiscordAdapter {
       // Non-fatal if update fails
     }
 
-    // Post a processing indicator while waiting for the backend response
+    // Hook-based flow: resolve in-process, no need to call router.respond()
+    if (requestId) {
+      const decision = isAllow ? 'allow' : 'deny';
+      resolvePermission(requestId, decision);
+      console.log(`[discord] resolved permission ${requestId} → ${decision}`);
+      return;
+    }
+
+    // Legacy flow: route through router.respond()
     let processingMsg: Message | null = null;
     try {
       const channel = interaction.channel;
@@ -356,7 +369,6 @@ export class DiscordAdapter {
       // Non-fatal — continue without indicator
     }
 
-    // Route the response with allowed tools when user clicks Allow
     const responseText = isAllow ? 'yes' : 'no';
     const allowedTools = isAllow && toolName ? [toolName] : undefined;
     let result: RouteResult;
@@ -368,10 +380,8 @@ export class DiscordAdapter {
       return;
     }
 
-    // Remove the processing indicator before posting real response
     if (processingMsg) await processingMsg.delete().catch(() => {});
 
-    // Delegate to renderEvents so chained permission_denied events are rendered
     await this.renderEvents(channelId, threadId, result.events, interaction);
   }
 
@@ -443,23 +453,30 @@ export class DiscordAdapter {
     }
   }
 
-  /** Post a permission denial prompt with Allow/Deny buttons. */
+  /** Post a permission denial prompt with Allow/Deny buttons.
+   *  When event.requestId is set (hook-based flow), it's embedded in button customIds
+   *  so the action handler can resolve the permission in-process. */
   async postPermissionPrompt(
     channelId: string,
     threadId: string,
-    event: { toolName: string; toolInput: Record<string, unknown>; context?: string },
+    event: { toolName: string; toolInput: Record<string, unknown>; context?: string; requestId?: string },
     context: any
   ): Promise<void> {
     const inputStr = JSON.stringify(event.toolInput, null, 2);
     const contextStr = event.context ? `\n${event.context}` : '';
 
+    // Embed requestId in customId: "permission_allow:toolName|requestId" or "permission_allow:toolName"
+    const idSuffix = event.requestId
+      ? `${event.toolName}|${event.requestId}`
+      : event.toolName;
+
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
-        .setCustomId(`permission_allow:${event.toolName}`)
+        .setCustomId(`permission_allow:${idSuffix}`)
         .setLabel('Allow')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
-        .setCustomId(`permission_deny:${event.toolName}`)
+        .setCustomId(`permission_deny:${idSuffix}`)
         .setLabel('Deny')
         .setStyle(ButtonStyle.Danger)
     );

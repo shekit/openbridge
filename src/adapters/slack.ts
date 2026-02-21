@@ -13,6 +13,7 @@ import type { Router, RouteResult } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
 import { splitText } from '../utils.js';
+import { resolvePermission } from '../mcp/ipc-server.js';
 
 const SLACK_MESSAGE_LIMIT = 4000;
 
@@ -355,16 +356,22 @@ export class SlackAdapter {
     await this.renderEvents(channelId, threadTs, result.events, client);
   }
 
-  /** Handle permission Allow/Deny button clicks. */
+  /** Handle permission Allow/Deny button clicks.
+   *  Button value is "toolName|requestId" (hook flow) or "toolName" (legacy). */
   private async handlePermissionAction(body: any, action: string, client: any): Promise<void> {
     const channelId = body.channel?.id;
     const threadTs = body.message?.thread_ts;
     const messageTs = body.message?.ts;
-    const toolName = body.actions?.[0]?.value;
+    const rawValue: string = body.actions?.[0]?.value ?? '';
 
     if (!channelId || !threadTs) {
       return;
     }
+
+    // Parse button value: "toolName|requestId" or just "toolName"
+    const pipeIdx = rawValue.indexOf('|');
+    const toolName = pipeIdx >= 0 ? rawValue.slice(0, pipeIdx) : rawValue;
+    const requestId = pipeIdx >= 0 ? rawValue.slice(pipeIdx + 1) : undefined;
 
     // Update the original message to show which action was taken
     const actionLabel = action === 'allow' ? 'Allowed' : 'Denied';
@@ -387,7 +394,15 @@ export class SlackAdapter {
       // Non-fatal if update fails
     }
 
-    // Post a processing indicator while waiting for the backend response
+    // Hook-based flow: resolve in-process, no need to call router.respond()
+    if (requestId) {
+      const decision = action === 'allow' ? 'allow' : 'deny';
+      resolvePermission(requestId, decision);
+      console.log(`[slack] resolved permission ${requestId} → ${decision}`);
+      return;
+    }
+
+    // Legacy flow: route through router.respond()
     let processingTs: string | null = null;
     try {
       const processingMsg = await client.chat.postMessage({
@@ -400,7 +415,6 @@ export class SlackAdapter {
       // Non-fatal — continue without indicator
     }
 
-    // Route the response with allowed tools when user clicks Allow
     const responseText = action === 'allow' ? 'yes' : 'no';
     const allowedTools = action === 'allow' && toolName ? [toolName] : undefined;
     let result: RouteResult;
@@ -414,7 +428,6 @@ export class SlackAdapter {
       return;
     }
 
-    // Remove the processing indicator before posting real response
     if (processingTs) {
       await client.chat.delete({ channel: channelId, ts: processingTs }).catch(() => {});
     }
@@ -483,17 +496,27 @@ export class SlackAdapter {
     }
   }
 
-  /** Post a permission denial prompt with Allow/Deny buttons. */
+  /** Post a permission denial prompt with Allow/Deny buttons.
+   *  When event.requestId is set (hook-based flow), it's embedded in button values
+   *  so the action handler can resolve the permission in-process. */
   async postPermissionPrompt(
     channelId: string,
     threadTs: string,
-    event: { toolName: string; toolInput: Record<string, unknown>; context?: string },
+    event: { toolName: string; toolInput: Record<string, unknown>; context?: string; requestId?: string },
     client: any
   ): Promise<void> {
     const inputStr = JSON.stringify(event.toolInput, null, 2);
     const contextStr = event.context ? `\n${event.context}` : '';
 
-    await client.chat.postMessage({
+    // Embed requestId in button value: "toolName|requestId" (hook flow) or "toolName" (legacy)
+    const buttonValue = event.requestId
+      ? `${event.toolName}|${event.requestId}`
+      : event.toolName;
+
+    // When called from IPC callback (requestPermission), client is null — use stored client
+    const chatClient = client ?? this.app.client;
+
+    await chatClient.chat.postMessage({
       channel: channelId,
       thread_ts: threadTs,
       text: `Permission requested: ${event.toolName}`,
@@ -513,14 +536,14 @@ export class SlackAdapter {
               text: { type: 'plain_text', text: 'Allow' },
               style: 'primary',
               action_id: 'permission_allow',
-              value: event.toolName,
+              value: buttonValue,
             },
             {
               type: 'button',
               text: { type: 'plain_text', text: 'Deny' },
               style: 'danger',
               action_id: 'permission_deny',
-              value: event.toolName,
+              value: buttonValue,
             },
           ],
         },

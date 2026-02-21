@@ -56,6 +56,15 @@ export function createCallbackHandler(options: CallbackHandlerOptions): IpcHandl
       const adapter = getAdapter(platform);
       await adapter.sendMessage(channelId, threadId, text);
     },
+
+    async requestPermission(channelId, threadId, toolName, toolInput, platform, requestId) {
+      const adapter = getAdapter(platform);
+      await adapter.postPermissionPrompt(channelId, threadId, {
+        toolName,
+        toolInput,
+        requestId,
+      }, null);
+    },
   };
 }
 

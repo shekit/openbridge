@@ -1402,6 +1402,18 @@
             "All 480 tests pass"
           ],
           "status": "passing"
+        },
+        {
+          "id": "P11.8",
+          "description": "Adapters embed requestId in permission buttons; hook-based flow resolves in-process via resolvePermission()",
+          "verification": [
+            "callbacks.ts requestPermission() routes to adapter.postPermissionPrompt with requestId",
+            "Slack embeds requestId in button value, resolves in-process when present",
+            "Discord embeds requestId in customId, resolves in-process when present",
+            "Legacy flow (no requestId) still works via router.respond()",
+            "All 481 tests pass"
+          ],
+          "status": "passing"
         }
       ]
     }

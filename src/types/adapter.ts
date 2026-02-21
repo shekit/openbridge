@@ -18,11 +18,13 @@ export interface Adapter {
   /** Post a text message in a thread. Splits long messages as needed. */
   postText(channelId: string, threadTs: string, text: string, client: any): Promise<void>;
 
-  /** Post an interactive permission prompt with Allow/Deny buttons. */
+  /** Post an interactive permission prompt with Allow/Deny buttons.
+   *  When requestId is provided (hook-based flow), buttons resolve the permission
+   *  in-process via resolvePermission() instead of calling router.respond(). */
   postPermissionPrompt(
     channelId: string,
     threadTs: string,
-    event: { toolName: string; toolInput: Record<string, unknown>; context?: string },
+    event: { toolName: string; toolInput: Record<string, unknown>; context?: string; requestId?: string },
     client: any
   ): Promise<void>;
 
