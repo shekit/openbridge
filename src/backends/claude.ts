@@ -11,7 +11,7 @@ import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import type { Backend, BackendOptions, McpServerEntry, SendResult } from '../types/backend.js';
+import type { Backend, BackendOptions, ImageAttachment, McpServerEntry, SendResult } from '../types/backend.js';
 import type { NormalizedEvent } from '../types/events.js';
 
 /** Directory for backend log files. */
@@ -249,6 +249,42 @@ export function buildHookSettings(hookScriptDir: string): string {
   });
 }
 
+/**
+ * Build stream-json JSONL input for Claude Code stdin.
+ * Used when passing images — text-only messages don't need this (use --input-format text).
+ * Format matches Anthropic API content blocks inside a stream-json user message.
+ */
+export function buildStreamJsonInput(text: string, images?: ImageAttachment[]): string {
+  const content: Array<Record<string, unknown>> = [];
+
+  // Add images first (model sees them before the text prompt)
+  if (images) {
+    for (const img of images) {
+      content.push({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: img.mediaType,
+          data: img.base64,
+        },
+      });
+    }
+  }
+
+  // Add text prompt
+  content.push({ type: 'text', text });
+
+  const message = {
+    type: 'user',
+    message: {
+      role: 'user',
+      content,
+    },
+  };
+
+  return JSON.stringify(message) + '\n';
+}
+
 /** Build CLI args for a claude oneshot invocation. */
 export function buildClaudeArgs(
   text: string,
@@ -257,12 +293,13 @@ export function buildClaudeArgs(
   mcpConfigJson?: string,
   settingsJson?: string,
   dangerouslySkipPermissions?: boolean,
+  useStreamJsonInput?: boolean,
 ): string[] {
   const args = [
     '-p',
     '--verbose',
     '--output-format', 'stream-json',
-    '--input-format', 'text',
+    '--input-format', useStreamJsonInput ? 'stream-json' : 'text',
   ];
 
   // Trusted mode — skip all permission prompts (no hooks needed)
@@ -292,10 +329,14 @@ export function buildClaudeArgs(
     args.push('--allowedTools', tool);
   }
 
-  // Use '--' to separate options from the prompt text.
-  // Without this, commander.js variadic options like --allowedTools (<tools...>)
-  // consume the prompt as another tool name, leaving Claude with no prompt.
-  args.push('--', text);
+  if (useStreamJsonInput) {
+    // Stream-json mode: prompt comes via stdin, no positional arg needed
+  } else {
+    // Text mode: use '--' to separate options from the prompt text.
+    // Without this, commander.js variadic options like --allowedTools (<tools...>)
+    // consume the prompt as another tool name, leaving Claude with no prompt.
+    args.push('--', text);
+  }
   return args;
 }
 
@@ -360,7 +401,7 @@ export class ClaudeBackend implements Backend {
     console.log(`[claude] initialized for project: ${this.projectDir}`);
   }
 
-  async send(text: string): Promise<SendResult> {
+  async send(text: string, images?: ImageAttachment[]): Promise<SendResult> {
     // Build MCP config JSON for explicit --mcp-config flag
     let mcpConfigJson: string | undefined;
     if (this.mcpConfig) {
@@ -383,6 +424,13 @@ export class ClaudeBackend implements Backend {
       ? buildHookSettings(this.hookScriptDir)
       : undefined;
 
+    // Use stream-json input when images are attached (text-only uses simpler text input)
+    const useStreamJson = images !== undefined && images.length > 0;
+    let stdinData: string | undefined;
+    if (useStreamJson) {
+      stdinData = buildStreamJsonInput(text, images);
+    }
+
     const args = buildClaudeArgs(
       text,
       this.sessionId,
@@ -390,6 +438,7 @@ export class ClaudeBackend implements Backend {
       mcpConfigJson,
       settingsJson,
       trusted,
+      useStreamJson,
     );
     // Clear allowed tools after use (one-shot approval)
     this.allowedTools = [];
@@ -410,7 +459,7 @@ export class ClaudeBackend implements Backend {
     const logPath = path.join(LOG_DIR, 'claude-latest.log');
     console.log(`[claude] spawning: claude ${args.join(' ').slice(0, 120)}...`);
     console.log(`[claude] stderr log: ${logPath}`);
-    const handle = spawnCollect('claude', args, this.projectDir, logPath, hookEnv);
+    const handle = spawnCollect('claude', args, this.projectDir, logPath, hookEnv, stdinData);
     this.activeHandle = handle;
 
     let result: SpawnResult;

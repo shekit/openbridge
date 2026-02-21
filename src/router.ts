@@ -5,7 +5,7 @@
  * lifecycle, and enforces session state machine transitions.
  */
 
-import type { Backend, SendResult, McpServerEntry } from './types/backend.js';
+import type { Backend, ImageAttachment, SendResult, McpServerEntry } from './types/backend.js';
 import type { NormalizedEvent } from './types/events.js';
 import { Store, type Project, type Session } from './store.js';
 
@@ -66,15 +66,15 @@ export class Router {
   }
 
   /** Send with timeout — races backend.send() against a timeout. */
-  private async sendWithTimeout(backend: Backend, text: string): Promise<SendResult> {
+  private async sendWithTimeout(backend: Backend, text: string, images?: ImageAttachment[]): Promise<SendResult> {
     if (this.timeoutMs <= 0) {
-      return backend.send(text);
+      return backend.send(text, images);
     }
 
     let timer: ReturnType<typeof setTimeout>;
 
     const result = await Promise.race([
-      backend.send(text).then((r) => {
+      backend.send(text, images).then((r) => {
         clearTimeout(timer);
         return r;
       }),
@@ -121,7 +121,7 @@ export class Router {
    * Send a message through the backend and return normalized events.
    * Manages session state transitions and persists backend session ID.
    */
-  async send(channelId: string, threadId: string, text: string): Promise<RouteResult> {
+  async send(channelId: string, threadId: string, text: string, images?: ImageAttachment[]): Promise<RouteResult> {
     const resolved = this.resolve(channelId, threadId);
     if (!resolved) {
       throw new Error(`Channel ${channelId} is not connected to a project`);
@@ -178,7 +178,7 @@ export class Router {
 
     let result: SendResult;
     try {
-      result = await this.sendWithTimeout(backend, text);
+      result = await this.sendWithTimeout(backend, text, images);
     } catch (err) {
       // Backend crashed or timed out — clean up and transition to dead
       // But if cancelBackend already cleaned up, skip state transition

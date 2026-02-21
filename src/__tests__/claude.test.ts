@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ClaudeBackend, spawnCollect, parseClaudeOutput, buildClaudeArgs, buildHookSettings, MCP_TOOLS } from '../backends/claude.js';
+import { ClaudeBackend, spawnCollect, parseClaudeOutput, buildClaudeArgs, buildStreamJsonInput, buildHookSettings, MCP_TOOLS } from '../backends/claude.js';
 import type { Backend } from '../types/backend.js';
 
 describe('Claude Code backend', () => {
@@ -597,6 +597,79 @@ describe('Claude Code backend', () => {
       await backend.start({ projectDir: '/tmp/test', permissionMode: 'trusted' });
       // Backend is initialized — no error thrown
       expect(backend.getSessionId()).toBeNull();
+    });
+  });
+
+  describe('P12.9: buildStreamJsonInput', () => {
+    it('produces valid JSONL with text-only content', () => {
+      const input = buildStreamJsonInput('hello world');
+      const parsed = JSON.parse(input);
+      expect(parsed.type).toBe('user');
+      expect(parsed.message.role).toBe('user');
+      expect(parsed.message.content).toHaveLength(1);
+      expect(parsed.message.content[0]).toEqual({ type: 'text', text: 'hello world' });
+    });
+
+    it('produces valid JSONL with images and text', () => {
+      const images = [
+        { base64: 'aW1hZ2UxZGF0YQ==', mediaType: 'image/png' },
+        { base64: 'aW1hZ2UyZGF0YQ==', mediaType: 'image/jpeg' },
+      ];
+      const input = buildStreamJsonInput('describe these images', images);
+      const parsed = JSON.parse(input);
+      expect(parsed.message.content).toHaveLength(3); // 2 images + 1 text
+      // Images come first
+      expect(parsed.message.content[0].type).toBe('image');
+      expect(parsed.message.content[0].source.type).toBe('base64');
+      expect(parsed.message.content[0].source.media_type).toBe('image/png');
+      expect(parsed.message.content[0].source.data).toBe('aW1hZ2UxZGF0YQ==');
+      expect(parsed.message.content[1].type).toBe('image');
+      expect(parsed.message.content[1].source.media_type).toBe('image/jpeg');
+      // Text comes last
+      expect(parsed.message.content[2]).toEqual({ type: 'text', text: 'describe these images' });
+    });
+
+    it('ends with a newline', () => {
+      const input = buildStreamJsonInput('test');
+      expect(input.endsWith('\n')).toBe(true);
+    });
+
+    it('handles empty images array (text-only)', () => {
+      const input = buildStreamJsonInput('just text', []);
+      const parsed = JSON.parse(input);
+      expect(parsed.message.content).toHaveLength(1);
+      expect(parsed.message.content[0].type).toBe('text');
+    });
+  });
+
+  describe('P12.9: buildClaudeArgs with useStreamJsonInput', () => {
+    it('uses --input-format stream-json when useStreamJsonInput is true', () => {
+      const args = buildClaudeArgs('hello', null, undefined, undefined, undefined, false, true);
+      const ifIdx = args.indexOf('--input-format');
+      expect(args[ifIdx + 1]).toBe('stream-json');
+    });
+
+    it('omits positional text arg when useStreamJsonInput is true', () => {
+      const args = buildClaudeArgs('hello', null, undefined, undefined, undefined, false, true);
+      expect(args).not.toContain('--');
+      expect(args[args.length - 1]).not.toBe('hello');
+    });
+
+    it('uses --input-format text by default', () => {
+      const args = buildClaudeArgs('hello', null);
+      const ifIdx = args.indexOf('--input-format');
+      expect(args[ifIdx + 1]).toBe('text');
+      expect(args).toContain('--');
+      expect(args[args.length - 1]).toBe('hello');
+    });
+
+    it('works with session resume and stream-json input', () => {
+      const args = buildClaudeArgs('follow-up', 'sess_img', undefined, undefined, undefined, false, true);
+      expect(args).toContain('-r');
+      expect(args[args.indexOf('-r') + 1]).toBe('sess_img');
+      const ifIdx = args.indexOf('--input-format');
+      expect(args[ifIdx + 1]).toBe('stream-json');
+      expect(args).not.toContain('--');
     });
   });
 

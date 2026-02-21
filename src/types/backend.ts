@@ -12,6 +12,14 @@ export interface SendResult {
   sessionId: string | null;
 }
 
+/** An image attachment to include in a message to the backend. */
+export interface ImageAttachment {
+  /** Base64-encoded image data. */
+  base64: string;
+  /** MIME type (e.g., 'image/png', 'image/jpeg', 'image/gif', 'image/webp'). */
+  mediaType: string;
+}
+
 /** MCP server configuration for injection into backend CLI. */
 export interface McpServerEntry {
   command: string;
@@ -41,8 +49,9 @@ export interface Backend {
   /** Prepare the backend (e.g., validate CLI is available). */
   start(options: BackendOptions): Promise<void>;
 
-  /** Send a prompt and return normalized events + session ID. */
-  send(text: string): Promise<SendResult>;
+  /** Send a prompt and return normalized events + session ID.
+   *  Optional images are passed as base64 content blocks (Claude stream-json, Codex --image). */
+  send(text: string, images?: ImageAttachment[]): Promise<SendResult>;
 
   /** Return the current session ID for resume, or null if none. */
   getSessionId(): string | null;

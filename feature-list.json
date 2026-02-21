@@ -1552,7 +1552,7 @@
             "Output parsing unchanged (stream-json output format already used)",
             "Unit tests verify JSON message construction with and without images"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P12.10",

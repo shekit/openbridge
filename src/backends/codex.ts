@@ -238,7 +238,7 @@ export class CodexBackend implements Backend {
     console.log(`[codex] initialized for project: ${this.projectDir} (sandbox: ${this.sandbox})`);
   }
 
-  async send(text: string): Promise<SendResult> {
+  async send(text: string, _images?: import('../types/backend.js').ImageAttachment[]): Promise<SendResult> {
     const args = buildCodexArgs(text, this.sessionId, this.sandbox);
 
     console.log(`[codex] spawning: codex ${args.join(' ').slice(0, 120)}...`);
