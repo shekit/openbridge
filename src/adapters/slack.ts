@@ -150,22 +150,10 @@ export class SlackAdapter {
       await this.handleProjectCommand(command, client);
     });
 
-    this.app.command('/new', async ({ command, ack, client }) => {
-      await ack();
-      if (!(await this.ensureInChannel(command.channel_id, client))) return;
-      await this.handleNewCommand(command, client);
-    });
-
     this.app.command('/settings', async ({ command, ack, client }) => {
       await ack();
       if (!(await this.ensureInChannel(command.channel_id, client))) return;
       await this.handleSettingsCommand(command, client);
-    });
-
-    this.app.command('/cancel', async ({ command, ack, client }) => {
-      await ack();
-      if (!(await this.ensureInChannel(command.channel_id, client))) return;
-      await this.handleCancelCommand(command, client);
     });
   }
 
@@ -227,6 +215,45 @@ export class SlackAdapter {
     const project = this.store.getProjectByChannelId(channelId);
     if (!project) {
       return; // Not a bound channel, ignore
+    }
+
+    // Handle text commands in threads (slash commands don't work in Slack threads)
+    if (threadTs) {
+      const trimmed = text.trim().toLowerCase();
+      if (trimmed === 'cancel') {
+        try {
+          const cancelled = await this.router.cancelBackend(channelId, threadTs);
+          if (cancelled) {
+            await client.chat.postMessage({
+              channel: channelId,
+              thread_ts: threadTs,
+              text: 'Cancelling the running task...',
+            });
+          } else {
+            await client.chat.postMessage({
+              channel: channelId,
+              thread_ts: threadTs,
+              text: 'Nothing to cancel — no task is currently running in this thread.',
+            });
+          }
+        } catch (err: any) {
+          await this.postError(channelId, threadTs, err.message, client);
+        }
+        return;
+      }
+      if (trimmed === 'new') {
+        try {
+          this.router.resetSession(channelId, threadTs);
+          await client.chat.postMessage({
+            channel: channelId,
+            thread_ts: threadTs,
+            text: 'Session reset. Your next message will start a fresh conversation.',
+          });
+        } catch (err: any) {
+          await this.postError(channelId, threadTs, err.message, client);
+        }
+        return;
+      }
     }
 
     // If this is a top-level message (no thread_ts), create a new thread
@@ -544,9 +571,11 @@ export class SlackAdapter {
       lines.push('• `/project disconnect` — disconnect this channel');
       lines.push('');
       lines.push('*Other commands:*');
-      lines.push('• `/new` — reset the session in a thread');
-      lines.push('• `/cancel` — stop a running task in a thread');
       lines.push('• `/settings` — view or change bridge settings');
+      lines.push('');
+      lines.push('*In-thread commands (type as a message):*');
+      lines.push('• `cancel` — stop a running task');
+      lines.push('• `new` — reset the session and start fresh');
       await client.chat.postMessage({
         channel: channelId,
         text: lines.join('\n'),
@@ -935,76 +964,6 @@ export class SlackAdapter {
     }
   }
 
-  /** Handle /new slash command. */
-  private async handleNewCommand(command: any, client: any): Promise<void> {
-    const channelId = command.channel_id;
-    // Slash commands don't have thread_ts in the standard way.
-    // The user must invoke /new within a thread. We'll use channel_id as fallback.
-    // In Slack, slash commands don't carry thread_ts by default, but if invoked
-    // from a thread context, it may be available in some cases.
-    // We'll handle both scenarios.
-    const threadTs = command.thread_ts || null;
-
-    if (!threadTs) {
-      await client.chat.postMessage({
-        channel: channelId,
-        text: 'Use `/new` inside a thread to reset the session.',
-      });
-      return;
-    }
-
-    try {
-      this.router.resetSession(channelId, threadTs);
-      await client.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadTs,
-        text: 'Session reset. Your next message will start a fresh conversation.',
-      });
-    } catch (err: any) {
-      await client.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadTs,
-        text: `:warning: ${err.message}`,
-      });
-    }
-  }
-
-  /** Handle /cancel slash command — kill a stuck backend process. */
-  private async handleCancelCommand(command: any, client: any): Promise<void> {
-    const channelId = command.channel_id;
-    const threadTs = command.thread_ts || null;
-
-    if (!threadTs) {
-      await client.chat.postMessage({
-        channel: channelId,
-        text: 'Use `/cancel` inside a thread to stop a running task.',
-      });
-      return;
-    }
-
-    try {
-      const cancelled = await this.router.cancelBackend(channelId, threadTs);
-      if (cancelled) {
-        await client.chat.postMessage({
-          channel: channelId,
-          thread_ts: threadTs,
-          text: 'Task cancelled. The running process has been stopped.',
-        });
-      } else {
-        await client.chat.postMessage({
-          channel: channelId,
-          thread_ts: threadTs,
-          text: 'Nothing to cancel — no task is currently running in this thread.',
-        });
-      }
-    } catch (err: any) {
-      await client.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadTs,
-        text: `:warning: ${err.message}`,
-      });
-    }
-  }
 
   /** Handle /settings slash command. */
   private async handleSettingsCommand(command: any, client: any): Promise<void> {

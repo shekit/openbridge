@@ -690,11 +690,6 @@ describe('SlackAdapter', () => {
       expect(mockApp.command).toHaveBeenCalledWith('/project', expect.any(Function));
     });
 
-    it('registers /new command handler', () => {
-      createAdapter();
-      expect(mockApp.command).toHaveBeenCalledWith('/new', expect.any(Function));
-    });
-
     it('registers /settings command handler', () => {
       createAdapter();
       expect(mockApp.command).toHaveBeenCalledWith('/settings', expect.any(Function));
@@ -820,7 +815,7 @@ describe('SlackAdapter', () => {
     });
   });
 
-  describe('P3.16: /new resets session in current thread', () => {
+  describe('text command: "new" resets session in thread', () => {
     it('resets the session and posts confirmation', async () => {
       createAdapter();
       await adapter.start();
@@ -829,9 +824,12 @@ describe('SlackAdapter', () => {
       const session = store.createSession('1234567890.000001', project.id);
       store.updateBackendSessionId(session.id, 'old-backend-session');
 
-      await triggerCommand('/new', {
-        channel_id: 'C_BOUND',
+      await triggerMessage({
+        channel: 'C_BOUND',
+        text: 'new',
         thread_ts: '1234567890.000001',
+        ts: '1234567890.000099',
+        user: 'U_USER',
       });
 
       const updatedSession = store.getSessionByThreadId('1234567890.000001');
@@ -846,54 +844,42 @@ describe('SlackAdapter', () => {
       );
     });
 
-    it('tells user to use /new in a thread when used outside', async () => {
+    it('is case-insensitive', async () => {
       createAdapter();
       await adapter.start();
 
-      await triggerCommand('/new', {
-        channel_id: 'C_BOUND',
-        // No thread_ts
+      const project = store.createProject('C_BOUND', '/test/project', 'claude');
+      store.createSession('1234567890.000001', project.id);
+
+      await triggerMessage({
+        channel: 'C_BOUND',
+        text: 'New',
+        thread_ts: '1234567890.000001',
+        ts: '1234567890.000099',
+        user: 'U_USER',
       });
 
       expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
-          text: expect.stringContaining('inside a thread'),
+          text: expect.stringContaining('Session reset'),
         })
       );
     });
   });
 
-  describe('/cancel stops a running task', () => {
-    it('registers /cancel command handler', () => {
-      createAdapter();
-      adapter.start();
-      expect(mockApp._commandHandlers['/cancel']).toBeDefined();
-    });
-
-    it('tells user to use /cancel in a thread when used outside', async () => {
-      createAdapter();
-      await adapter.start();
-
-      await triggerCommand('/cancel', {
-        channel_id: 'C_BOUND',
-      });
-
-      expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          text: expect.stringContaining('inside a thread'),
-        })
-      );
-    });
-
+  describe('text command: "cancel" stops a running task in thread', () => {
     it('reports nothing to cancel when no task is running', async () => {
       createAdapter();
       await adapter.start();
 
       store.createProject('C_CANCEL', '/test/cancel', 'claude');
 
-      await triggerCommand('/cancel', {
-        channel_id: 'C_CANCEL',
+      await triggerMessage({
+        channel: 'C_CANCEL',
+        text: 'cancel',
         thread_ts: '9999.000001',
+        ts: '9999.000099',
+        user: 'U_USER',
       });
 
       expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
