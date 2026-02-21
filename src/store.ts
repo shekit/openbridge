@@ -9,12 +9,23 @@ import Database from 'better-sqlite3';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 
+export type PermissionMode = 'trusted' | 'supervised';
+
 export interface Project {
   id: number;
   channel_id: string;
   project_dir: string;
   backend_name: string;
   platform: string;
+  permission_mode: PermissionMode;
+  sandbox_mode: string;
+  created_at: string;
+}
+
+export interface AllowedTool {
+  id: number;
+  project_id: number;
+  tool_pattern: string;
   created_at: string;
 }
 
@@ -83,6 +94,19 @@ const MIGRATIONS: string[] = [
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+  `,
+  // Version 2: permission modes, sandbox mode, allowed tools
+  `
+  ALTER TABLE projects ADD COLUMN permission_mode TEXT NOT NULL DEFAULT 'supervised';
+  ALTER TABLE projects ADD COLUMN sandbox_mode TEXT NOT NULL DEFAULT 'workspace-write';
+
+  CREATE TABLE IF NOT EXISTS allowed_tools (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    tool_pattern TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_allowed_tools_project_id ON allowed_tools(project_id);
   `,
 ];
 
@@ -158,6 +182,14 @@ export class Store {
     this.db.prepare('UPDATE projects SET backend_name = ? WHERE id = ?').run(backendName, id);
   }
 
+  updatePermissionMode(id: number, mode: PermissionMode): void {
+    this.db.prepare('UPDATE projects SET permission_mode = ? WHERE id = ?').run(mode, id);
+  }
+
+  updateSandboxMode(id: number, sandboxMode: string): void {
+    this.db.prepare('UPDATE projects SET sandbox_mode = ? WHERE id = ?').run(sandboxMode, id);
+  }
+
   // --- Sessions CRUD ---
 
   createSession(threadId: string, projectId: number): Session {
@@ -197,6 +229,33 @@ export class Store {
 
   deleteSession(id: number): boolean {
     const info = this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+    return info.changes > 0;
+  }
+
+  // --- Allowed Tools CRUD ---
+
+  addAllowedTool(projectId: number, toolPattern: string): AllowedTool {
+    // Avoid duplicates
+    const existing = this.db.prepare(
+      'SELECT * FROM allowed_tools WHERE project_id = ? AND tool_pattern = ?'
+    ).get(projectId, toolPattern) as AllowedTool | undefined;
+    if (existing) return existing;
+
+    const stmt = this.db.prepare(
+      'INSERT INTO allowed_tools (project_id, tool_pattern) VALUES (?, ?)'
+    );
+    const info = stmt.run(projectId, toolPattern);
+    return this.db.prepare('SELECT * FROM allowed_tools WHERE id = ?').get(info.lastInsertRowid as number) as AllowedTool;
+  }
+
+  getAllowedTools(projectId: number): AllowedTool[] {
+    return this.db.prepare(
+      'SELECT * FROM allowed_tools WHERE project_id = ? ORDER BY created_at'
+    ).all(projectId) as AllowedTool[];
+  }
+
+  removeAllowedTool(id: number): boolean {
+    const info = this.db.prepare('DELETE FROM allowed_tools WHERE id = ?').run(id);
     return info.changes > 0;
   }
 

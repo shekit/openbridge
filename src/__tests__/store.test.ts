@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { Store, validateTransition, type SessionState } from '../store.js';
+import { Store, validateTransition, type SessionState, type PermissionMode } from '../store.js';
 
 /** Create a temp directory for each test and return the db path. */
 function makeTempDbPath(): string {
@@ -144,14 +144,15 @@ describe('Store', () => {
       expect(table).toBeDefined();
 
       const row = db.prepare('SELECT MAX(version) as v FROM schema_version').get() as { v: number };
-      expect(row.v).toBe(1);
+      expect(row.v).toBe(2);
     });
 
     it('migrations run sequentially on startup', () => {
       const db = (store as any).db;
       const versions = db.prepare('SELECT version FROM schema_version ORDER BY version').all() as Array<{ version: number }>;
-      expect(versions.length).toBe(1);
+      expect(versions.length).toBe(2);
       expect(versions[0].version).toBe(1);
+      expect(versions[1].version).toBe(2);
     });
 
     it('re-running init does not duplicate tables (idempotent)', () => {
@@ -160,15 +161,15 @@ describe('Store', () => {
       store = new Store(dbPath);
 
       const db = (store as any).db;
-      // Version should still be 1, not 2
+      // Version should still be 2
       const row = db.prepare('SELECT MAX(version) as v FROM schema_version').get() as { v: number };
-      expect(row.v).toBe(1);
+      expect(row.v).toBe(2);
 
       // Tables should exist exactly once
       const tables = db.prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('projects', 'sessions', 'settings') ORDER BY name"
+        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('projects', 'sessions', 'settings', 'allowed_tools') ORDER BY name"
       ).all() as Array<{ name: string }>;
-      expect(tables.length).toBe(3);
+      expect(tables.length).toBe(4);
     });
   });
 
@@ -387,6 +388,122 @@ describe('Store', () => {
 
     it('store.updateSessionState throws for nonexistent session', () => {
       expect(() => store.updateSessionState(9999, 'running')).toThrow('Session 9999 not found');
+    });
+  });
+
+  describe('P12.1: Schema migration v3 — permission_mode, sandbox_mode, allowed_tools', () => {
+    it('migration v2 runs and schema_version is 2', () => {
+      const db = (store as any).db;
+      const row = db.prepare('SELECT MAX(version) as v FROM schema_version').get() as { v: number };
+      expect(row.v).toBe(2);
+    });
+
+    it('projects table has permission_mode column with default supervised', () => {
+      const project = store.createProject('ch_perm', '/tmp/p', 'claude');
+      expect(project.permission_mode).toBe('supervised');
+    });
+
+    it('projects table has sandbox_mode column with default workspace-write', () => {
+      const project = store.createProject('ch_sb', '/tmp/p', 'claude');
+      expect(project.sandbox_mode).toBe('workspace-write');
+    });
+
+    it('allowed_tools table exists with expected columns', () => {
+      const db = (store as any).db;
+      const table = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='allowed_tools'"
+      ).get();
+      expect(table).toBeDefined();
+
+      const columns = db.prepare("PRAGMA table_info('allowed_tools')").all() as Array<{ name: string }>;
+      const colNames = columns.map((c: { name: string }) => c.name);
+      expect(colNames).toContain('id');
+      expect(colNames).toContain('project_id');
+      expect(colNames).toContain('tool_pattern');
+      expect(colNames).toContain('created_at');
+    });
+
+    it('updatePermissionMode changes the permission_mode', () => {
+      const project = store.createProject('ch_pm2', '/tmp/p', 'claude');
+      expect(project.permission_mode).toBe('supervised');
+      store.updatePermissionMode(project.id, 'trusted');
+      const updated = store.getProjectById(project.id)!;
+      expect(updated.permission_mode).toBe('trusted');
+    });
+
+    it('updateSandboxMode changes the sandbox_mode', () => {
+      const project = store.createProject('ch_sm2', '/tmp/p', 'codex');
+      expect(project.sandbox_mode).toBe('workspace-write');
+      store.updateSandboxMode(project.id, 'danger-full-access');
+      const updated = store.getProjectById(project.id)!;
+      expect(updated.sandbox_mode).toBe('danger-full-access');
+    });
+
+    it('addAllowedTool inserts a tool pattern', () => {
+      const project = store.createProject('ch_at1', '/tmp/p', 'claude');
+      const tool = store.addAllowedTool(project.id, 'Bash(npx *)');
+      expect(tool.id).toBeGreaterThan(0);
+      expect(tool.project_id).toBe(project.id);
+      expect(tool.tool_pattern).toBe('Bash(npx *)');
+      expect(tool.created_at).toBeDefined();
+    });
+
+    it('addAllowedTool deduplicates identical patterns', () => {
+      const project = store.createProject('ch_at2', '/tmp/p', 'claude');
+      const first = store.addAllowedTool(project.id, 'Bash');
+      const second = store.addAllowedTool(project.id, 'Bash');
+      expect(first.id).toBe(second.id);
+    });
+
+    it('getAllowedTools returns all patterns for a project', () => {
+      const project = store.createProject('ch_at3', '/tmp/p', 'claude');
+      store.addAllowedTool(project.id, 'Bash');
+      store.addAllowedTool(project.id, 'Write');
+      store.addAllowedTool(project.id, 'Edit');
+      const tools = store.getAllowedTools(project.id);
+      expect(tools.length).toBe(3);
+      expect(tools.map(t => t.tool_pattern)).toEqual(['Bash', 'Write', 'Edit']);
+    });
+
+    it('getAllowedTools returns empty array for project with no tools', () => {
+      const project = store.createProject('ch_at4', '/tmp/p', 'claude');
+      const tools = store.getAllowedTools(project.id);
+      expect(tools.length).toBe(0);
+    });
+
+    it('removeAllowedTool deletes by id', () => {
+      const project = store.createProject('ch_at5', '/tmp/p', 'claude');
+      const tool = store.addAllowedTool(project.id, 'Bash');
+      const removed = store.removeAllowedTool(tool.id);
+      expect(removed).toBe(true);
+      expect(store.getAllowedTools(project.id).length).toBe(0);
+    });
+
+    it('removeAllowedTool returns false for nonexistent id', () => {
+      expect(store.removeAllowedTool(9999)).toBe(false);
+    });
+
+    it('allowed_tools cascade deleted when project is deleted', () => {
+      const project = store.createProject('ch_at6', '/tmp/p', 'claude');
+      store.addAllowedTool(project.id, 'Bash');
+      store.addAllowedTool(project.id, 'Write');
+      store.deleteProject(project.id);
+      // Tools should be gone due to CASCADE
+      const tools = store.getAllowedTools(project.id);
+      expect(tools.length).toBe(0);
+    });
+
+    it('re-opening database preserves migration v2 (idempotent)', () => {
+      store.close();
+      store = new Store(dbPath);
+      const db = (store as any).db;
+      const row = db.prepare('SELECT MAX(version) as v FROM schema_version').get() as { v: number };
+      expect(row.v).toBe(2);
+
+      // New project should still get defaults
+      const project = store.createProject('ch_reopen', '/tmp/p', 'claude');
+      expect(project.permission_mode).toBe('supervised');
+      expect(project.sandbox_mode).toBe('workspace-write');
     });
   });
 });

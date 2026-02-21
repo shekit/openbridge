@@ -1440,6 +1440,146 @@
           "status": "passing"
         }
       ]
+    },
+    {
+      "id": "P12",
+      "name": "Permission Modes, Accumulated Permissions, and Image Passing",
+      "outcome": "Projects have trusted/supervised permission mode, Claude accumulates 'Always Allow' patterns, Codex supports sandbox upgrade, both backends accept image uploads from chat",
+      "features": [
+        {
+          "id": "P12.1",
+          "description": "Schema migration v3 — add permission_mode column to projects (trusted/supervised, default supervised), add allowed_tools table (project_id, tool_pattern, created_at), add sandbox_mode column to projects (default workspace-write)",
+          "verification": [
+            "Migration v3 runs cleanly on existing databases",
+            "projects table has permission_mode TEXT NOT NULL DEFAULT 'supervised'",
+            "projects table has sandbox_mode TEXT NOT NULL DEFAULT 'workspace-write'",
+            "allowed_tools table has project_id (FK), tool_pattern (TEXT), created_at",
+            "Store has CRUD for allowed_tools: addAllowedTool, getAllowedTools, removeAllowedTool",
+            "Store has updatePermissionMode and updateSandboxMode methods",
+            "Unit tests verify migration, CRUD, and defaults"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P12.2",
+          "description": "/project connect asks permission mode — both Slack and Discord adapters prompt 'Trusted (skip all permissions)' or 'Supervised (approve per action)' during project connect, store choice in projects.permission_mode",
+          "verification": [
+            "Slack /project connect shows permission mode buttons after path selection",
+            "Discord /project connect shows permission mode buttons after path selection",
+            "Selected mode stored via store.updatePermissionMode()",
+            "Default is supervised if user skips or doesn't choose",
+            "Unit tests verify mode is stored on project creation"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P12.3",
+          "description": "Claude trusted mode — when project.permission_mode is 'trusted', pass --dangerously-skip-permissions to Claude CLI and skip hooks entirely",
+          "verification": [
+            "buildClaudeArgs() includes --dangerously-skip-permissions when trusted",
+            "buildClaudeArgs() omits --settings hook config when trusted",
+            "ClaudeBackend.send() does not pass hook env vars when trusted",
+            "Supervised mode behavior unchanged (hooks + normal flow)",
+            "Unit tests verify args for both modes"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P12.4",
+          "description": "Codex trusted mode — when project.permission_mode is 'trusted', pass --sandbox danger-full-access regardless of stored sandbox_mode",
+          "verification": [
+            "buildCodexArgs() uses danger-full-access when trusted",
+            "Supervised mode uses stored sandbox_mode from project",
+            "Unit tests verify args for both modes"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P12.5",
+          "description": "Always Allow button for Claude permissions — third button in permission prompts stores tool pattern in allowed_tools table",
+          "verification": [
+            "Slack permission prompt has Allow / Always Allow / Deny buttons",
+            "Discord permission prompt has Allow / Always Allow / Deny buttons",
+            "Always Allow extracts tool pattern (e.g. 'Bash' from tool_name) and stores via store.addAllowedTool()",
+            "Also resolves the current permission request (same as Allow)",
+            "Unit tests verify pattern storage and permission resolution"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P12.6",
+          "description": "Claude loads and passes accumulated allowed_tools — on every send, reads stored patterns from DB and merges into --allowedTools",
+          "verification": [
+            "ClaudeBackend.send() or router reads allowed_tools for the project",
+            "Stored patterns merged with MCP_TOOLS in --allowedTools args",
+            "New patterns from Always Allow are picked up on next invocation",
+            "Unit tests verify patterns appear in buildClaudeArgs output"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P12.7",
+          "description": "Codex sandbox upgrade flow — when sandbox denial detected in supervised mode, show 'Upgrade to full access?' button; if approved, update project.sandbox_mode and clear session",
+          "verification": [
+            "Sandbox denial in supervised mode shows upgrade button in Slack/Discord",
+            "Clicking upgrade stores 'danger-full-access' via store.updateSandboxMode()",
+            "Session is reset (cleared backend_session_id) so next message uses new sandbox",
+            "Subsequent sends use the upgraded sandbox_mode",
+            "Clicking 'Keep restricted' leaves sandbox_mode unchanged",
+            "Unit tests verify upgrade flow and persistence"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P12.8",
+          "description": "spawnCollect accepts stdin data — optional stdin parameter pipes data to child process stdin then closes it",
+          "verification": [
+            "spawnCollect() accepts optional stdin: string parameter",
+            "When provided, data is written to child process stdin and stdin is closed",
+            "When not provided, stdin is 'ignore' as before",
+            "Unit tests verify stdin piping"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P12.9",
+          "description": "Claude switches to stream-json input with image support — uses --input-format stream-json, constructs JSON messages on stdin with text and image content blocks",
+          "verification": [
+            "buildClaudeArgs() uses --input-format stream-json instead of text",
+            "ClaudeBackend.send() builds JSON input message with text content block",
+            "When images provided, includes image content blocks (base64-encoded) in the message",
+            "Prompt text passed via stdin JSON, not as CLI arg",
+            "Output parsing unchanged (stream-json output format already used)",
+            "Unit tests verify JSON message construction with and without images"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P12.10",
+          "description": "Codex image passing — saves image data to temp file, passes path via --image flag, cleans up temp file after send completes",
+          "verification": [
+            "CodexBackend.send() accepts optional images parameter",
+            "Each image saved to OS temp directory with appropriate extension",
+            "buildCodexArgs() includes --image /tmp/file.png for each image",
+            "Temp files cleaned up after send() completes (success or failure)",
+            "Unit tests verify temp file creation, arg construction, and cleanup"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P12.11",
+          "description": "Adapter image handling — both adapters download images from platform, pass image data (buffer + mime type) through router to backend",
+          "verification": [
+            "Backend interface send() accepts optional images: { data: Buffer, mimeType: string, filename: string }[]",
+            "Router.send() passes images through to backend.send()",
+            "Slack adapter downloads file via files.info or URL, extracts buffer and mime type",
+            "Discord adapter downloads attachment via URL, extracts buffer and mime type",
+            "Images passed alongside text in existing message flow",
+            "Unit tests verify image download and passthrough"
+          ],
+          "status": "failing"
+        }
+      ]
     }
   ]
 }
