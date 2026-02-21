@@ -5,10 +5,13 @@
  * (Slack/Discord), tunnel manager, and file browser.
  */
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import type { IpcHandler } from './ipc-server.js';
 import type { Adapter } from '../types/adapter.js';
 import { openTunnel } from './tunnel.js';
 import { startFileBrowser, type FileBrowser } from './file-browser.js';
+import { getUploadsDir } from '../utils.js';
 
 export interface CallbackHandlerOptions {
   adapters: Map<string, Adapter>;
@@ -64,6 +67,36 @@ export function createCallbackHandler(options: CallbackHandlerOptions): IpcHandl
         toolInput,
         requestId,
       }, null);
+    },
+
+    async saveUploadedFile(uploadId, destination, projectDir) {
+      const uploadsDir = getUploadsDir();
+      if (!fs.existsSync(uploadsDir)) {
+        throw new Error('No uploads directory found');
+      }
+
+      // Find the staging file by uploadId prefix
+      const files = fs.readdirSync(uploadsDir);
+      const match = files.find((f) => f.startsWith(`${uploadId}-`));
+      if (!match) {
+        throw new Error(`No staged file found for upload_id: ${uploadId}`);
+      }
+
+      const sourcePath = path.join(uploadsDir, match);
+
+      // Validate destination is within the project directory
+      const resolvedDest = path.resolve(projectDir, destination);
+      const normalizedProject = path.resolve(projectDir);
+      if (!resolvedDest.startsWith(normalizedProject + path.sep) && resolvedDest !== normalizedProject) {
+        throw new Error(`Destination "${destination}" is outside the project directory`);
+      }
+
+      // Ensure parent directory exists and copy (not move, so model can save to multiple destinations)
+      fs.mkdirSync(path.dirname(resolvedDest), { recursive: true });
+      fs.copyFileSync(sourcePath, resolvedDest);
+      console.log(`[callbacks] saved uploaded file ${uploadId} to ${resolvedDest}`);
+
+      return resolvedDest;
     },
   };
 }

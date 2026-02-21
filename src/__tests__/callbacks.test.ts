@@ -2,7 +2,10 @@
  * Tests for the callback handler glue layer (src/mcp/callbacks.ts).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 
 // Mock tunnel and file-browser modules
 vi.mock('../mcp/tunnel.js', () => ({
@@ -114,5 +117,98 @@ describe('Callback Handler', () => {
     expect(startFileBrowser).toHaveBeenCalledWith('/tmp/project');
     // Should tunnel the file browser's port
     expect(openTunnel).toHaveBeenCalledWith(54321, 3600);
+  });
+
+  describe('P13.7: saveUploadedFile callback', () => {
+    let tmpProjectDir: string;
+    let uploadsDir: string;
+
+    beforeEach(() => {
+      tmpProjectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cb-test-proj-'));
+      // Create a fake uploads dir matching getUploadsDir() by mocking it
+      uploadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cb-test-uploads-'));
+    });
+
+    afterEach(() => {
+      fs.rmSync(tmpProjectDir, { recursive: true, force: true });
+      fs.rmSync(uploadsDir, { recursive: true, force: true });
+    });
+
+    it('copies staging file to project destination', async () => {
+      // Create a staged file
+      const stagingFile = path.join(uploadsDir, 'upload_abc123def456-logo.png');
+      fs.writeFileSync(stagingFile, 'fake image data');
+
+      // We need to mock getUploadsDir to return our temp dir
+      const utils = await import('../utils.js');
+      const originalGetUploadsDir = utils.getUploadsDir;
+      vi.spyOn(utils, 'getUploadsDir').mockReturnValue(uploadsDir);
+
+      try {
+        const handler = createCallbackHandler({ adapters });
+        const savedPath = await handler.saveUploadedFile!(
+          'upload_abc123def456', 'public/logo.png', tmpProjectDir,
+        );
+
+        expect(savedPath).toBe(path.resolve(tmpProjectDir, 'public/logo.png'));
+        expect(fs.existsSync(savedPath)).toBe(true);
+        expect(fs.readFileSync(savedPath, 'utf8')).toBe('fake image data');
+        // Original staging file should still exist (copy, not move)
+        expect(fs.existsSync(stagingFile)).toBe(true);
+      } finally {
+        vi.mocked(utils.getUploadsDir).mockRestore();
+      }
+    });
+
+    it('rejects path traversal outside project dir', async () => {
+      const stagingFile = path.join(uploadsDir, 'upload_abc-img.png');
+      fs.writeFileSync(stagingFile, 'data');
+
+      const utils = await import('../utils.js');
+      vi.spyOn(utils, 'getUploadsDir').mockReturnValue(uploadsDir);
+
+      try {
+        const handler = createCallbackHandler({ adapters });
+        await expect(
+          handler.saveUploadedFile!('upload_abc', '../../../etc/malicious.png', tmpProjectDir),
+        ).rejects.toThrow('outside the project directory');
+      } finally {
+        vi.mocked(utils.getUploadsDir).mockRestore();
+      }
+    });
+
+    it('throws when upload ID not found', async () => {
+      const utils = await import('../utils.js');
+      vi.spyOn(utils, 'getUploadsDir').mockReturnValue(uploadsDir);
+
+      try {
+        const handler = createCallbackHandler({ adapters });
+        await expect(
+          handler.saveUploadedFile!('upload_nonexistent', 'out.png', tmpProjectDir),
+        ).rejects.toThrow('No staged file found');
+      } finally {
+        vi.mocked(utils.getUploadsDir).mockRestore();
+      }
+    });
+
+    it('creates parent directories if needed', async () => {
+      const stagingFile = path.join(uploadsDir, 'upload_xyz-photo.jpg');
+      fs.writeFileSync(stagingFile, 'jpeg data');
+
+      const utils = await import('../utils.js');
+      vi.spyOn(utils, 'getUploadsDir').mockReturnValue(uploadsDir);
+
+      try {
+        const handler = createCallbackHandler({ adapters });
+        const savedPath = await handler.saveUploadedFile!(
+          'upload_xyz', 'deep/nested/dir/photo.jpg', tmpProjectDir,
+        );
+
+        expect(fs.existsSync(savedPath)).toBe(true);
+        expect(fs.readFileSync(savedPath, 'utf8')).toBe('jpeg data');
+      } finally {
+        vi.mocked(utils.getUploadsDir).mockRestore();
+      }
+    });
   });
 });

@@ -1663,7 +1663,7 @@
             "Creates parent directories if needed",
             "Unit tests pass"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P13.8",
