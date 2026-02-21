@@ -176,6 +176,7 @@ export function buildClaudeArgs(
   text: string,
   sessionId: string | null,
   allowedTools?: string[],
+  mcpConfigJson?: string,
 ): string[] {
   const args = [
     '-p',
@@ -186,6 +187,12 @@ export function buildClaudeArgs(
 
   if (sessionId) {
     args.push('-r', sessionId);
+  }
+
+  // Explicitly pass MCP config so Claude Code discovers bridge tools.
+  // More reliable than .mcp.json file discovery, especially in -p mode.
+  if (mcpConfigJson) {
+    args.push('--mcp-config', mcpConfigJson);
   }
 
   if (allowedTools && allowedTools.length > 0) {
@@ -251,7 +258,26 @@ export class ClaudeBackend implements Backend {
   }
 
   async send(text: string): Promise<SendResult> {
-    const args = buildClaudeArgs(text, this.sessionId, this.allowedTools.length > 0 ? this.allowedTools : undefined);
+    // Build MCP config JSON for explicit --mcp-config flag
+    let mcpConfigJson: string | undefined;
+    if (this.mcpConfig) {
+      mcpConfigJson = JSON.stringify({
+        mcpServers: {
+          openbridge: {
+            command: this.mcpConfig.command,
+            args: this.mcpConfig.args,
+            ...(this.mcpConfig.env ? { env: this.mcpConfig.env } : {}),
+          },
+        },
+      });
+    }
+
+    const args = buildClaudeArgs(
+      text,
+      this.sessionId,
+      this.allowedTools.length > 0 ? this.allowedTools : undefined,
+      mcpConfigJson,
+    );
     // Clear allowed tools after use (one-shot approval)
     this.allowedTools = [];
 

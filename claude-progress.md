@@ -348,6 +348,7 @@ Backend Process (Claude Code / Codex)
 - All 10 features (P10.1–P10.10) committed individually, all marked passing
 - Total: 92 features across 10 phases (P0–P7, P9, P10), all passing
 
+
 ### Session 15 — Manual Test Bug Fixes (12 issues)
 
 Fixed 11 of 12 bugs found during comprehensive manual testing:
@@ -381,4 +382,18 @@ Fixed 11 of 12 bugs found during comprehensive manual testing:
 - Architecture is sound: tool registration, config injection, IPC routing all correct
 - Likely a runtime/configuration issue requiring live debugging to identify exact failure point
 
-**Test count:** 442 tests passing across 20 test files
+**Paginated project picker (commit c8e4737):**
+- Added "Show more" button with offset-based pagination to both Slack and Discord project pickers
+- Configurable `PICKER_PAGE_SIZE` constant (default 15, capped at 20 per platform limits)
+
+### Session 16 — Fix Allow Button (Critical Bug)
+
+**Root cause found and fixed:** Commander.js variadic option `--allowedTools <tools...>` was greedily consuming the prompt text. When building args like `--allowedTools Bash yes`, commander parsed `allowedTools: ['Bash', 'yes']` with `prompt: undefined`. This left Claude Code with no prompt, causing it to hang forever.
+
+**Fix:** Added `--` separator before the prompt text in `buildClaudeArgs()` to terminate option parsing. Now args like `--allowedTools Bash -- yes` correctly parse as `allowedTools: ['Bash']` and `prompt: 'yes'`.
+
+**Files changed:**
+- `src/backends/claude.ts` — `args.push(text)` → `args.push('--', text)`
+- `src/__tests__/claude.test.ts` — added 4 tests for allowedTools arg building
+
+**Test count:** 446 tests passing across 20 test files

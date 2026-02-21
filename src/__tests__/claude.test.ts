@@ -428,6 +428,37 @@ describe('Claude Code backend', () => {
     });
   });
 
+  describe('buildClaudeArgs with mcpConfigJson', () => {
+    it('includes --mcp-config flag when MCP config is provided', () => {
+      const mcpJson = '{"mcpServers":{"openbridge":{"command":"node","args":["entry.js"]}}}';
+      const args = buildClaudeArgs('hello', null, undefined, mcpJson);
+      expect(args).toContain('--mcp-config');
+      const mcpIndex = args.indexOf('--mcp-config');
+      expect(args[mcpIndex + 1]).toBe(mcpJson);
+    });
+
+    it('prompt text is NOT consumed by variadic --mcp-config', () => {
+      const mcpJson = '{"mcpServers":{}}';
+      const args = buildClaudeArgs('hello', null, undefined, mcpJson);
+      expect(args[args.length - 1]).toBe('hello');
+      const dashDashIndex = args.indexOf('--');
+      expect(args[dashDashIndex + 1]).toBe('hello');
+    });
+
+    it('works with both allowedTools and mcpConfigJson', () => {
+      const mcpJson = '{"mcpServers":{}}';
+      const args = buildClaudeArgs('yes', 'sess_abc', ['Bash'], mcpJson);
+      expect(args).toContain('--mcp-config');
+      expect(args).toContain('--allowedTools');
+      expect(args[args.length - 1]).toBe('yes');
+    });
+
+    it('does not include --mcp-config when not provided', () => {
+      const args = buildClaudeArgs('hello', null);
+      expect(args).not.toContain('--mcp-config');
+    });
+  });
+
   describe('edge cases', () => {
     it('every parse result ends with turn_completed', () => {
       const parsed = parseClaudeOutput('', '', 0);

@@ -186,7 +186,7 @@ export function createMcpServer(
     },
   );
 
-  console.log('[mcp] server created with tools: upload_file, open_tunnel, serve_file_browser');
+  console.error('[mcp] server created with tools: upload_file, open_tunnel, serve_file_browser');
   return server;
 }
 
@@ -202,7 +202,7 @@ export async function startMcpServer(
   const server = createMcpServer(context, callbacks);
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.log('[mcp] server connected via stdio transport');
+  console.error('[mcp] server connected via stdio transport');
   return server;
 }
 
