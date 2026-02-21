@@ -545,4 +545,41 @@ describe('P5.5: serve_file_browser MCP tool', () => {
       expect(result.content[0].text).toContain('No staged file found');
     });
   });
+
+  describe('P16.2: post_message MCP tool', () => {
+    it('post_message tool is registered', () => {
+      const server = createMcpServer(context, callbacks);
+      const tools = (server as any)._registeredTools;
+      expect(tools['post_message']).toBeDefined();
+    });
+
+    it('calls postMessage callback with channel, thread, and text', async () => {
+      const server = createMcpServer(context, callbacks);
+      const tools = (server as any)._registeredTools;
+      const handler = tools['post_message'].handler;
+
+      const result = await handler({ text: 'Hello from Claude!' }, {});
+
+      expect(callbacks.postMessage).toHaveBeenCalledWith(
+        'CH_TEST', 'T_TEST', 'Hello from Claude!',
+      );
+      expect(result.content[0].text).toBe('Message posted');
+      expect(result.isError).toBeUndefined();
+    });
+
+    it('returns error when callback throws', async () => {
+      callbacks.postMessage = vi.fn().mockRejectedValue(
+        new Error('Slack API rate limited'),
+      );
+
+      const server = createMcpServer(context, callbacks);
+      const tools = (server as any)._registeredTools;
+      const handler = tools['post_message'].handler;
+
+      const result = await handler({ text: 'test message' }, {});
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Slack API rate limited');
+    });
+  });
 });

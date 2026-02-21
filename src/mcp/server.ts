@@ -221,7 +221,36 @@ export function createMcpServer(
     },
   );
 
-  console.error('[mcp] server created with tools: upload_file, open_tunnel, serve_file_browser, save_uploaded_file');
+  // --- post_message tool ---
+  server.registerTool(
+    'post_message',
+    {
+      description:
+        'Post a message to the user in the chat thread. ' +
+        'Use this to share results, progress updates, links, and important information. ' +
+        'Your internal thinking is NOT shown to the user — only messages sent through this tool are visible. ' +
+        'Always call this at least once per turn to communicate your final results.',
+      inputSchema: {
+        text: z.string().describe('The message text to post to the user'),
+      },
+    },
+    async ({ text }) => {
+      try {
+        await callbacks.postMessage(context.channelId, context.threadId, text);
+        return {
+          content: [{ type: 'text', text: 'Message posted' }],
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: 'text', text: `Error posting message: ${message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  console.error('[mcp] server created with tools: upload_file, open_tunnel, serve_file_browser, save_uploaded_file, post_message');
   return server;
 }
 

@@ -1772,7 +1772,7 @@
             "Tool calls callbacks.postMessage() which routes to adapter.sendMessage()",
             "Build passes, all tests pass"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P16.3",
