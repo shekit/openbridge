@@ -483,7 +483,13 @@ export class DiscordAdapter {
       switch (event.type) {
         case 'assistant_text':
           if (!postMessageUsed && event === lastAssistantText) {
-            await this.postText(channelId, threadId, event.text, context);
+            // Truncate fallback text to last 500 chars (keep the ending, which is most useful)
+            const MAX_FALLBACK = 500;
+            let fallbackText = event.text;
+            if (fallbackText.length > MAX_FALLBACK) {
+              fallbackText = '...' + fallbackText.slice(-MAX_FALLBACK);
+            }
+            await this.postText(channelId, threadId, fallbackText, context);
           }
           break;
 

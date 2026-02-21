@@ -1606,6 +1606,44 @@ describe('DiscordAdapter', () => {
       expect(sendCalls).toHaveLength(0);
     });
 
+    it('truncates long fallback assistant_text to last 500 chars', async () => {
+      const longText = 'A'.repeat(300) + 'B'.repeat(300) + 'THE_END';
+      const longBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => ({
+          events: [
+            { type: 'assistant_text' as const, text: longText },
+          ],
+          sessionId: 'session-long',
+        })),
+        getSessionId: vi.fn(() => 'session-long'),
+        setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
+        stop: vi.fn(async () => {}),
+      }));
+
+      createAdapter({ backendFactory: longBackend });
+      await adapter.start();
+      store.createProject('C_LONG', '/test/long', 'claude');
+
+      const { message } = createMockMessage({
+        channelId: 'thread-long',
+        content: 'do something',
+        isThread: true,
+        parentId: 'C_LONG',
+      });
+
+      await triggerMessage(message);
+
+      const sendCalls = (message.channel.send as any).mock.calls
+        .filter((c: any) => c[0] !== 'Processing...' && c[0]?.content !== 'Processing...');
+      expect(sendCalls).toHaveLength(1);
+      // Should be truncated: starts with "..." and ends with the original ending
+      expect(sendCalls[0][0].content).toMatch(/^\.\.\./);
+      expect(sendCalls[0][0].content).toContain('THE_END');
+      expect(sendCalls[0][0].content.length).toBeLessThanOrEqual(503); // 500 + "..."
+    });
+
     it('always renders error events regardless of assistant_text suppression', async () => {
       const errorBackend = vi.fn(() => ({
         start: vi.fn(async () => {}),

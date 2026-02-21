@@ -1795,6 +1795,16 @@
             "Build passes, all tests pass"
           ],
           "status": "passing"
+        },
+        {
+          "id": "P16.5",
+          "description": "Truncate fallback assistant_text to last 500 chars (keep ending, discard beginning)",
+          "verification": [
+            "Long assistant_text (>500 chars) is truncated from the top with '...' prefix",
+            "Short assistant_text renders unchanged",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
         }
       ]
     }

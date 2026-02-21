@@ -503,7 +503,13 @@ export class SlackAdapter {
       switch (event.type) {
         case 'assistant_text':
           if (!postMessageUsed && event === lastAssistantText) {
-            await this.postText(channelId, threadTs, event.text, client);
+            // Truncate fallback text to last 500 chars (keep the ending, which is most useful)
+            const MAX_FALLBACK = 500;
+            let fallbackText = event.text;
+            if (fallbackText.length > MAX_FALLBACK) {
+              fallbackText = '...' + fallbackText.slice(-MAX_FALLBACK);
+            }
+            await this.postText(channelId, threadTs, fallbackText, client);
           }
           break;
 

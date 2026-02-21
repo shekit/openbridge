@@ -1684,6 +1684,41 @@ describe('SlackAdapter', () => {
       clearPostMessageFlag('T_A');
     });
 
+    it('truncates long fallback assistant_text to last 500 chars', async () => {
+      const longText = 'A'.repeat(300) + 'B'.repeat(300) + 'THE_END';
+      const longBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => ({
+          events: [
+            { type: 'assistant_text' as const, text: longText },
+          ],
+          sessionId: 'session-long',
+        })),
+        getSessionId: vi.fn(() => 'session-long'),
+        setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
+        stop: vi.fn(async () => {}),
+      }));
+
+      createAdapter({ backendFactory: longBackend });
+      await adapter.start();
+      store.createProject('C_LONG', '/test/long', 'claude');
+
+      await triggerMessage({
+        channel: 'C_LONG',
+        thread_ts: 'T_LONG_1',
+        text: 'do something',
+        user: 'U1',
+        subtype: undefined,
+      });
+
+      expect(capturedTexts).toHaveLength(1);
+      // Should be truncated: starts with "..." and ends with the original ending
+      expect(capturedTexts[0]).toMatch(/^\.\.\./);
+      expect(capturedTexts[0]).toContain('THE_END');
+      expect(capturedTexts[0].length).toBeLessThanOrEqual(503); // 500 + "..."
+    });
+
     it('always renders error events regardless of assistant_text suppression', async () => {
       const errorBackend = vi.fn(() => ({
         start: vi.fn(async () => {}),
