@@ -269,13 +269,27 @@ export class DiscordAdapter {
     text: string,
     message: Message
   ): Promise<void> {
+    // Post a processing indicator while waiting for the backend response
+    let processingMsg: Message | null = null;
+    try {
+      if (message.channel.isThread?.()) {
+        processingMsg = await message.channel.send('Processing...');
+      }
+    } catch {
+      // Non-fatal — continue without indicator
+    }
+
     let result: RouteResult;
     try {
       result = await this.router.respond(channelId, threadId, text);
     } catch (err: any) {
+      if (processingMsg) await processingMsg.delete().catch(() => {});
       await this.postError(channelId, threadId, err.message, message);
       return;
     }
+
+    // Remove the processing indicator before posting real response
+    if (processingMsg) await processingMsg.delete().catch(() => {});
 
     await this.renderEvents(channelId, threadId, result.events, message);
   }
@@ -331,6 +345,17 @@ export class DiscordAdapter {
       // Non-fatal if update fails
     }
 
+    // Post a processing indicator while waiting for the backend response
+    let processingMsg: Message | null = null;
+    try {
+      const channel = interaction.channel;
+      if (channel && 'send' in channel) {
+        processingMsg = await (channel as any).send('Processing...');
+      }
+    } catch {
+      // Non-fatal — continue without indicator
+    }
+
     // Route the response with allowed tools when user clicks Allow
     const responseText = isAllow ? 'yes' : 'no';
     const allowedTools = isAllow && toolName ? [toolName] : undefined;
@@ -338,9 +363,13 @@ export class DiscordAdapter {
     try {
       result = await this.router.respond(channelId, threadId, responseText, allowedTools);
     } catch (err: any) {
+      if (processingMsg) await processingMsg.delete().catch(() => {});
       await this.sendToThread(threadId, interaction, `:warning: **Error:** ${err.message}`);
       return;
     }
+
+    // Remove the processing indicator before posting real response
+    if (processingMsg) await processingMsg.delete().catch(() => {});
 
     // Delegate to renderEvents so chained permission_denied events are rendered
     await this.renderEvents(channelId, threadId, result.events, interaction);

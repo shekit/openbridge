@@ -20,7 +20,7 @@ function createMockDiscordClient() {
   const mockUser = { id: 'BOT_USER_123', tag: 'TestBot#1234' };
 
   const mockSendableChannel = {
-    send: vi.fn(async () => ({ id: 'msg_123' })),
+    send: vi.fn(async () => ({ id: 'msg_123', delete: vi.fn(async () => {}) })),
     isThread: () => true,
   };
 
@@ -222,7 +222,7 @@ function createMockButtonInteraction(overrides: {
     parentId: isThread ? parentId : null,
     send: vi.fn(async (opts: any) => {
       threadMessages.push(opts);
-      return { id: 'msg-123' };
+      return { id: 'msg-123', delete: vi.fn(async () => {}) };
     }),
   };
 

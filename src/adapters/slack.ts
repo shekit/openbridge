@@ -287,12 +287,33 @@ export class SlackAdapter {
     text: string,
     client: any
   ): Promise<void> {
+    // Post a processing indicator while waiting for the backend response
+    let processingTs: string | null = null;
+    try {
+      const processingMsg = await client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: 'Processing...',
+      });
+      processingTs = processingMsg.ts ?? null;
+    } catch {
+      // Non-fatal — continue without indicator
+    }
+
     let result: RouteResult;
     try {
       result = await this.router.respond(channelId, threadTs, text);
     } catch (err: any) {
+      if (processingTs) {
+        await client.chat.delete({ channel: channelId, ts: processingTs }).catch(() => {});
+      }
       await this.postError(channelId, threadTs, err.message, client);
       return;
+    }
+
+    // Remove the processing indicator before posting real response
+    if (processingTs) {
+      await client.chat.delete({ channel: channelId, ts: processingTs }).catch(() => {});
     }
 
     await this.renderEvents(channelId, threadTs, result.events, client);
@@ -330,6 +351,19 @@ export class SlackAdapter {
       // Non-fatal if update fails
     }
 
+    // Post a processing indicator while waiting for the backend response
+    let processingTs: string | null = null;
+    try {
+      const processingMsg = await client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: 'Processing...',
+      });
+      processingTs = processingMsg.ts ?? null;
+    } catch {
+      // Non-fatal — continue without indicator
+    }
+
     // Route the response with allowed tools when user clicks Allow
     const responseText = action === 'allow' ? 'yes' : 'no';
     const allowedTools = action === 'allow' && toolName ? [toolName] : undefined;
@@ -337,8 +371,16 @@ export class SlackAdapter {
     try {
       result = await this.router.respond(channelId, threadTs, responseText, allowedTools);
     } catch (err: any) {
+      if (processingTs) {
+        await client.chat.delete({ channel: channelId, ts: processingTs }).catch(() => {});
+      }
       await this.postError(channelId, threadTs, err.message, client);
       return;
+    }
+
+    // Remove the processing indicator before posting real response
+    if (processingTs) {
+      await client.chat.delete({ channel: channelId, ts: processingTs }).catch(() => {});
     }
 
     await this.renderEvents(channelId, threadTs, result.events, client);
