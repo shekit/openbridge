@@ -397,3 +397,36 @@ Fixed 11 of 12 bugs found during comprehensive manual testing:
 - `src/__tests__/claude.test.ts` — added 4 tests for allowedTools arg building
 
 **Test count:** 446 tests passing across 20 test files
+
+### Session 17 — Phase 11: Real-Time Permission Handling via Claude Code Hooks
+
+Implemented Claude Code hooks for real-time permission prompts, replacing the broken retry-and-fail pattern in `-p` mode. Previously, Claude Code auto-denied tools 12+ times before exiting. Now, permission requests show Allow/Deny buttons in Slack/Discord immediately, and Claude continues without restarting.
+
+**Architecture:**
+```
+Claude Code (-p mode) → PreToolUse hook → auto-approve MCP tools
+                      → PermissionRequest hook → POST /permission-request to IPC server
+                                               → adapter shows Allow/Deny buttons
+                                               → user clicks → resolvePermission() in-process
+                                               → hook returns allow/deny → Claude continues
+```
+
+**New files:**
+- `src/hooks/pre-tool-use.ts` — auto-approves `mcp__openbridge__*` tools, defers others
+- `src/hooks/permission-request.ts` — blocking hook: sends permission prompt via IPC, polls for user response (5-min timeout)
+- `src/__tests__/hooks-pre-tool-use.test.ts` (5 tests)
+- `src/__tests__/hooks-permission-request.test.ts` (4 tests)
+
+**Modified files:**
+- `src/backends/claude.ts` — `MCP_TOOLS` constant for pre-approval, `buildHookSettings()` generates `--settings` JSON, `buildClaudeArgs()` accepts settingsJson param, `ClaudeBackend` stores IPC/context from `start()` and passes env vars + settings to `spawnCollect()`
+- `src/types/backend.ts` — `BackendOptions` extended with `ipc`, `channelId`, `threadId`, `platform`, `hookScriptDir`
+- `src/router.ts` — `RouterOptions` accepts `ipc` and `hookScriptDir`, passes all fields to `backend.start()`
+- `src/mcp/ipc-server.ts` — added `/permission-request`, `/permission-poll`, `/permission-resolve` endpoints, `resolvePermission()` export, stale entry cleanup
+- `src/mcp/callbacks.ts` — added `requestPermission()` handler routing to adapters
+- `src/types/adapter.ts` — `postPermissionPrompt()` event param now includes optional `requestId`
+- `src/adapters/slack.ts` — embeds `requestId` in button values (`toolName|requestId`), resolves in-process when present, falls back to legacy `router.respond()` flow
+- `src/adapters/discord.ts` — same pattern with customId format
+- `src/cli/start.ts` — passes `ipc` and `hookScriptDir` to Router options
+
+**Test count:** 481 tests passing across 22 test files
+- All 9 features (P11.1–P11.9) committed individually, all marked passing
