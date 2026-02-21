@@ -508,4 +508,133 @@ describe('Router', () => {
       }));
     });
   });
+
+  describe('P13.4: Router augments prompt text and cleans up staging', () => {
+    it('augments text with upload info when images have uploadId', async () => {
+      let capturedText = '';
+      const capturingBackend: Backend = {
+        async start() {},
+        async send(text: string) {
+          capturedText = text;
+          return {
+            events: [{ type: 'assistant_text' as const, text: 'ok' }, { type: 'turn_completed' as const }],
+            sessionId: 'sess-1',
+          };
+        },
+        getSessionId() { return 'sess-1'; },
+        setSessionId() {},
+        setAllowedTools() {},
+        async stop() {},
+      };
+
+      const factory: BackendFactory = () => capturingBackend;
+      const r = new Router(store, factory);
+      store.createProject('CH_AUG', '/tmp/aug', 'claude', 'slack');
+
+      await r.send('CH_AUG', 'T_AUG', 'save this logo', [
+        {
+          base64: 'abc123',
+          mediaType: 'image/png',
+          uploadId: 'upload_aabbccddee11',
+          filename: 'logo.png',
+          stagingPath: '/tmp/fake-staging.png',
+        },
+      ]);
+
+      expect(capturedText).toContain('save this logo');
+      expect(capturedText).toContain('upload_aabbccddee11');
+      expect(capturedText).toContain('logo.png');
+      expect(capturedText).toContain('save_uploaded_file');
+    });
+
+    it('does not augment text when images lack uploadId', async () => {
+      let capturedText = '';
+      const capturingBackend: Backend = {
+        async start() {},
+        async send(text: string) {
+          capturedText = text;
+          return {
+            events: [{ type: 'assistant_text' as const, text: 'ok' }, { type: 'turn_completed' as const }],
+            sessionId: 'sess-2',
+          };
+        },
+        getSessionId() { return 'sess-2'; },
+        setSessionId() {},
+        setAllowedTools() {},
+        async stop() {},
+      };
+
+      const factory: BackendFactory = () => capturingBackend;
+      const r = new Router(store, factory);
+      store.createProject('CH_NOAUG', '/tmp/noaug', 'claude', 'slack');
+
+      await r.send('CH_NOAUG', 'T_NOAUG', 'what is this?', [
+        { base64: 'abc123', mediaType: 'image/png' },
+      ]);
+
+      expect(capturedText).toBe('what is this?');
+    });
+
+    it('cleans up staging files after successful send', async () => {
+      // Create a real temp file to verify cleanup
+      const tmpPath = path.join(os.tmpdir(), `staging-cleanup-test-${Date.now()}.png`);
+      fs.writeFileSync(tmpPath, 'test');
+
+      const successBackend: Backend = {
+        async start() {},
+        async send() {
+          return {
+            events: [{ type: 'turn_completed' as const }],
+            sessionId: 'sess-3',
+          };
+        },
+        getSessionId() { return 'sess-3'; },
+        setSessionId() {},
+        setAllowedTools() {},
+        async stop() {},
+      };
+
+      const factory: BackendFactory = () => successBackend;
+      const r = new Router(store, factory);
+      store.createProject('CH_CLN', '/tmp/cln', 'claude', 'slack');
+
+      expect(fs.existsSync(tmpPath)).toBe(true);
+
+      await r.send('CH_CLN', 'T_CLN', 'hello', [
+        { base64: 'abc', mediaType: 'image/png', stagingPath: tmpPath },
+      ]);
+
+      expect(fs.existsSync(tmpPath)).toBe(false);
+    });
+
+    it('cleans up staging files even if backend fails', async () => {
+      const tmpPath = path.join(os.tmpdir(), `staging-fail-test-${Date.now()}.png`);
+      fs.writeFileSync(tmpPath, 'test');
+
+      const failBackend: Backend = {
+        async start() {},
+        async send() {
+          throw new Error('backend crashed');
+        },
+        getSessionId() { return null; },
+        setSessionId() {},
+        setAllowedTools() {},
+        async stop() {},
+      };
+
+      const factory: BackendFactory = () => failBackend;
+      const r = new Router(store, factory);
+      store.createProject('CH_FAIL', '/tmp/fail', 'claude', 'slack');
+
+      expect(fs.existsSync(tmpPath)).toBe(true);
+
+      await expect(
+        r.send('CH_FAIL', 'T_FAIL', 'hello', [
+          { base64: 'abc', mediaType: 'image/png', stagingPath: tmpPath },
+        ]),
+      ).rejects.toThrow('backend crashed');
+
+      expect(fs.existsSync(tmpPath)).toBe(false);
+    });
+  });
 });
