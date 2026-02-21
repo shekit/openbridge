@@ -32,6 +32,7 @@ function createMockBoltApp() {
       create: vi.fn(async () => ({ ok: true, channel: { id: 'C_NEW123' } })),
       join: vi.fn(async () => ({ ok: true })),
       invite: vi.fn(async () => ({ ok: true })),
+      info: vi.fn(async () => ({ ok: true, channel: { is_member: true } })),
     },
     filesUploadV2: vi.fn(async () => ({ ok: true })),
   };

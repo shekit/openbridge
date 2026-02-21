@@ -174,22 +174,31 @@ export class SlackAdapter {
    * Returns true if the bot is in the channel, false if it can't join.
    */
   private async ensureInChannel(channelId: string, client: any): Promise<boolean> {
+    // First check if we're already in the channel (works for both public and private)
+    try {
+      const info = await client.conversations.info({ channel: channelId });
+      if (info.channel?.is_member) {
+        return true;
+      }
+    } catch {
+      // Can't even see the channel — bot hasn't been invited to a private channel
+      console.log(`[slack] cannot access channel ${channelId} — bot may not be invited`);
+      return false;
+    }
+
+    // Not a member yet — try to join (only works for public channels)
     try {
       await client.conversations.join({ channel: channelId });
       return true;
     } catch (err: any) {
       const errorCode = err?.data?.error;
-      if (errorCode === 'already_in_channel') {
-        return true;
-      }
-      // Private channel or other join failure — tell the user
+      // Private channel — bot can see it but can't self-join
       try {
         await client.chat.postMessage({
           channel: channelId,
           text: 'I need to be in this channel first. Run `/invite @OpenBridge` and try again.',
         });
       } catch {
-        // Can't post either — the user will see the slash command fail silently
         console.log(`[slack] cannot join or post to channel ${channelId}: ${errorCode}`);
       }
       return false;
