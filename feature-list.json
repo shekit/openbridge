@@ -1606,7 +1606,7 @@
             "Existing code compiles without changes (fields are optional)",
             "Build and tests pass"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P13.3",

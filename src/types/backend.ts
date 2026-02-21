@@ -18,6 +18,12 @@ export interface ImageAttachment {
   base64: string;
   /** MIME type (e.g., 'image/png', 'image/jpeg', 'image/gif', 'image/webp'). */
   mediaType: string;
+  /** Upload ID for referencing this image in the save_uploaded_file MCP tool. */
+  uploadId?: string;
+  /** Original filename of the uploaded image. */
+  filename?: string;
+  /** Full path to the staging file in ~/.openbridge-ai/uploads/. */
+  stagingPath?: string;
 }
 
 /** MCP server configuration for injection into backend CLI. */
