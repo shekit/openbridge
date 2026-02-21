@@ -4,6 +4,8 @@
 
 import * as os from 'node:os';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
+import { randomUUID } from 'node:crypto';
 
 /** Canonical config directory: ~/.openbridge-ai/ */
 export function getConfigDir(): string {
@@ -48,6 +50,44 @@ export async function downloadToBase64(
     return { base64: buffer.toString('base64'), mediaType };
   } catch {
     return null;
+  }
+}
+
+/** Uploads staging directory: ~/.openbridge-ai/uploads/ */
+export function getUploadsDir(): string {
+  return path.join(getConfigDir(), 'uploads');
+}
+
+/**
+ * Save image data to the staging directory for later retrieval by the
+ * save_uploaded_file MCP tool. Returns the upload ID, sanitized filename,
+ * and full staging path.
+ */
+export function saveToStagingDir(
+  base64: string,
+  mediaType: string,
+  originalFilename: string,
+): { uploadId: string; filename: string; stagingPath: string } {
+  const uploadsDir = getUploadsDir();
+  fs.mkdirSync(uploadsDir, { recursive: true });
+
+  const uploadId = `upload_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+  const safeName = path.basename(originalFilename) || 'image.png';
+  const stagingPath = path.join(uploadsDir, `${uploadId}-${safeName}`);
+
+  fs.writeFileSync(stagingPath, Buffer.from(base64, 'base64'));
+  console.log(`[uploads] saved staging file: ${stagingPath}`);
+
+  return { uploadId, filename: safeName, stagingPath };
+}
+
+/** Clean up staging files. Best-effort, ignores errors. */
+export function cleanupStagingFiles(stagingPaths: string[]): void {
+  for (const p of stagingPaths) {
+    try {
+      fs.unlinkSync(p);
+      console.log(`[uploads] cleaned up staging file: ${p}`);
+    } catch { /* file may already be gone */ }
   }
 }
 

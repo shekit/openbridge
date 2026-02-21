@@ -1580,6 +1580,104 @@
           "status": "passing"
         }
       ]
+    },
+    {
+      "id": "P13",
+      "name": "Image Upload Staging & Save Tool",
+      "outcome": "Uploaded images saved to staging dir, MCP tool lets backends save them to project",
+      "features": [
+        {
+          "id": "P13.1",
+          "description": "Staging directory utilities — saveToStagingDir, cleanupStagingFiles, getUploadsDir",
+          "verification": [
+            "saveToStagingDir creates file in ~/.openbridge-ai/uploads/ with correct content",
+            "Upload IDs are unique and match upload_XXXXXXXXXXXX format",
+            "Filename sanitized via path.basename (no path traversal)",
+            "cleanupStagingFiles deletes files, ignores missing",
+            "Unit tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P13.2",
+          "description": "Extend ImageAttachment with optional uploadId, filename, stagingPath fields",
+          "verification": [
+            "ImageAttachment interface has uploadId?, filename?, stagingPath?",
+            "Existing code compiles without changes (fields are optional)",
+            "Build and tests pass"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P13.3",
+          "description": "Adapters save images to staging and populate upload metadata on ImageAttachment",
+          "verification": [
+            "Slack handleFileUpload calls saveToStagingDir after downloadToBase64",
+            "Discord handleFileUpload calls saveToStagingDir after downloadToBase64",
+            "ImageAttachment objects include uploadId, filename, stagingPath",
+            "Unit tests verify staging metadata is populated"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P13.4",
+          "description": "Router augments prompt text with upload info and cleans up staging after turn",
+          "verification": [
+            "Prompt text includes [Uploaded image: ... (upload_id: ...)] for images with uploadId",
+            "Text not augmented when images lack uploadId",
+            "Staging files cleaned up after successful send",
+            "Staging files cleaned up after failed send",
+            "Unit tests pass"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P13.5",
+          "description": "Codex backend reuses staging file paths for --image instead of creating temp copies",
+          "verification": [
+            "When images have stagingPath, Codex uses them directly for --image",
+            "No temp files created when staging paths exist",
+            "Falls back to temp files when stagingPath absent",
+            "Unit tests pass"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P13.6",
+          "description": "IPC endpoint /save-uploaded-file with saveUploadedFile on IpcHandler",
+          "verification": [
+            "IpcHandler interface has saveUploadedFile method",
+            "/save-uploaded-file endpoint returns 200 with path on success",
+            "Auth required, returns 401 without secret",
+            "Unit tests pass"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P13.7",
+          "description": "Callbacks handler saveUploadedFile — copies from staging to project dir",
+          "verification": [
+            "Finds staging file by uploadId prefix",
+            "Copies file to destination within project dir",
+            "Rejects path traversal outside project dir",
+            "Creates parent directories if needed",
+            "Unit tests pass"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P13.8",
+          "description": "Register save_uploaded_file MCP tool, wire through entry.ts, add to MCP_TOOLS",
+          "verification": [
+            "save_uploaded_file tool registered on MCP server",
+            "BridgeCallbacks includes saveUploadedFile",
+            "entry.ts wires callback to /save-uploaded-file IPC endpoint",
+            "MCP_TOOLS includes mcp__openbridge__save_uploaded_file",
+            "Unit tests pass"
+          ],
+          "status": "failing"
+        }
+      ]
     }
   ]
 }
