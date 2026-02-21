@@ -110,8 +110,9 @@ export function createMcpServer(
     {
       description:
         'Expose a local port via a public tunnel (Cloudflare Tunnel or ngrok) and post the URL in the chat thread. ' +
-        'Use this AFTER starting a dev server (e.g. `npm run dev` on port 3000) — start the server in the background first, ' +
-        'then call this tool with the port to make it publicly accessible.',
+        'IMPORTANT: Before calling this, start your dev server in the BACKGROUND using a shell command with & ' +
+        '(e.g. `npm run dev &` or `npx serve -p 3000 &`). Do NOT run the server in the foreground — ' +
+        'it will block forever. Once the server is running in the background, call this tool with its port number.',
       inputSchema: {
         port: z.number().int().min(1).max(65535).describe('Port number to tunnel'),
         ttl: z.number().int().min(60).max(86400).default(3600).optional()

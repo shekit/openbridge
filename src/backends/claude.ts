@@ -308,6 +308,17 @@ export class ClaudeBackend implements Backend {
     this.activeHandle = null;
     console.log(`[claude] process exited with code ${result.exitCode}`);
 
+    // Log stderr for debugging (MCP connection issues, tool usage, errors)
+    if (result.stderr) {
+      const stderrLines = result.stderr.split('\n').filter((l) => l.trim());
+      for (const line of stderrLines) {
+        // Skip JSON lines (already parsed as events) — only log human-readable text
+        if (!line.trim().startsWith('{')) {
+          console.log(`[claude:stderr] ${line}`);
+        }
+      }
+    }
+
     const parsed = parseClaudeOutput(result.stdout, result.stderr, result.exitCode);
 
     if (parsed.sessionId) {
