@@ -319,6 +319,20 @@ export class DiscordAdapter {
       await this.postProjectPicker(interaction, offset);
       return;
     }
+    if (customId.startsWith('perm_mode_')) {
+      const rest = customId.slice('perm_mode_'.length); // e.g. "trusted:42"
+      const colonIdx = rest.indexOf(':');
+      const mode = rest.slice(0, colonIdx);
+      const projectId = parseInt(rest.slice(colonIdx + 1), 10);
+      if (mode === 'trusted' || mode === 'supervised') {
+        this.store.updatePermissionMode(projectId, mode);
+        const label = mode === 'trusted'
+          ? 'Permission mode set to **trusted** — all permissions will be auto-approved'
+          : 'Permission mode set to **supervised** — you\'ll be asked to approve actions';
+        await interaction.update({ content: label, components: [] });
+      }
+      return;
+    }
 
     if (!customId.startsWith('permission_allow') && !customId.startsWith('permission_deny')) {
       return;
@@ -391,6 +405,7 @@ export class DiscordAdapter {
     await this.bindProjectToChannel(
       interaction.channelId, projectPath, backend,
       (text) => interaction.update({ content: text, components: [] }),
+      interaction.channel,
     );
   }
 
@@ -688,16 +703,38 @@ export class DiscordAdapter {
     return backend;
   }
 
+  /** Post permission mode selection buttons after project creation. */
+  private async postPermissionModePrompt(channel: any, projectId: number): Promise<void> {
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`perm_mode_supervised:${projectId}`)
+        .setLabel('Supervised')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(`perm_mode_trusted:${projectId}`)
+        .setLabel('Trusted')
+        .setStyle(ButtonStyle.Danger),
+    );
+    await channel.send({
+      content: '**Permission mode:** How should the coding agent handle actions that need approval?\n*Supervised* — approve actions individually (recommended) | *Trusted* — skip all permission checks',
+      components: [row],
+    });
+  }
+
   /** Bind a project to a channel and respond with confirmation. */
   private async bindProjectToChannel(
     channelId: string,
     projectDir: string,
     backend: string,
     respond: (text: string) => Promise<void>,
+    channel?: any,
   ): Promise<void> {
     try {
-      this.store.createProject(channelId, projectDir, backend, 'discord');
+      const project = this.store.createProject(channelId, projectDir, backend, 'discord');
       await respond(`Connected this channel to project \`${projectDir}\` (${backend})`);
+      if (channel) {
+        await this.postPermissionModePrompt(channel, project.id);
+      }
     } catch (err: any) {
       await respond(`:warning: Failed to connect: ${err.message}`);
     }
@@ -720,8 +757,9 @@ export class DiscordAdapter {
         name: channelName,
         type: ChannelType.GuildText,
       });
-      this.store.createProject(newChannel.id, projectDir, backend, 'discord');
+      const project = this.store.createProject(newChannel.id, projectDir, backend, 'discord');
       await respond(`Created and connected <#${newChannel.id}> to project \`${projectDir}\` (${backend})`);
+      await this.postPermissionModePrompt(newChannel, project.id);
     } catch (err: any) {
       await respond(`:warning: Failed to create channel: ${err.message}`);
     }

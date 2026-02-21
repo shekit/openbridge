@@ -136,6 +136,16 @@ export class SlackAdapter {
       await this.handleProjectConnect(channelId, projectDir, { user_id: (body as any).user?.id }, client as any);
     });
 
+    this.app.action('perm_mode_trusted', async ({ body, ack, client }) => {
+      await ack();
+      await this.handlePermModeAction(body as any, 'trusted', client);
+    });
+
+    this.app.action('perm_mode_supervised', async ({ body, ack, client }) => {
+      await ack();
+      await this.handlePermModeAction(body as any, 'supervised', client);
+    });
+
     this.app.action('project_picker_more', async ({ body, ack, client }) => {
       await ack();
       const channelId = (body as any).channel?.id;
@@ -878,6 +888,64 @@ export class SlackAdapter {
     return backend;
   }
 
+  /** Handle permission mode button action. */
+  private async handlePermModeAction(body: any, mode: 'trusted' | 'supervised', client: any): Promise<void> {
+    const action = body.actions?.[0];
+    const channelId = body.channel?.id;
+    if (!action?.value || !channelId) return;
+    const projectId = parseInt(action.value.split(':')[1], 10);
+    this.store.updatePermissionMode(projectId, mode);
+    await client.chat.postMessage({
+      channel: channelId,
+      text: `Permission mode set to *${mode}*${mode === 'trusted' ? ' — all permissions will be auto-approved' : ' — you\'ll be asked to approve actions'}`,
+    });
+  }
+
+  /** Post permission mode selection buttons after project creation. */
+  private async postPermissionModePrompt(channelId: string, projectId: number, client: any): Promise<void> {
+    await client.chat.postMessage({
+      channel: channelId,
+      text: 'Choose a permission mode for this project:',
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: '*Permission mode:*\nHow should the coding agent handle actions that need approval?',
+          },
+        },
+        {
+          type: 'actions',
+          elements: [
+            {
+              type: 'button',
+              text: { type: 'plain_text', text: 'Supervised' },
+              action_id: 'perm_mode_supervised',
+              value: `supervised:${projectId}`,
+              style: 'primary',
+            },
+            {
+              type: 'button',
+              text: { type: 'plain_text', text: 'Trusted' },
+              action_id: 'perm_mode_trusted',
+              value: `trusted:${projectId}`,
+              style: 'danger',
+            },
+          ],
+        },
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: '*Supervised* — approve actions individually (recommended) | *Trusted* — skip all permission checks',
+            },
+          ],
+        },
+      ],
+    });
+  }
+
   /** Bind a project to a channel and post confirmation. */
   private async bindProjectToChannel(
     channelId: string,
@@ -888,12 +956,13 @@ export class SlackAdapter {
     const backend = this.getDefaultBackend();
     const notify = notifyChannelId ?? channelId;
     try {
-      this.store.createProject(channelId, projectDir, backend, 'slack');
+      const project = this.store.createProject(channelId, projectDir, backend, 'slack');
       const label = notifyChannelId ? `<#${channelId}>` : 'this channel';
       await client.chat.postMessage({
         channel: notify,
         text: `Connected ${label} to project \`${projectDir}\` (${backend})`,
       });
+      await this.postPermissionModePrompt(notify, project.id, client);
     } catch (err: any) {
       await client.chat.postMessage({
         channel: notify,
@@ -915,7 +984,7 @@ export class SlackAdapter {
       const result = await client.conversations.create({ name: channelName });
       const newChannelId = result.channel?.id;
       if (newChannelId) {
-        this.store.createProject(newChannelId, projectDir, backend, 'slack');
+        const project = this.store.createProject(newChannelId, projectDir, backend, 'slack');
         if (userId) {
           await client.conversations.invite({ channel: newChannelId, users: userId }).catch(() => {});
         }
@@ -923,6 +992,7 @@ export class SlackAdapter {
           channel: sourceChannelId,
           text: `Created and connected <#${newChannelId}> to project \`${projectDir}\` (${backend})`,
         });
+        await this.postPermissionModePrompt(newChannelId, project.id, client);
       }
     } catch (err: any) {
       if (err.data?.error === 'name_taken') {
