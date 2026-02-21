@@ -1414,6 +1414,16 @@
             "All 481 tests pass"
           ],
           "status": "passing"
+        },
+        {
+          "id": "P11.9",
+          "description": "Wire IPC server info and hookScriptDir through to Router in start.ts",
+          "verification": [
+            "Router receives ipc and hookScriptDir options",
+            "hookScriptDir points to dist/ where compiled hook scripts live",
+            "Build succeeds, all 481 tests pass"
+          ],
+          "status": "passing"
         }
       ]
     }

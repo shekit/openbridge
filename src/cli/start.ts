@@ -391,12 +391,15 @@ export async function runStart(deps?: StartDeps): Promise<void> {
   const ipcServer = await startIpcServer(ipcHandler);
   console.log(`[start] IPC server listening on port ${ipcServer.port}`);
 
-  // Resolve the MCP entry script path (dist/mcp/entry.js)
-  const entryScriptPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'mcp', 'entry.js');
+  // Resolve the dist/ directory (where compiled JS lives)
+  const distDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+  const entryScriptPath = path.join(distDir, 'mcp', 'entry.js');
 
   // Create mcpConfigFactory that generates per-session MCP config
   const backendFactory = createBackendFactory();
   const router = new Router(store, backendFactory, {
+    ipc: { port: ipcServer.port, secret: ipcServer.secret },
+    hookScriptDir: distDir,
     mcpConfigFactory: (ctx) => {
       const config = getMcpConfig(entryScriptPath, ctx, {
         port: ipcServer.port,
