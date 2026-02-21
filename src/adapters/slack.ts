@@ -169,26 +169,7 @@ export class SlackAdapter {
       const channelId = (body as any).channel?.id;
       const projectDir = action?.value;
       if (!projectDir || !channelId) return;
-      // Treat like a connect — bind to this channel
-      const existing = this.store.getProjectByChannelId(channelId);
-      if (existing) {
-        // Channel already bound — create new channel for this project
-        await this.handleProjectConnect(channelId, projectDir, { user_id: (body as any).user?.id }, client as any);
-      } else {
-        const backend = this.store.getSetting('default_backend') ?? 'claude';
-        try {
-          this.store.createProject(channelId, projectDir, backend, 'slack');
-          await (client as any).chat.postMessage({
-            channel: channelId,
-            text: `Bound this channel to project \`${projectDir}\` (${backend})`,
-          });
-        } catch (err: any) {
-          await (client as any).chat.postMessage({
-            channel: channelId,
-            text: `:warning: Failed to bind: ${err.message}`,
-          });
-        }
-      }
+      await this.handleProjectConnect(channelId, projectDir, { user_id: (body as any).user?.id }, client as any);
     });
 
     // Slash commands

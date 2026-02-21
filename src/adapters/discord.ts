@@ -270,21 +270,7 @@ export class DiscordAdapter {
     if (customId.startsWith('project_pick:')) {
       const projectDir = customId.slice('project_pick:'.length);
       const channelId = interaction.channelId;
-      const existing = this.store.getProjectByChannelId(channelId);
-      if (existing) {
-        await this.handleProjectConnect(interaction, channelId, projectDir);
-      } else {
-        const backend = this.store.getSetting('default_backend') ?? 'claude';
-        try {
-          this.store.createProject(channelId, projectDir, backend, 'discord');
-          await interaction.update({
-            content: `Bound this channel to project \`${projectDir}\` (${backend})`,
-            components: [],
-          });
-        } catch (err: any) {
-          await interaction.reply(`:warning: Failed to bind: ${err.message}`);
-        }
-      }
+      await this.handleProjectConnect(interaction, channelId, projectDir);
       return;
     }
 
