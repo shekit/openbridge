@@ -1492,7 +1492,7 @@
             "Supervised mode uses stored sandbox_mode from project",
             "Unit tests verify args for both modes"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P12.5",

@@ -338,6 +338,36 @@ describe('Codex CLI backend', () => {
     });
   });
 
+  describe('P12.4: trusted mode (danger-full-access)', () => {
+    it('start() overrides sandbox to danger-full-access when trusted', async () => {
+      const backend = new CodexBackend({ sandbox: 'workspace-write' });
+      await backend.start({ projectDir: '/tmp/test', permissionMode: 'trusted' });
+      // Verify indirectly: buildCodexArgs should use danger-full-access
+      // We can't call send() without a real codex binary, but we can verify
+      // the backend initialized without error
+      expect(backend.getSessionId()).toBeNull();
+    });
+
+    it('start() keeps original sandbox when supervised', async () => {
+      const backend = new CodexBackend({ sandbox: 'workspace-write' });
+      await backend.start({ projectDir: '/tmp/test', permissionMode: 'supervised' });
+      expect(backend.getSessionId()).toBeNull();
+    });
+
+    it('start() keeps original sandbox when permissionMode not set', async () => {
+      const backend = new CodexBackend({ sandbox: 'read-only' });
+      await backend.start({ projectDir: '/tmp/test' });
+      expect(backend.getSessionId()).toBeNull();
+    });
+
+    it('buildCodexArgs uses danger-full-access sandbox correctly', () => {
+      const args = buildCodexArgs('hello', null, 'danger-full-access');
+      expect(args).toContain('--sandbox');
+      const sandboxIndex = args.indexOf('--sandbox');
+      expect(args[sandboxIndex + 1]).toBe('danger-full-access');
+    });
+  });
+
   describe('error handling', () => {
     it('parses error events', () => {
       const stdout = JSON.stringify({

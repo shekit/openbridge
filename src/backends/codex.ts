@@ -222,6 +222,11 @@ export class CodexBackend implements Backend {
     this.projectDir = options.projectDir;
     this.mcpConfig = options.mcpConfig;
 
+    // Trusted mode — override sandbox to full access (no restrictions)
+    if (options.permissionMode === 'trusted') {
+      this.sandbox = 'danger-full-access';
+    }
+
     // Write MCP config if provided so Codex discovers the bridge tools
     if (this.mcpConfig) {
       writeCodexMcpConfig(this.projectDir, this.mcpConfig);
