@@ -456,7 +456,11 @@ export class DiscordAdapter {
     if (subcommand === 'list') {
       const projects = this.store.listProjects();
       if (projects.length === 0) {
-        await interaction.reply('No project bindings found. Use `/project connect` to bind one.');
+        const root = this.store.getSetting('projects_root');
+        const hint = root
+          ? 'Use `/project connect` to pick one, or `/project connect path:/absolute/path`.'
+          : 'Use `/project connect path:/absolute/path` to bind one.';
+        await interaction.reply(`No project bindings found. ${hint}`);
         return;
       }
       let text = '**Project Bindings:**\n';
@@ -556,7 +560,7 @@ export class DiscordAdapter {
             rows.push(row);
           }
           await interaction.reply({
-            content: `**Pick a project from** \`${root}\`:`,
+            content: `**Pick a project from** \`${root}\`:\n_Or use \`/project connect path:/absolute/path\` for a custom directory._`,
             components: rows,
           });
         } else {

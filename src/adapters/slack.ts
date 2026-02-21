@@ -480,15 +480,22 @@ export class SlackAdapter {
 
     // /project (no args) or /project help — show usage
     if (!subcommand || subcommand === 'help') {
+      const root = this.store.getSetting('projects_root');
+      const lines = [
+        '*`/project` commands:*',
+        '• `/project new my-app` — create a new project and bind it to a channel',
+      ];
+      if (root) {
+        lines.push('• `/project connect` — pick a project from your projects root');
+        lines.push('• `/project connect /absolute/path` — bind a specific directory');
+      } else {
+        lines.push('• `/project connect /absolute/path` — bind an existing project to a channel');
+      }
+      lines.push('• `/project list` — show all project bindings');
+      lines.push('• `/project disconnect` — unbind this channel');
       await client.chat.postMessage({
         channel: channelId,
-        text: [
-          '*`/project` commands:*',
-          '• `/project new my-app` — create a new project and bind it to a channel',
-          '• `/project connect /absolute/path` — bind an existing project to a channel',
-          '• `/project list` — show all project bindings',
-          '• `/project disconnect` — unbind this channel',
-        ].join('\n'),
+        text: lines.join('\n'),
       });
       return;
     }
@@ -497,9 +504,13 @@ export class SlackAdapter {
     if (subcommand === 'list') {
       const projects = this.store.listProjects();
       if (projects.length === 0) {
+        const root = this.store.getSetting('projects_root');
+        const hint = root
+          ? 'Use `/project connect` to pick one, or `/project connect /absolute/path`.'
+          : 'Use `/project connect /absolute/path` to bind one.';
         await client.chat.postMessage({
           channel: channelId,
-          text: 'No project bindings found. Use `/project connect /absolute/path` to bind one.',
+          text: `No project bindings found. ${hint}`,
         });
         return;
       }
@@ -633,6 +644,10 @@ export class SlackAdapter {
                 text: { type: 'mrkdwn', text: `*Pick a project from* \`${root}\`:` },
               },
               ...actionBlocks,
+              {
+                type: 'context',
+                elements: [{ type: 'mrkdwn', text: '_Or use `/project connect /absolute/path` for a custom directory._' }],
+              },
             ],
           });
         } else {
