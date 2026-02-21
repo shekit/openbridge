@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ClaudeBackend, spawnCollect, parseClaudeOutput, buildClaudeArgs, MCP_TOOLS } from '../backends/claude.js';
+import { ClaudeBackend, spawnCollect, parseClaudeOutput, buildClaudeArgs, buildHookSettings, MCP_TOOLS } from '../backends/claude.js';
 import type { Backend } from '../types/backend.js';
 
 describe('Claude Code backend', () => {
@@ -484,6 +484,67 @@ describe('Claude Code backend', () => {
       expect(args).not.toContain('--mcp-config');
       // But MCP tools are still always pre-approved
       expect(args).toContain('--allowedTools');
+    });
+  });
+
+  describe('buildHookSettings', () => {
+    it('returns valid JSON with PreToolUse and PermissionRequest hooks', () => {
+      const json = buildHookSettings('/opt/openbridge/dist');
+      const settings = JSON.parse(json);
+      expect(settings.hooks).toBeDefined();
+      expect(settings.hooks.PreToolUse).toHaveLength(1);
+      expect(settings.hooks.PermissionRequest).toHaveLength(1);
+    });
+
+    it('PreToolUse hook command points to pre-tool-use.js in hookScriptDir', () => {
+      const json = buildHookSettings('/opt/openbridge/dist');
+      const settings = JSON.parse(json);
+      const hook = settings.hooks.PreToolUse[0].hooks[0];
+      expect(hook.type).toBe('command');
+      expect(hook.command).toBe('node /opt/openbridge/dist/hooks/pre-tool-use.js');
+      expect(hook.timeout).toBe(10);
+    });
+
+    it('PermissionRequest hook command points to permission-request.js', () => {
+      const json = buildHookSettings('/opt/openbridge/dist');
+      const settings = JSON.parse(json);
+      const hook = settings.hooks.PermissionRequest[0].hooks[0];
+      expect(hook.type).toBe('command');
+      expect(hook.command).toBe('node /opt/openbridge/dist/hooks/permission-request.js');
+      expect(hook.timeout).toBe(310);
+    });
+
+    it('both hooks use wildcard matcher', () => {
+      const json = buildHookSettings('/opt/openbridge/dist');
+      const settings = JSON.parse(json);
+      expect(settings.hooks.PreToolUse[0].matcher).toBe('*');
+      expect(settings.hooks.PermissionRequest[0].matcher).toBe('*');
+    });
+  });
+
+  describe('buildClaudeArgs with settingsJson', () => {
+    it('includes --settings flag when settings JSON is provided', () => {
+      const settingsJson = '{"hooks":{}}';
+      const args = buildClaudeArgs('hello', null, undefined, undefined, settingsJson);
+      expect(args).toContain('--settings');
+      const idx = args.indexOf('--settings');
+      expect(args[idx + 1]).toBe(settingsJson);
+    });
+
+    it('does not include --settings when not provided', () => {
+      const args = buildClaudeArgs('hello', null);
+      expect(args).not.toContain('--settings');
+    });
+
+    it('works with all options combined', () => {
+      const mcpJson = '{"mcpServers":{}}';
+      const settingsJson = buildHookSettings('/dist');
+      const args = buildClaudeArgs('go', 'sess_1', ['Bash'], mcpJson, settingsJson);
+      expect(args).toContain('--settings');
+      expect(args).toContain('--mcp-config');
+      expect(args).toContain('--allowedTools');
+      expect(args).toContain('-r');
+      expect(args[args.length - 1]).toBe('go');
     });
   });
 

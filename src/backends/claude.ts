@@ -221,12 +221,41 @@ export function parseClaudeOutput(
   return { events, sessionId };
 }
 
+/**
+ * Build a --settings JSON string that configures Claude Code hooks.
+ * PreToolUse hook auto-approves MCP tools, PermissionRequest hook
+ * sends real-time permission prompts via the IPC server.
+ */
+export function buildHookSettings(hookScriptDir: string): string {
+  return JSON.stringify({
+    hooks: {
+      PreToolUse: [{
+        matcher: '*',
+        hooks: [{
+          type: 'command',
+          command: `node ${hookScriptDir}/hooks/pre-tool-use.js`,
+          timeout: 10,
+        }],
+      }],
+      PermissionRequest: [{
+        matcher: '*',
+        hooks: [{
+          type: 'command',
+          command: `node ${hookScriptDir}/hooks/permission-request.js`,
+          timeout: 310,
+        }],
+      }],
+    },
+  });
+}
+
 /** Build CLI args for a claude oneshot invocation. */
 export function buildClaudeArgs(
   text: string,
   sessionId: string | null,
   allowedTools?: string[],
   mcpConfigJson?: string,
+  settingsJson?: string,
 ): string[] {
   const args = [
     '-p',
@@ -243,6 +272,11 @@ export function buildClaudeArgs(
   // More reliable than .mcp.json file discovery, especially in -p mode.
   if (mcpConfigJson) {
     args.push('--mcp-config', mcpConfigJson);
+  }
+
+  // Hook settings for real-time permission handling
+  if (settingsJson) {
+    args.push('--settings', settingsJson);
   }
 
   // Always pre-approve our MCP tools, plus any user-approved tools
@@ -295,10 +329,20 @@ export class ClaudeBackend implements Backend {
   private mcpConfig: McpServerEntry | undefined;
   private activeHandle: SpawnHandle | null = null;
   private allowedTools: string[] = [];
+  private ipc?: { port: number; secret: string };
+  private channelId?: string;
+  private threadId?: string;
+  private platform?: string;
+  private hookScriptDir?: string;
 
   async start(options: BackendOptions): Promise<void> {
     this.projectDir = options.projectDir;
     this.mcpConfig = options.mcpConfig;
+    this.ipc = options.ipc;
+    this.channelId = options.channelId;
+    this.threadId = options.threadId;
+    this.platform = options.platform;
+    this.hookScriptDir = options.hookScriptDir;
 
     // Write MCP config if provided so Claude discovers the bridge tools
     if (this.mcpConfig) {
@@ -323,20 +367,38 @@ export class ClaudeBackend implements Backend {
       });
     }
 
+    // Build hook settings if we have a hook script dir
+    const settingsJson = this.hookScriptDir
+      ? buildHookSettings(this.hookScriptDir)
+      : undefined;
+
     const args = buildClaudeArgs(
       text,
       this.sessionId,
       this.allowedTools.length > 0 ? this.allowedTools : undefined,
       mcpConfigJson,
+      settingsJson,
     );
     // Clear allowed tools after use (one-shot approval)
     this.allowedTools = [];
+
+    // Build env vars for hook scripts (IPC connection + chat context)
+    let hookEnv: Record<string, string> | undefined;
+    if (this.ipc) {
+      hookEnv = {
+        OPENBRIDGE_IPC_PORT: String(this.ipc.port),
+        OPENBRIDGE_IPC_SECRET: this.ipc.secret,
+        ...(this.channelId ? { OPENBRIDGE_CHANNEL_ID: this.channelId } : {}),
+        ...(this.threadId ? { OPENBRIDGE_THREAD_ID: this.threadId } : {}),
+        ...(this.platform ? { OPENBRIDGE_PLATFORM: this.platform } : {}),
+      };
+    }
 
     // Log file for real-time stderr — readable with: tail -f ~/.openbridge-ai/logs/claude-latest.log
     const logPath = path.join(LOG_DIR, 'claude-latest.log');
     console.log(`[claude] spawning: claude ${args.join(' ').slice(0, 120)}...`);
     console.log(`[claude] stderr log: ${logPath}`);
-    const handle = spawnCollect('claude', args, this.projectDir, logPath);
+    const handle = spawnCollect('claude', args, this.projectDir, logPath, hookEnv);
     this.activeHandle = handle;
 
     let result: SpawnResult;

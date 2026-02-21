@@ -1391,6 +1391,17 @@
             "All 473 existing tests pass"
           ],
           "status": "passing"
+        },
+        {
+          "id": "P11.7",
+          "description": "buildHookSettings() generates hook config JSON, buildClaudeArgs() passes --settings, ClaudeBackend.send() wires hook env vars",
+          "verification": [
+            "buildHookSettings() returns valid JSON with PreToolUse and PermissionRequest hooks",
+            "buildClaudeArgs() includes --settings when settingsJson provided",
+            "ClaudeBackend stores IPC/context from start() and passes env vars + settings to spawnCollect()",
+            "All 480 tests pass"
+          ],
+          "status": "passing"
         }
       ]
     }
