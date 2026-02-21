@@ -25,6 +25,7 @@ function createMockCallbacks(): BridgeCallbacks {
     openTunnel: vi.fn().mockResolvedValue('https://tunnel.example.com'),
     serveFileBrowser: vi.fn().mockResolvedValue('https://browser.example.com'),
     postMessage: vi.fn().mockResolvedValue(undefined),
+    saveUploadedFile: vi.fn().mockResolvedValue('/tmp/project/public/logo.png'),
   };
 }
 
@@ -500,5 +501,48 @@ describe('P5.5: serve_file_browser MCP tool', () => {
     const result = await handler({}, {});
     expect(callbacks.serveFileBrowser).toHaveBeenCalledWith(projectDir);
     expect(result.content[0].text).toContain('File browser available at');
+  });
+
+  describe('P13.8: save_uploaded_file MCP tool', () => {
+    it('save_uploaded_file tool is registered', () => {
+      const server = createMcpServer(context, callbacks);
+      const tools = (server as any)._registeredTools;
+      expect(tools['save_uploaded_file']).toBeDefined();
+    });
+
+    it('calls saveUploadedFile callback with correct params', async () => {
+      const server = createMcpServer(context, callbacks);
+      const tools = (server as any)._registeredTools;
+      const handler = tools['save_uploaded_file'].handler;
+
+      const result = await handler(
+        { upload_id: 'upload_abc123', destination: 'public/logo.png' },
+        {},
+      );
+
+      expect(callbacks.saveUploadedFile).toHaveBeenCalledWith(
+        'upload_abc123', 'public/logo.png', projectDir,
+      );
+      expect(result.content[0].text).toContain('saved successfully');
+      expect(result.content[0].text).toContain('/tmp/project/public/logo.png');
+    });
+
+    it('returns error when callback throws', async () => {
+      callbacks.saveUploadedFile = vi.fn().mockRejectedValue(
+        new Error('No staged file found for upload_id: upload_xyz'),
+      );
+
+      const server = createMcpServer(context, callbacks);
+      const tools = (server as any)._registeredTools;
+      const handler = tools['save_uploaded_file'].handler;
+
+      const result = await handler(
+        { upload_id: 'upload_xyz', destination: 'out.png' },
+        {},
+      );
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('No staged file found');
+    });
   });
 });

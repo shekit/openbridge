@@ -27,6 +27,8 @@ export interface BridgeCallbacks {
   serveFileBrowser(directory: string): Promise<string>;
   /** Post a text message in the originating thread. */
   postMessage(channelId: string, threadId: string, text: string): Promise<void>;
+  /** Copy a staged uploaded file to a destination in the project directory. */
+  saveUploadedFile(uploadId: string, destination: string, projectDir: string): Promise<string>;
 }
 
 /**
@@ -189,7 +191,37 @@ export function createMcpServer(
     },
   );
 
-  console.error('[mcp] server created with tools: upload_file, open_tunnel, serve_file_browser');
+  // --- save_uploaded_file tool ---
+  server.registerTool(
+    'save_uploaded_file',
+    {
+      description:
+        'Save a previously uploaded image file to a location in the project directory. ' +
+        'When a user uploads an image in chat, the bridge stages it with an upload_id. ' +
+        'Use this tool to copy the staged file to your desired project location. ' +
+        'The upload_id is provided in the message text when an image is uploaded.',
+      inputSchema: {
+        upload_id: z.string().describe('The upload ID from the image upload notification (e.g., upload_abc123def456)'),
+        destination: z.string().describe('Destination path relative to project directory (e.g., "public/logo.png" or "assets/images/hero.jpg")'),
+      },
+    },
+    async ({ upload_id, destination }) => {
+      try {
+        const savedPath = await callbacks.saveUploadedFile(upload_id, destination, context.projectDir);
+        return {
+          content: [{ type: 'text', text: `File saved successfully to: ${savedPath}` }],
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: 'text', text: `Error saving uploaded file: ${message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  console.error('[mcp] server created with tools: upload_file, open_tunnel, serve_file_browser, save_uploaded_file');
   return server;
 }
 

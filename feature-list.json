@@ -1675,7 +1675,7 @@
             "MCP_TOOLS includes mcp__openbridge__save_uploaded_file",
             "Unit tests pass"
           ],
-          "status": "failing"
+          "status": "passing"
         }
       ]
     }

@@ -98,6 +98,15 @@ async function main(): Promise<void> {
         platform,
       });
     },
+
+    async saveUploadedFile(uploadId, destination, projDir) {
+      const result = await ipcPost(ipcPort, ipcSecret, '/save-uploaded-file', {
+        uploadId,
+        destination,
+        projectDir: projDir,
+      });
+      return result.path as string;
+    },
   };
 
   console.error('[mcp-entry] starting MCP server for', { channelId, threadId, projectDir, platform });
