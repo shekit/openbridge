@@ -1747,6 +1747,56 @@
           "status": "passing"
         }
       ]
+    },
+    {
+      "id": "P16",
+      "name": "post_message MCP + Output Cleanup",
+      "outcome": "Permission prompts don't crash on large inputs, Claude communicates via post_message MCP tool, assistant text noise suppressed",
+      "features": [
+        {
+          "id": "P16.1",
+          "description": "Permission prompt truncation — cap tool input display at 500 chars in both adapters",
+          "verification": [
+            "Large Write input permission prompt renders without Slack API error",
+            "Truncated output contains '(truncated)' indicator",
+            "Discord adapter has same truncation",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P16.2",
+          "description": "Register post_message MCP tool in server.ts",
+          "verification": [
+            "post_message tool registered with description and text input schema",
+            "Tool calls callbacks.postMessage() which routes to adapter.sendMessage()",
+            "Build passes, all tests pass"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P16.3",
+          "description": "Remove hardcoded postMessage from open_tunnel and serve_file_browser",
+          "verification": [
+            "open_tunnel no longer calls callbacks.postMessage() directly",
+            "serve_file_browser no longer calls callbacks.postMessage() directly",
+            "Tool descriptions updated to remove 'post URL in chat' language",
+            "Build passes, all tests pass"
+          ],
+          "status": "failing"
+        },
+        {
+          "id": "P16.4",
+          "description": "Track post_message per turn, suppress assistant_text when used, render only last when not",
+          "verification": [
+            "When post_message called during turn, assistant_text events are suppressed",
+            "When post_message not called, only last assistant_text is rendered",
+            "Permission_denied and error events always rendered regardless",
+            "Build passes, all tests pass"
+          ],
+          "status": "failing"
+        }
+      ]
     }
   ]
 }

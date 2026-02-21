@@ -542,7 +542,12 @@ export class SlackAdapter {
     event: { toolName: string; toolInput: Record<string, unknown>; context?: string; requestId?: string },
     client: any
   ): Promise<void> {
-    const inputStr = JSON.stringify(event.toolInput, null, 2);
+    let inputStr = JSON.stringify(event.toolInput, null, 2);
+    // Truncate tool input to avoid exceeding Slack's 3000-char block text limit
+    const MAX_INPUT_DISPLAY = 500;
+    if (inputStr.length > MAX_INPUT_DISPLAY) {
+      inputStr = inputStr.slice(0, MAX_INPUT_DISPLAY) + '\n... (truncated)';
+    }
     const contextStr = event.context ? `\n${event.context}` : '';
 
     // Embed requestId in button value: "toolName|requestId" (hook flow) or "toolName" (legacy)

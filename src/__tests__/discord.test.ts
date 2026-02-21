@@ -602,6 +602,49 @@ describe('DiscordAdapter', () => {
       const components = permCall[0].components;
       expect(components.length).toBe(1); // One ActionRow
     });
+
+    it('truncates large tool input in permission prompt', async () => {
+      const largeContent = 'x'.repeat(2000);
+      const bigBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => ({
+          events: [
+            {
+              type: 'permission_denied' as const,
+              toolName: 'Write',
+              toolInput: { file_path: 'index.html', content: largeContent },
+            },
+          ],
+          sessionId: 'session-trunc',
+        })),
+        getSessionId: vi.fn(() => 'session-trunc'),
+        setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
+        stop: vi.fn(async () => {}),
+      }));
+
+      createAdapter({ backendFactory: bigBackend });
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/trunc', 'claude');
+
+      const { message } = createMockMessage({
+        channelId: 'thread-trunc',
+        content: 'write a big file',
+        isThread: true,
+        parentId: 'C_BOUND',
+      });
+
+      await triggerMessage(message);
+
+      const calls = message.channel.send.mock.calls;
+      const permCall = calls.find(
+        (c: any) => c[0].content?.includes('Permission requested')
+      );
+      expect(permCall).toBeDefined();
+      expect(permCall[0].content).toContain('(truncated)');
+      expect(permCall[0].content.length).toBeLessThan(1000);
+    });
   });
 
   describe('P4.7: Discord — handle button interaction for permission responses', () => {

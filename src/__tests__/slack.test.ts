@@ -1185,6 +1185,48 @@ describe('SlackAdapter', () => {
       expect(actionsBlock.elements[1].action_id).toBe('permission_always_allow');
       expect(actionsBlock.elements[1].text.text).toBe('Always Allow');
     });
+
+    it('truncates large tool input in permission prompt', async () => {
+      const largeContent = 'x'.repeat(2000);
+      const bigBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => ({
+          events: [
+            {
+              type: 'permission_denied' as const,
+              toolName: 'Write',
+              toolInput: { file_path: 'index.html', content: largeContent },
+            },
+          ],
+          sessionId: 'session-trunc',
+        })),
+        getSessionId: vi.fn(() => 'session-trunc'),
+        setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
+        stop: vi.fn(async () => {}),
+      }));
+
+      createAdapter({ backendFactory: bigBackend });
+      await adapter.start();
+      store.createProject('C_TRUNC', '/test/trunc', 'claude');
+
+      await triggerMessage({
+        channel: 'C_TRUNC',
+        text: 'write a big file',
+        user: 'U_USER1',
+        ts: '1234567890.000004',
+        thread_ts: '1234567890.000003',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      const permCall = calls.find(
+        (c: any) => c[0].blocks?.some((b: any) => b.type === 'section' && b.text?.text?.includes('Permission requested'))
+      );
+      expect(permCall).toBeDefined();
+      const sectionText = permCall![0].blocks[0].text.text;
+      expect(sectionText).toContain('(truncated)');
+      expect(sectionText.length).toBeLessThan(1000);
+    });
   });
 
   describe('P12.7: Codex sandbox upgrade flow', () => {

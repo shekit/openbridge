@@ -511,7 +511,12 @@ export class DiscordAdapter {
     event: { toolName: string; toolInput: Record<string, unknown>; context?: string; requestId?: string },
     context: any
   ): Promise<void> {
-    const inputStr = JSON.stringify(event.toolInput, null, 2);
+    let inputStr = JSON.stringify(event.toolInput, null, 2);
+    // Truncate tool input to avoid exceeding Discord's 2000-char message limit
+    const MAX_INPUT_DISPLAY = 500;
+    if (inputStr.length > MAX_INPUT_DISPLAY) {
+      inputStr = inputStr.slice(0, MAX_INPUT_DISPLAY) + '\n... (truncated)';
+    }
     const contextStr = event.context ? `\n${event.context}` : '';
 
     // Embed requestId in customId: "permission_allow:toolName|requestId" or "permission_allow:toolName"
