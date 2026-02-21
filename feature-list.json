@@ -1424,6 +1424,20 @@
             "Build succeeds, all 481 tests pass"
           ],
           "status": "passing"
+        },
+        {
+          "id": "P11.10",
+          "description": "Move permission flow into PreToolUse hook (PermissionRequest event does not exist)",
+          "verification": [
+            "PreToolUse hook auto-allows MCP tools",
+            "PreToolUse hook sends IPC permission request for Bash/Write/Edit/NotebookEdit",
+            "PreToolUse hook defers to default for safe tools (Read, Glob, etc.)",
+            "Integration test: IPC allow flow works end-to-end",
+            "Integration test: IPC deny flow works end-to-end",
+            "buildHookSettings only configures PreToolUse (no PermissionRequest)",
+            "All 482 tests pass"
+          ],
+          "status": "passing"
         }
       ]
     }
