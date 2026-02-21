@@ -313,6 +313,88 @@ describe('Router', () => {
     });
   });
 
+  describe('P12.6: accumulated allowed_tools loaded before send', () => {
+    it('sends accumulated tools via setAllowedTools on send()', async () => {
+      const setAllowedToolsSpy = vi.fn();
+      const backend: Backend = {
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => ({
+          events: [{ type: 'assistant_text' as const, text: 'ok' }, { type: 'turn_completed' as const }],
+          sessionId: 'sess-1',
+        })),
+        getSessionId: vi.fn(() => null),
+        setSessionId: vi.fn(),
+        setAllowedTools: setAllowedToolsSpy,
+        stop: vi.fn(async () => {}),
+      };
+      const factory: BackendFactory = () => backend;
+      const router = new Router(store, factory);
+
+      const project = store.createProject('CH_AT', '/tmp/at', 'claude');
+      store.addAllowedTool(project.id, 'Bash');
+      store.addAllowedTool(project.id, 'Write');
+
+      await router.send('CH_AT', 'T_AT', 'hello');
+
+      expect(setAllowedToolsSpy).toHaveBeenCalledWith(['Bash', 'Write']);
+    });
+
+    it('does not call setAllowedTools when no accumulated tools', async () => {
+      const setAllowedToolsSpy = vi.fn();
+      const backend: Backend = {
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => ({
+          events: [{ type: 'turn_completed' as const }],
+          sessionId: 'sess-1',
+        })),
+        getSessionId: vi.fn(() => null),
+        setSessionId: vi.fn(),
+        setAllowedTools: setAllowedToolsSpy,
+        stop: vi.fn(async () => {}),
+      };
+      const factory: BackendFactory = () => backend;
+      const router = new Router(store, factory);
+
+      store.createProject('CH_NOAT', '/tmp/noat', 'claude');
+
+      await router.send('CH_NOAT', 'T_NOAT', 'hello');
+
+      expect(setAllowedToolsSpy).not.toHaveBeenCalled();
+    });
+
+    it('merges one-shot and accumulated tools on respond()', async () => {
+      const setAllowedToolsSpy = vi.fn();
+      const backend: Backend = {
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => ({
+          events: [{ type: 'turn_completed' as const }],
+          sessionId: 'sess-1',
+        })),
+        getSessionId: vi.fn(() => null),
+        setSessionId: vi.fn(),
+        setAllowedTools: setAllowedToolsSpy,
+        stop: vi.fn(async () => {}),
+      };
+      const factory: BackendFactory = () => backend;
+      const router = new Router(store, factory);
+
+      const project = store.createProject('CH_MRG', '/tmp/mrg', 'claude');
+      store.addAllowedTool(project.id, 'Bash');
+      // Create session in waiting_for_input
+      const session = store.createSession('T_MRG', project.id);
+      store.updateSessionState(session.id, 'running');
+      store.updateSessionState(session.id, 'waiting_for_input');
+      store.updateBackendSessionId(session.id, 'backend-sess-mrg');
+
+      await router.respond('CH_MRG', 'T_MRG', 'yes', ['Edit']);
+
+      // Should include both one-shot ('Edit') and accumulated ('Bash')
+      expect(setAllowedToolsSpy).toHaveBeenCalledWith(
+        expect.arrayContaining(['Edit', 'Bash'])
+      );
+    });
+  });
+
   describe('cancelBackend', () => {
     it('kills a running backend and resets session to idle', async () => {
       const stopSpy = vi.fn(async () => {});

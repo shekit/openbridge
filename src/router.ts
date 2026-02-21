@@ -162,6 +162,12 @@ export class Router {
     // Track as active for graceful shutdown
     this.activeBackends.set(session.thread_id, backend);
 
+    // Load accumulated allowed tools from the store (P12.6)
+    const accumulatedTools = this.store.getAllowedTools(project.id).map(t => t.tool_pattern);
+    if (accumulatedTools.length > 0) {
+      backend.setAllowedTools(accumulatedTools);
+    }
+
     // If there's a stored backend session ID, set it on the backend for resume
     // (will be null if session was auto-recovered from dead)
     const storedSession = this.store.getSessionByThreadId(session.thread_id);
@@ -268,9 +274,11 @@ export class Router {
       backend.setSessionId(session.backend_session_id);
     }
 
-    // Set allowed tools if provided (e.g., user clicked Allow on a permission prompt)
-    if (allowedTools && allowedTools.length > 0) {
-      backend.setAllowedTools(allowedTools);
+    // Merge one-shot allowed tools with accumulated tools from the store (P12.6)
+    const accumulatedTools = this.store.getAllowedTools(project.id).map(t => t.tool_pattern);
+    const mergedTools = [...new Set([...(allowedTools ?? []), ...accumulatedTools])];
+    if (mergedTools.length > 0) {
+      backend.setAllowedTools(mergedTools);
     }
 
     let result: SendResult;

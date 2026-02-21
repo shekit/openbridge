@@ -1515,7 +1515,7 @@
             "New patterns from Always Allow are picked up on next invocation",
             "Unit tests verify patterns appear in buildClaudeArgs output"
           ],
-          "status": "failing"
+          "status": "passing"
         },
         {
           "id": "P12.7",
