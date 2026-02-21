@@ -194,18 +194,48 @@ export class SlackAdapter {
     // Slash commands
     this.app.command('/project', async ({ command, ack, client }) => {
       await ack();
+      if (!(await this.ensureInChannel(command.channel_id, client))) return;
       await this.handleProjectCommand(command, client);
     });
 
     this.app.command('/new', async ({ command, ack, client }) => {
       await ack();
+      if (!(await this.ensureInChannel(command.channel_id, client))) return;
       await this.handleNewCommand(command, client);
     });
 
     this.app.command('/settings', async ({ command, ack, client }) => {
       await ack();
+      if (!(await this.ensureInChannel(command.channel_id, client))) return;
       await this.handleSettingsCommand(command, client);
     });
+  }
+
+  /**
+   * Auto-join a channel if the bot isn't already in it.
+   * Returns true if the bot is in the channel, false if it can't join.
+   */
+  private async ensureInChannel(channelId: string, client: any): Promise<boolean> {
+    try {
+      await client.conversations.join({ channel: channelId });
+      return true;
+    } catch (err: any) {
+      const errorCode = err?.data?.error;
+      if (errorCode === 'already_in_channel') {
+        return true;
+      }
+      // Private channel or other join failure — tell the user
+      try {
+        await client.chat.postMessage({
+          channel: channelId,
+          text: 'I need to be in this channel first. Run `/invite @OpenBridge` and try again.',
+        });
+      } catch {
+        // Can't post either — the user will see the slash command fail silently
+        console.log(`[slack] cannot join or post to channel ${channelId}: ${errorCode}`);
+      }
+      return false;
+    }
   }
 
   /** Handle an incoming Slack message. */
