@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { spawnCollect } from '../backends/claude.js';
-import { startIpcServer, resolvePermission, type IpcHandler } from '../mcp/ipc-server.js';
+import { startIpcServer, resolvePermission, resolveUserQuestion, type IpcHandler } from '../mcp/ipc-server.js';
 import * as path from 'node:path';
 
 const HOOK_SCRIPT = path.resolve(
@@ -82,6 +82,23 @@ describe('PreToolUse hook script', () => {
       tool_name: 'Read',
       tool_input: { file_path: '/tmp/file.txt' },
     });
+    expect(output).toBeNull();
+    expect(exitCode).toBe(0);
+  });
+
+  it('defers AskUserQuestion to default when no IPC configured', async () => {
+    const { output, exitCode } = await runHook({
+      tool_name: 'AskUserQuestion',
+      tool_input: {
+        questions: [{
+          question: 'Which?',
+          header: 'Q',
+          options: [{ label: 'A', description: '' }],
+          multiSelect: false,
+        }],
+      },
+    });
+    // No IPC env vars → exit 0 with no output
     expect(output).toBeNull();
     expect(exitCode).toBe(0);
   });
@@ -177,5 +194,54 @@ describe('PreToolUse hook script', () => {
       expect((output as any)?.hookSpecificOutput?.hookEventName).toBe('PreToolUse');
       expect((output as any)?.hookSpecificOutput?.permissionDecision).toBe('deny');
     }, 15000);
+
+    it('denies AskUserQuestion with answer when user selects an option', async () => {
+      const handler: IpcHandler = {
+        uploadFile: async () => {},
+        openTunnel: async () => 'https://t.example.com',
+        serveFileBrowser: async () => 'https://b.example.com',
+        postMessage: async () => {},
+        previewServer: async () => ({ url: '', port: 0 }),
+        askUserQuestion: async (_ch, _th, _questions, _plat, requestId) => {
+          // Simulate user clicking an option button after a short delay
+          setTimeout(() => resolveUserQuestion(requestId, 'TypeScript'), 200);
+        },
+      };
+      server = await startIpcServer(handler);
+
+      const { output, exitCode, stderr } = await runHook(
+        {
+          tool_name: 'AskUserQuestion',
+          tool_input: {
+            questions: [{
+              question: 'Which language?',
+              header: 'Language',
+              options: [
+                { label: 'TypeScript', description: 'Strongly typed' },
+                { label: 'JavaScript', description: 'More flexible' },
+              ],
+              multiSelect: false,
+            }],
+          },
+        },
+        {
+          OPENBRIDGE_IPC_PORT: String(server.port),
+          OPENBRIDGE_IPC_SECRET: server.secret,
+          OPENBRIDGE_CHANNEL_ID: 'C123',
+          OPENBRIDGE_THREAD_ID: 'T456',
+          OPENBRIDGE_PLATFORM: 'slack',
+        },
+      );
+
+      expect(exitCode).toBe(0);
+      expect(output).not.toBeNull();
+      const decision = (output as any)?.hookSpecificOutput;
+      expect(decision.hookEventName).toBe('PreToolUse');
+      expect(decision.permissionDecision).toBe('deny');
+      expect(decision.permissionDecisionReason).toContain('TypeScript');
+      expect(decision.permissionDecisionReason).toContain('selected');
+      expect(stderr).toContain('waiting for answer');
+    }, 15000);
+
   });
 });

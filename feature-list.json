@@ -2007,6 +2007,37 @@
           "status": "passing"
         }
       ]
+    },
+    {
+      "phase": "P20",
+      "title": "UX polish and command reorganization",
+      "features": [
+        {
+          "id": "P20.1",
+          "description": "Move backend subcommand from /settings to /project (backend is per-project, not global)",
+          "verification": [
+            "/project backend codex changes backend for the connected project",
+            "/project backend shows current backend",
+            "/settings no longer has backend subcommand",
+            "Slack manifest, Discord commands, SLASH-COMMANDS.md, init hint all updated",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P20.2",
+          "description": "AskUserQuestion tool renders as dynamic chat buttons in Slack/Discord",
+          "verification": [
+            "PreToolUse hook intercepts AskUserQuestion and sends to IPC",
+            "IPC server has /ask-user-question, /question-poll, /question-resolve endpoints",
+            "Slack adapter renders question as Block Kit buttons, resolves on click",
+            "Discord adapter renders question as ButtonBuilder buttons, resolves on click",
+            "Hook denies with answer in reason string so Claude proceeds with user's choice",
+            "Build passes, all 621 tests pass"
+          ],
+          "status": "passing"
+        }
+      ]
     }
   ]
 }

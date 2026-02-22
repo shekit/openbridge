@@ -14,7 +14,7 @@ import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
 import { splitText, downloadAndStageFile } from '../utils.js';
 import type { FileAttachment } from '../types/backend.js';
-import { resolvePermission } from '../mcp/ipc-server.js';
+import { resolvePermission, resolveUserQuestion } from '../mcp/ipc-server.js';
 import { clearPostMessageFlag, wasPostMessageCalled } from '../mcp/callbacks.js';
 
 const SLACK_MESSAGE_LIMIT = 4000;
@@ -99,6 +99,12 @@ export class SlackAdapter {
     this.app.action('permission_deny', async ({ body, ack, client }) => {
       await ack();
       await this.handlePermissionAction(body as any, 'deny', client);
+    });
+
+    // AskUserQuestion dynamic option buttons
+    this.app.action(/^question_answer_/, async ({ body, ack, client }) => {
+      await ack();
+      await this.handleQuestionAnswer(body as any, client);
     });
 
     // Project bind/create buttons — delegate to shared helpers
@@ -627,6 +633,82 @@ export class SlackAdapter {
         },
       ],
     });
+  }
+
+  /** Post an interactive question with dynamic option buttons.
+   *  Renders the first question from AskUserQuestion as Slack blocks with buttons. */
+  async postUserQuestion(
+    channelId: string,
+    threadTs: string,
+    questions: Array<{
+      question: string;
+      header: string;
+      options: Array<{ label: string; description: string }>;
+      multiSelect: boolean;
+    }>,
+    requestId: string,
+    client: any
+  ): Promise<void> {
+    const chatClient = client ?? this.app.client;
+    const q = questions[0];
+    if (!q) return;
+
+    const optionLines = q.options.map((o) =>
+      `• *${o.label}*${o.description ? ` — ${o.description}` : ''}`
+    ).join('\n');
+
+    const buttons = q.options.map((opt, i) => ({
+      type: 'button' as const,
+      text: { type: 'plain_text' as const, text: opt.label.slice(0, 75) },
+      action_id: `question_answer_${i}`,
+      value: requestId,
+    }));
+
+    await chatClient.chat.postMessage({
+      channel: channelId,
+      thread_ts: threadTs,
+      text: q.question,
+      blocks: [
+        {
+          type: 'section',
+          text: { type: 'mrkdwn', text: `*${q.question}*\n${optionLines}` },
+        },
+        { type: 'actions', elements: buttons },
+      ],
+    });
+  }
+
+  /** Handle AskUserQuestion option button clicks.
+   *  Resolves the pending question via IPC and updates the message. */
+  private async handleQuestionAnswer(body: any, client: any): Promise<void> {
+    const action = body.actions?.[0];
+    if (!action) return;
+
+    const requestId = action.value;
+    const label = action.text?.text ?? '';
+    const channelId = body.channel?.id;
+    const messageTs = body.message?.ts;
+
+    if (!requestId || !label) return;
+
+    resolveUserQuestion(requestId, label);
+    console.log(`[slack] resolved question ${requestId} → "${label}"`);
+
+    if (channelId && messageTs) {
+      try {
+        await client.chat.update({
+          channel: channelId,
+          ts: messageTs,
+          text: `Answered: ${label}`,
+          blocks: [
+            {
+              type: 'section',
+              text: { type: 'mrkdwn', text: `*Answered:* ${label}` },
+            },
+          ],
+        });
+      } catch { /* non-fatal */ }
+    }
   }
 
   /** Post an error message. */

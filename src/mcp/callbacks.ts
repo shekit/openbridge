@@ -89,6 +89,11 @@ export function createCallbackHandler(options: CallbackHandlerOptions): IpcHandl
       await adapter.sendMessage(channelId, threadId, text);
     },
 
+    async askUserQuestion(channelId, threadId, questions, platform, requestId) {
+      const adapter = getAdapter(platform);
+      await adapter.postUserQuestion(channelId, threadId, questions, requestId, null);
+    },
+
     async requestPermission(channelId, threadId, toolName, toolInput, platform, requestId) {
       const adapter = getAdapter(platform);
       await adapter.postPermissionPrompt(channelId, threadId, {

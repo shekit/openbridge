@@ -1,13 +1,15 @@
 /**
  * PreToolUse hook for Claude Code.
  *
- * Fires before every tool execution. Three behaviors:
+ * Fires before every tool execution. Four behaviors:
  *
  * 1. MCP tools (mcp__openbridge__*) → auto-approve immediately
- * 2. Tools that typically need permission (Bash, Write, Edit, NotebookEdit) →
+ * 2. AskUserQuestion → send question to Slack/Discord via IPC, wait for
+ *    user's button click, deny with the answer in the reason string
+ * 3. Tools that typically need permission (Bash, Write, Edit, NotebookEdit) →
  *    send a real-time permission prompt to Slack/Discord via the IPC server,
  *    block until the user clicks Allow/Deny, return the decision
- * 3. Everything else → exit 0 (defer to Claude Code's default handling)
+ * 4. Everything else → exit 0 (defer to Claude Code's default handling)
  *
  * This replaces the non-existent "PermissionRequest" hook event. PreToolUse
  * is the correct interception point for permission handling in -p mode.
@@ -58,6 +60,32 @@ async function ipcPost(
     body: JSON.stringify(body),
   });
   return (await res.json()) as Record<string, unknown>;
+}
+
+/** Poll for a user question answer until resolved or timeout. */
+async function pollForAnswer(
+  port: number,
+  secret: string,
+  requestId: string,
+  timeoutMs: number,
+): Promise<string | null> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const result = await ipcPost(port, secret, '/question-poll', { requestId });
+
+    if (result.status === 'resolved') {
+      return result.answer as string;
+    }
+
+    if (result.status === 'expired') {
+      return null;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  }
+
+  return null;
 }
 
 /** Poll for a permission decision until resolved or timeout. */
@@ -129,13 +157,67 @@ async function main(): Promise<void> {
     return;
   }
 
-  // 2. For tools that don't need permission, defer to Claude Code default
+  // 2. AskUserQuestion → send to chat, collect answer, deny with answer in reason
+  if (toolName === 'AskUserQuestion') {
+    const ipcPort = parseInt(process.env.OPENBRIDGE_IPC_PORT ?? '', 10);
+    const ipcSecret = process.env.OPENBRIDGE_IPC_SECRET ?? '';
+    const channelId = process.env.OPENBRIDGE_CHANNEL_ID ?? '';
+    const threadId = process.env.OPENBRIDGE_THREAD_ID ?? '';
+    const platform = process.env.OPENBRIDGE_PLATFORM ?? '';
+    const timeoutMs = parseInt(process.env.OPENBRIDGE_HOOK_TIMEOUT_MS ?? '', 10) || DEFAULT_TIMEOUT_MS;
+
+    if (!ipcPort || !ipcSecret || !channelId || !threadId) {
+      process.exit(0);
+      return;
+    }
+
+    const toolInput = input.tool_input ?? {};
+    const questions = (toolInput as Record<string, unknown>).questions ?? [];
+
+    let requestId: string;
+    try {
+      const result = await ipcPost(ipcPort, ipcSecret, '/ask-user-question', {
+        channelId,
+        threadId,
+        questions,
+        platform,
+      });
+      requestId = result.requestId as string;
+      if (!requestId) throw new Error('No requestId returned');
+    } catch (err) {
+      process.stderr.write(`[pre-tool-use] IPC ask-user-question failed: ${err}\n`);
+      process.exit(0);
+      return;
+    }
+
+    process.stderr.write(`[pre-tool-use] waiting for answer to AskUserQuestion (${requestId})\n`);
+
+    const answer = await pollForAnswer(ipcPort, ipcSecret, requestId, timeoutMs);
+
+    process.stderr.write(`[pre-tool-use] answer: ${answer ?? '(timeout)'}\n`);
+
+    if (answer) {
+      process.stdout.write(denyOutput(
+        `This question was presented to the user in the chat application and they selected: "${answer}". ` +
+        `Do not call AskUserQuestion again for this — proceed with their choice.`
+      ));
+    } else {
+      process.stdout.write(denyOutput(
+        'The question timed out with no response from the user. Proceed with your best judgment.'
+      ));
+    }
+
+    process.exit(0);
+    return;
+  }
+
+  // 3. For tools that don't need permission, defer to Claude Code default
   if (!PERMISSION_TOOLS.has(toolName)) {
     process.exit(0);
     return;
   }
 
-  // 3. For tools that need permission, send real-time prompt to Slack/Discord
+  // 4. For tools that need permission, send real-time prompt to Slack/Discord
   const ipcPort = parseInt(process.env.OPENBRIDGE_IPC_PORT ?? '', 10);
   const ipcSecret = process.env.OPENBRIDGE_IPC_SECRET ?? '';
   const channelId = process.env.OPENBRIDGE_CHANNEL_ID ?? '';

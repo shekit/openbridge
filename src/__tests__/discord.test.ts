@@ -12,6 +12,16 @@ import { Store } from '../store.js';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
+import { resolveUserQuestion } from '../mcp/ipc-server.js';
+
+vi.mock('../mcp/ipc-server.js', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual,
+    resolvePermission: vi.fn(() => true),
+    resolveUserQuestion: vi.fn(() => true),
+  };
+});
 
 /** Create a mock Discord.js Client with tracked handlers. */
 function createMockDiscordClient() {
@@ -1727,6 +1737,96 @@ describe('DiscordAdapter', () => {
       expect(interaction.update).toHaveBeenCalledWith(
         expect.objectContaining({
           content: expect.stringContaining('Session reset'),
+        })
+      );
+    });
+  });
+
+  describe('P20.2: AskUserQuestion renders dynamic buttons', () => {
+    it('postUserQuestion sends message with option buttons', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const questions = [{
+        question: 'Which framework?',
+        header: 'Framework',
+        options: [
+          { label: 'React', description: 'Component-based UI' },
+          { label: 'Vue', description: 'Progressive framework' },
+          { label: 'Svelte', description: 'Compiled framework' },
+        ],
+        multiSelect: false,
+      }];
+
+      // Use a mock context with a sendable channel
+      const threadMessages: any[] = [];
+      const mockContext = {
+        channel: {
+          id: 'thread-123',
+          isThread: () => true,
+          parentId: 'C_BOUND',
+          send: vi.fn(async (opts: any) => {
+            threadMessages.push(opts);
+            return { id: 'msg-q1', delete: vi.fn(async () => {}) };
+          }),
+        },
+      };
+
+      await adapter.postUserQuestion('C_BOUND', 'thread-123', questions, 'req-uuid-3', mockContext);
+
+      // It should have sent a message via sendToThread
+      expect(threadMessages.length).toBeGreaterThan(0);
+      const sent = threadMessages[0];
+      expect(sent.content).toContain('Which framework?');
+      expect(sent.content).toContain('React');
+      expect(sent.content).toContain('Vue');
+      expect(sent.content).toContain('Svelte');
+      expect(sent.components).toBeDefined();
+      expect(sent.components.length).toBe(1);
+    });
+
+    it('handles question_answer button click and resolves question', async () => {
+      createAdapter();
+      await adapter.start();
+
+      // First post a question to populate pendingQuestionOptions
+      const questions = [{
+        question: 'Pick one',
+        header: 'Q',
+        options: [
+          { label: 'Alpha', description: '' },
+          { label: 'Beta', description: '' },
+        ],
+        multiSelect: false,
+      }];
+
+      const mockContext = {
+        channel: {
+          id: 'thread-123',
+          isThread: () => true,
+          parentId: 'C_BOUND',
+          send: vi.fn(async () => ({ id: 'msg-q2', delete: vi.fn(async () => {}) })),
+        },
+      };
+
+      await adapter.postUserQuestion('C_BOUND', 'thread-123', questions, 'req-uuid-4', mockContext);
+
+      // Simulate clicking the second option button
+      const { interaction } = createMockButtonInteraction({
+        customId: 'question_answer:1|req-uuid-4',
+        channelId: 'C_BOUND',
+        isThread: true,
+        parentId: 'C_BOUND',
+      });
+
+      await triggerInteraction(interaction);
+
+      expect(resolveUserQuestion).toHaveBeenCalledWith('req-uuid-4', 'Beta');
+
+      expect(interaction.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: '**Answered:** Beta',
+          components: [],
         })
       );
     });

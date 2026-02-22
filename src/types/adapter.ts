@@ -28,6 +28,21 @@ export interface Adapter {
     client: any
   ): Promise<void>;
 
+  /** Post an interactive question with dynamic option buttons.
+   *  Called when Claude Code uses AskUserQuestion — renders options as buttons. */
+  postUserQuestion(
+    channelId: string,
+    threadTs: string,
+    questions: Array<{
+      question: string;
+      header: string;
+      options: Array<{ label: string; description: string }>;
+      multiSelect: boolean;
+    }>,
+    requestId: string,
+    client: any
+  ): Promise<void>;
+
   /** Post an error message. */
   postError(channelId: string, threadTs: string, message: string, client: any): Promise<void>;
 

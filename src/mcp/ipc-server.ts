@@ -22,6 +22,11 @@ export interface IpcHandler {
   /** Send a permission prompt to the user and return immediately (non-blocking). */
   requestPermission?(channelId: string, threadId: string, toolName: string,
     toolInput: Record<string, unknown>, platform: string, requestId: string): Promise<void>;
+  /** Send an AskUserQuestion prompt to the user and return immediately (non-blocking). */
+  askUserQuestion?(channelId: string, threadId: string,
+    questions: Array<{ question: string; header: string;
+      options: Array<{ label: string; description: string }>; multiSelect: boolean }>,
+    platform: string, requestId: string): Promise<void>;
   /** Copy a staged uploaded file to a destination in the project directory. */
   saveUploadedFile?(uploadId: string, destination: string, projectDir: string): Promise<string>;
 }
@@ -35,6 +40,16 @@ interface PendingPermission {
 
 /** In-memory store for pending permission requests. */
 const pendingPermissions = new Map<string, PendingPermission>();
+
+/** Pending user question — waiting for user to click an option button. */
+interface PendingQuestion {
+  answer: string | null;
+  resolvers: Array<(answer: string) => void>;
+  createdAt: number;
+}
+
+/** In-memory store for pending user questions. */
+const pendingQuestions = new Map<string, PendingQuestion>();
 
 /** Stale entry cleanup interval (10 minutes). */
 const STALE_TIMEOUT_MS = 10 * 60 * 1000;
@@ -51,16 +66,33 @@ export function resolvePermission(requestId: string, decision: 'allow' | 'deny')
   return true;
 }
 
-/** Clean up stale permission entries older than STALE_TIMEOUT_MS. */
-function cleanupStalePermissions(): void {
+/** Resolve a pending user question (called by adapters in-process). */
+export function resolveUserQuestion(requestId: string, answer: string): boolean {
+  const entry = pendingQuestions.get(requestId);
+  if (!entry) return false;
+  entry.answer = answer;
+  for (const resolver of entry.resolvers) {
+    resolver(answer);
+  }
+  entry.resolvers = [];
+  return true;
+}
+
+/** Clean up stale permission and question entries older than STALE_TIMEOUT_MS. */
+function cleanupStaleEntries(): void {
   const now = Date.now();
   for (const [id, entry] of pendingPermissions) {
     if (now - entry.createdAt > STALE_TIMEOUT_MS) {
-      // Resolve any waiting pollers with deny
       for (const resolver of entry.resolvers) {
         resolver('deny');
       }
       pendingPermissions.delete(id);
+    }
+  }
+  for (const [id, entry] of pendingQuestions) {
+    if (now - entry.createdAt > STALE_TIMEOUT_MS) {
+      // Don't resolve with a value — let the poller time out naturally
+      pendingQuestions.delete(id);
     }
   }
 }
@@ -185,7 +217,7 @@ export function startIpcServer(handler: IpcHandler): Promise<IpcServer> {
 
         case '/permission-poll': {
           const { requestId } = data as { requestId: string };
-          cleanupStalePermissions();
+          cleanupStaleEntries();
           const entry = pendingPermissions.get(requestId);
           if (!entry) {
             res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -223,6 +255,72 @@ export function startIpcServer(handler: IpcHandler): Promise<IpcServer> {
             requestId: string; decision: 'allow' | 'deny';
           };
           const resolved = resolvePermission(resolveId, resolveDecision);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: resolved }));
+          break;
+        }
+
+        case '/ask-user-question': {
+          const { channelId, threadId, questions, platform } = data as {
+            channelId: string; threadId: string;
+            questions: Array<{ question: string; header: string;
+              options: Array<{ label: string; description: string }>; multiSelect: boolean }>;
+            platform: string;
+          };
+          const requestId = randomUUID();
+          pendingQuestions.set(requestId, {
+            answer: null,
+            resolvers: [],
+            createdAt: Date.now(),
+          });
+          console.log(`[ipc] ask-user-question (${requestId})`);
+          if (handler.askUserQuestion) {
+            await handler.askUserQuestion(channelId, threadId, questions, platform, requestId);
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, requestId }));
+          break;
+        }
+
+        case '/question-poll': {
+          const { requestId } = data as { requestId: string };
+          cleanupStaleEntries();
+          const entry = pendingQuestions.get(requestId);
+          if (!entry) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'expired' }));
+            break;
+          }
+          if (entry.answer) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'resolved', answer: entry.answer }));
+            pendingQuestions.delete(requestId);
+            break;
+          }
+          // Long-poll: wait up to 5 seconds for an answer
+          const answer = await new Promise<string | 'pending'>((resolve) => {
+            const timeout = setTimeout(() => resolve('pending'), 5000);
+            entry.resolvers.push((a) => {
+              clearTimeout(timeout);
+              resolve(a);
+            });
+          });
+          if (answer === 'pending') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'pending' }));
+          } else {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'resolved', answer }));
+            pendingQuestions.delete(requestId);
+          }
+          break;
+        }
+
+        case '/question-resolve': {
+          const { requestId: resolveId, answer: resolveAnswer } = data as {
+            requestId: string; answer: string;
+          };
+          const resolved = resolveUserQuestion(resolveId, resolveAnswer);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: resolved }));
           break;

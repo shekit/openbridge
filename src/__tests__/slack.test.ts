@@ -13,6 +13,16 @@ import { Store } from '../store.js';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
+import { resolveUserQuestion } from '../mcp/ipc-server.js';
+
+vi.mock('../mcp/ipc-server.js', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual,
+    resolvePermission: vi.fn(() => true),
+    resolveUserQuestion: vi.fn(() => true),
+  };
+});
 
 /** Create a mock Bolt App with tracked handlers. */
 function createMockBoltApp() {
@@ -1799,6 +1809,81 @@ describe('SlackAdapter', () => {
       expect(capturedTexts).toHaveLength(2);
       expect(capturedTexts[0]).toBe('Trying something...');
       expect(capturedTexts[1]).toContain('Something went wrong');
+    });
+  });
+
+  describe('P20.2: AskUserQuestion renders dynamic buttons', () => {
+    it('postUserQuestion renders question text and option buttons', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const questions = [{
+        question: 'Which language should we use?',
+        header: 'Language',
+        options: [
+          { label: 'TypeScript', description: 'Strongly typed' },
+          { label: 'JavaScript', description: 'More flexible' },
+        ],
+        multiSelect: false,
+      }];
+
+      await adapter.postUserQuestion('C_BOUND', 'T_123', questions, 'req-uuid-1', null);
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      const questionCall = calls.find(
+        (c: any) => c[0].blocks && c[0].blocks.some(
+          (b: any) => b.type === 'actions' && b.elements?.[0]?.action_id?.startsWith('question_answer_')
+        )
+      );
+      expect(questionCall).toBeDefined();
+
+      const blocks = questionCall![0].blocks;
+      const sectionBlock = blocks.find((b: any) => b.type === 'section');
+      expect(sectionBlock.text.text).toContain('Which language should we use?');
+      expect(sectionBlock.text.text).toContain('TypeScript');
+      expect(sectionBlock.text.text).toContain('JavaScript');
+
+      const actionsBlock = blocks.find((b: any) => b.type === 'actions');
+      expect(actionsBlock.elements).toHaveLength(2);
+      expect(actionsBlock.elements[0].action_id).toBe('question_answer_0');
+      expect(actionsBlock.elements[0].text.text).toBe('TypeScript');
+      expect(actionsBlock.elements[0].value).toBe('req-uuid-1');
+      expect(actionsBlock.elements[1].action_id).toBe('question_answer_1');
+      expect(actionsBlock.elements[1].text.text).toBe('JavaScript');
+    });
+
+    it('handleQuestionAnswer resolves question and updates message', async () => {
+      createAdapter();
+      await adapter.start();
+
+      // Trigger via the regex-keyed action handler
+      const regexKey = String(/^question_answer_/);
+      const handler = mockApp._actionHandlers[regexKey];
+      expect(handler).toBeDefined();
+
+      await handler({
+        body: {
+          actions: [{
+            action_id: 'question_answer_0',
+            value: 'req-uuid-2',
+            text: { type: 'plain_text', text: 'TypeScript' },
+          }],
+          channel: { id: 'C_BOUND' },
+          message: { ts: '1234567890.000010' },
+        },
+        ack: vi.fn(),
+        client: mockApp.client,
+      });
+
+      expect(resolveUserQuestion).toHaveBeenCalledWith('req-uuid-2', 'TypeScript');
+
+      expect(mockApp.client.chat.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: 'C_BOUND',
+          ts: '1234567890.000010',
+          text: 'Answered: TypeScript',
+        })
+      );
     });
   });
 });

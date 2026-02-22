@@ -31,7 +31,7 @@ import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
 import { splitText, downloadAndStageFile } from '../utils.js';
 import type { FileAttachment } from '../types/backend.js';
-import { resolvePermission } from '../mcp/ipc-server.js';
+import { resolvePermission, resolveUserQuestion } from '../mcp/ipc-server.js';
 import { clearPostMessageFlag, wasPostMessageCalled } from '../mcp/callbacks.js';
 
 const DISCORD_MESSAGE_LIMIT = 2000;
@@ -69,6 +69,8 @@ export class DiscordAdapter {
   private botToken: string;
   private clientId: string | null;
   private botUserId: string | null = null;
+  /** Option labels for pending AskUserQuestion prompts, keyed by requestId. */
+  private pendingQuestionOptions = new Map<string, string[]>();
 
   constructor(options: DiscordAdapterOptions) {
     this.router = options.router;
@@ -411,6 +413,27 @@ export class DiscordAdapter {
       return;
     }
 
+    // AskUserQuestion option buttons
+    if (customId.startsWith('question_answer:')) {
+      const afterPrefix = customId.slice('question_answer:'.length);
+      const pipeIdx = afterPrefix.indexOf('|');
+      const index = parseInt(afterPrefix.slice(0, pipeIdx), 10);
+      const requestId = afterPrefix.slice(pipeIdx + 1);
+
+      const labels = this.pendingQuestionOptions.get(requestId);
+      const label = labels?.[index] ?? `Option ${index}`;
+      this.pendingQuestionOptions.delete(requestId);
+
+      resolveUserQuestion(requestId, label);
+      console.log(`[discord] resolved question ${requestId} → "${label}"`);
+
+      await interaction.update({
+        content: `**Answered:** ${label}`,
+        components: [],
+      });
+      return;
+    }
+
     if (!customId.startsWith('permission_allow') && !customId.startsWith('permission_deny')
       && !customId.startsWith('permission_always_allow')) {
       return;
@@ -619,6 +642,42 @@ export class DiscordAdapter {
 
     const content = `**Permission requested: \`${event.toolName}\`**\n\`\`\`\n${inputStr}\n\`\`\`${contextStr}\n_or type a custom response_`;
 
+    await this.sendToThread(threadId, context, content, [row]);
+  }
+
+  /** Post an interactive question with dynamic option buttons.
+   *  Renders the first question from AskUserQuestion as Discord buttons. */
+  async postUserQuestion(
+    channelId: string,
+    threadId: string,
+    questions: Array<{
+      question: string;
+      header: string;
+      options: Array<{ label: string; description: string }>;
+      multiSelect: boolean;
+    }>,
+    requestId: string,
+    context: any
+  ): Promise<void> {
+    const q = questions[0];
+    if (!q) return;
+
+    this.pendingQuestionOptions.set(requestId, q.options.map((o) => o.label));
+
+    const optionLines = q.options.map((o) =>
+      `- **${o.label}**${o.description ? ` — ${o.description}` : ''}`
+    ).join('\n');
+
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      ...q.options.map((opt, i) =>
+        new ButtonBuilder()
+          .setCustomId(`question_answer:${i}|${requestId}`)
+          .setLabel(opt.label.slice(0, 80))
+          .setStyle(ButtonStyle.Primary)
+      )
+    );
+
+    const content = `**${q.question}**\n${optionLines}`;
     await this.sendToThread(threadId, context, content, [row]);
   }
 
