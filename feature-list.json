@@ -2176,7 +2176,7 @@
             "permission-request.ts top-level catch includes err.message in deny output",
             "Build passes, all tests pass"
           ],
-          "status": "pending"
+          "status": "passing"
         },
         {
           "id": "P21.6",

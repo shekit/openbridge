@@ -180,10 +180,11 @@ async function main(): Promise<void> {
 main().catch((err) => {
   process.stderr.write(`[permission-hook] fatal: ${err}\n`);
   // On any error, deny — don't leave Claude hanging
+  const errMsg = err?.message ?? String(err);
   const output = {
     hookSpecificOutput: {
       hookEventName: 'PermissionRequest',
-      decision: { behavior: 'deny', message: 'Permission hook crashed' },
+      decision: { behavior: 'deny', message: `Permission hook crashed: ${errMsg}` },
     },
   };
   process.stdout.write(JSON.stringify(output));

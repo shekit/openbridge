@@ -271,7 +271,8 @@ async function main(): Promise<void> {
   process.exit(0);
 }
 
-main().catch(() => {
-  // On any error, exit cleanly — don't block Claude Code
+main().catch((err) => {
+  // On any error, log to stderr so it's visible in debug logs, then exit cleanly — don't block Claude Code
+  process.stderr.write(`[pre-tool-use] fatal: ${err?.message ?? err}\n`);
   process.exit(0);
 });
