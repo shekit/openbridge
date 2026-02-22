@@ -2114,6 +2114,92 @@
           "status": "passing"
         }
       ]
+    },
+    {
+      "id": "P21",
+      "name": "Error Handling Cleanup — Eliminate Silent Failures",
+      "outcome": "No silent error swallowing anywhere in the codebase. Errors either surface to the user in chat, log visibly, or throw.",
+      "features": [
+        {
+          "id": "P21.1",
+          "description": "Slack adapter — throw on critical failures (bot auth, channel join, sendToThread, uploadFile, sendMessage), log on cosmetic failures (processing indicator, message updates after button clicks)",
+          "verification": [
+            "start() throws if auth.test fails (bot user ID required for self-filtering)",
+            "ensureInChannel() throws if channel join fails",
+            "sendToThread/uploadFile/sendMessage throw on failure (no .catch(() => null))",
+            "postProcessing/deleteProcessing log error but don't throw",
+            "Button handler message updates (handlePermissionAction, handleQuestionAnswer) log error but don't throw",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P21.2",
+          "description": "Discord adapter — throw on critical failures (sendToThread, uploadFile, sendMessage channel fetch), log on cosmetic failures (processing indicator, interaction updates)",
+          "verification": [
+            "sendToThread throws on channel fetch failure instead of .catch(() => null)",
+            "uploadFile throws on channel fetch failure instead of .catch(() => null)",
+            "sendMessage throws on channel fetch failure instead of .catch(() => null)",
+            "postProcessing/deleteProcessing log error but don't throw",
+            "Button interaction updates log error but don't throw",
+            "Build passes, all tests pass"
+          ],
+          "status": "pending"
+        },
+        {
+          "id": "P21.3",
+          "description": "Claude backend — log on log-file creation failure, warn on JSON parse failures instead of silent null return",
+          "verification": [
+            "spawnCollect log stream failure logs console.error with context",
+            "parseJsonLine logs malformed lines at warn level instead of silently returning null",
+            "writeClaudeMcpConfig logs if existing config read fails (distinguishes ENOENT from other errors)",
+            "Build passes, all tests pass"
+          ],
+          "status": "pending"
+        },
+        {
+          "id": "P21.4",
+          "description": "Codex backend — warn on JSON parse failures, log on cleanup failures, distinguish ENOENT from real errors in config read",
+          "verification": [
+            "parseJsonLine logs malformed lines at warn level instead of silently returning null",
+            "cleanupTempImages logs failures instead of empty catch",
+            "writeCodexMcpConfig distinguishes ENOENT (expected) from other errors (logged)",
+            "Build passes, all tests pass"
+          ],
+          "status": "pending"
+        },
+        {
+          "id": "P21.5",
+          "description": "Hooks — pre-tool-use.ts logs errors before exit, permission-request.ts includes error detail in deny message",
+          "verification": [
+            "pre-tool-use.ts main().catch logs error to stderr before exit(0)",
+            "permission-request.ts top-level catch includes err.message in deny output",
+            "Build passes, all tests pass"
+          ],
+          "status": "pending"
+        },
+        {
+          "id": "P21.6",
+          "description": "Utils and callbacks — downloadToBase64 throws instead of returning null, cleanupStagingFiles logs failures, closeAllFileBrowsers logs failures",
+          "verification": [
+            "downloadToBase64 throws on fetch/conversion failure (callers updated to handle)",
+            "cleanupStagingFiles logs each file cleanup failure with filename",
+            "closeAllFileBrowsers logs each close failure",
+            "Build passes, all tests pass"
+          ],
+          "status": "pending"
+        },
+        {
+          "id": "P21.7",
+          "description": "Start.ts — adapter start failure throws (don't run bridge in half-broken state), IPC cleanup stale entries logs denials",
+          "verification": [
+            "If any adapter fails to start, bridge exits with clear error message instead of continuing",
+            "cleanupStaleEntries logs when auto-denying stale permission requests",
+            "Build passes, all tests pass"
+          ],
+          "status": "pending"
+        }
+      ]
     }
   ]
 }

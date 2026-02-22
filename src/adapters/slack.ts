@@ -66,12 +66,8 @@ export class SlackAdapter {
     await this.app.start();
 
     // Fetch our own bot user ID to filter out self-messages
-    try {
-      const authResult = await this.app.client.auth.test({ token: (this.app as any).token });
-      this.botUserId = authResult.user_id ?? null;
-    } catch {
-      // Non-fatal — we'll filter by bot_id instead
-    }
+    const authResult = await this.app.client.auth.test({ token: (this.app as any).token });
+    this.botUserId = authResult.user_id ?? null;
 
     console.log('[slack] connected via Socket Mode');
   }
@@ -219,8 +215,8 @@ export class SlackAdapter {
           channel: channelId,
           text: 'I need to be in this channel first. Run `/invite @OpenBridge` and try again.',
         });
-      } catch {
-        console.log(`[slack] cannot join or post to channel ${channelId}: ${errorCode}`);
+      } catch (postErr: any) {
+        console.error(`[slack] cannot join or post to channel ${channelId}: ${errorCode}, post error: ${postErr.message}`);
       }
       return false;
     }
@@ -238,8 +234,8 @@ export class SlackAdapter {
       if (result.ts) {
         this.processingMessages.set(threadTs, { channel: channelId, ts: result.ts });
       }
-    } catch {
-      // Non-fatal — continue without indicator
+    } catch (err: any) {
+      console.error(`[slack] failed to post processing indicator in ${channelId}/${threadTs}: ${err.message}`);
     }
   }
 
@@ -250,8 +246,8 @@ export class SlackAdapter {
     this.processingMessages.delete(threadTs);
     try {
       await client.chat.delete({ channel: ref.channel, ts: ref.ts });
-    } catch {
-      // Non-fatal
+    } catch (err: any) {
+      console.error(`[slack] failed to delete processing indicator in ${ref.channel}/${threadTs}: ${err.message}`);
     }
   }
 
@@ -352,7 +348,9 @@ export class SlackAdapter {
               text: `Answered: ${text}`,
               blocks: updatedBlocks,
             });
-          } catch { /* non-fatal */ }
+          } catch (err: any) {
+            console.error(`[slack] failed to update question message for thread ${threadTs}: ${err.message}`);
+          }
         }
       }
       return;
@@ -449,8 +447,8 @@ export class SlackAdapter {
           },
         ],
       });
-    } catch {
-      // Non-fatal if update fails
+    } catch (err: any) {
+      console.error(`[slack] failed to update permission message in ${channelId}: ${err.message}`);
     }
 
     // Hook-based flow: resolve in-process, no need to call router.respond()
@@ -720,7 +718,9 @@ export class SlackAdapter {
           text: `Answered: ${label}`,
           blocks: keptBlocks,
         });
-      } catch { /* non-fatal */ }
+      } catch (err: any) {
+        console.error(`[slack] failed to update question answer message in ${channelId}: ${err.message}`);
+      }
     }
 
     // Post processing indicator — cleaned up by renderEvents when turn completes
@@ -731,10 +731,14 @@ export class SlackAdapter {
 
   /** Post an error message. */
   async postError(channelId: string, threadTs: string, message: string, client: any): Promise<void> {
+    const MAX_ERROR = 3000;
+    const truncated = message.length > MAX_ERROR
+      ? message.slice(0, MAX_ERROR) + '\n... (truncated)'
+      : message;
     await client.chat.postMessage({
       channel: channelId,
       thread_ts: threadTs,
-      text: `:warning: *Error:* ${message}`,
+      text: `:warning: *Error:* ${truncated}`,
     });
   }
 
@@ -1114,7 +1118,9 @@ export class SlackAdapter {
         try {
           this.router.resetSession(channelId, threadTs);
           console.log(`[slack] reset session for thread ${threadTs} after sandbox upgrade`);
-        } catch { /* session may not exist yet */ }
+        } catch (err: any) {
+          console.error(`[slack] failed to reset session after sandbox upgrade for thread ${threadTs}: ${err.message}`);
+        }
       }
     }
 
@@ -1130,7 +1136,9 @@ export class SlackAdapter {
           },
         ],
       });
-    } catch { /* non-fatal */ }
+    } catch (err: any) {
+      console.error(`[slack] failed to update sandbox upgrade message in ${channelId}: ${err.message}`);
+    }
   }
 
   /** Post a sandbox upgrade prompt for Codex sandbox denials. */
@@ -1261,7 +1269,9 @@ export class SlackAdapter {
       if (newChannelId) {
         const project = this.store.createProject(newChannelId, projectDir, backend, 'slack');
         if (userId) {
-          await client.conversations.invite({ channel: newChannelId, users: userId }).catch(() => {});
+          await client.conversations.invite({ channel: newChannelId, users: userId }).catch((err: any) => {
+            console.error(`[slack] failed to invite user ${userId} to channel ${newChannelId}: ${err.message}`);
+          });
         }
         await client.chat.postMessage({
           channel: sourceChannelId,
