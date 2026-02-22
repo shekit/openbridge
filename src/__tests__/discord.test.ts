@@ -927,8 +927,11 @@ describe('DiscordAdapter', () => {
       createAdapter();
       await adapter.start();
 
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
       const { interaction } = createMockInteraction({
         commandName: 'settings',
+        subcommand: 'view',
         channelId: 'C_BOUND',
       });
 
@@ -1130,8 +1133,8 @@ describe('DiscordAdapter', () => {
 
       const { interaction, replies } = createMockInteraction({
         commandName: 'settings',
+        subcommand: 'view',
         channelId: 'C_BOUND',
-        options: { args: null },
       });
 
       await triggerInteraction(interaction);
@@ -1141,7 +1144,7 @@ describe('DiscordAdapter', () => {
       expect(text).toContain('/test/project');
     });
 
-    it('changes the backend when given "backend codex"', async () => {
+    it('changes the backend with subcommand', async () => {
       createAdapter();
       await adapter.start();
 
@@ -1149,8 +1152,9 @@ describe('DiscordAdapter', () => {
 
       const { interaction, replies } = createMockInteraction({
         commandName: 'settings',
+        subcommand: 'backend',
         channelId: 'C_BOUND',
-        options: { args: 'backend codex' },
+        options: { name: 'codex' },
       });
 
       await triggerInteraction(interaction);
@@ -1162,32 +1166,14 @@ describe('DiscordAdapter', () => {
       expect(text).toContain('codex');
     });
 
-    it('rejects unknown backends', async () => {
-      createAdapter();
-      await adapter.start();
-
-      store.createProject('C_BOUND', '/test/project', 'claude');
-
-      const { interaction, replies } = createMockInteraction({
-        commandName: 'settings',
-        channelId: 'C_BOUND',
-        options: { args: 'backend unknown' },
-      });
-
-      await triggerInteraction(interaction);
-
-      const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
-      expect(text).toContain('Unknown backend');
-    });
-
-    it('shows message for unbound channel', async () => {
+    it('shows message for unbound channel on view', async () => {
       createAdapter();
       await adapter.start();
 
       const { interaction, replies } = createMockInteraction({
         commandName: 'settings',
+        subcommand: 'view',
         channelId: 'C_UNBOUND',
-        options: { args: null },
       });
 
       await triggerInteraction(interaction);

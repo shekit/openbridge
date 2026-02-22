@@ -141,8 +141,22 @@ export class DiscordAdapter {
       new SlashCommandBuilder()
         .setName('settings')
         .setDescription('View or modify bridge settings')
-        .addStringOption((option) =>
-          option.setName('args').setDescription('Setting to change (e.g. "backend codex", "root /path")').setRequired(false)
+        .addSubcommand((sub) =>
+          sub.setName('view')
+            .setDescription('View current settings for this channel')
+        )
+        .addSubcommand((sub) =>
+          sub.setName('backend')
+            .setDescription('Switch the AI backend for this channel')
+            .addStringOption((opt) =>
+              opt.setName('name').setDescription('Backend name').setRequired(true)
+                .addChoices({ name: 'claude', value: 'claude' }, { name: 'codex', value: 'codex' })
+            )
+        )
+        .addSubcommand((sub) =>
+          sub.setName('root')
+            .setDescription('Set the projects root folder')
+            .addStringOption((opt) => opt.setName('path').setDescription('Absolute path to projects root').setRequired(true))
         ),
       new SlashCommandBuilder()
         .setName('cancel')
@@ -679,7 +693,7 @@ export class DiscordAdapter {
         if (!root) {
           await interaction.reply([
             ':warning: No projects root configured. Either:',
-            '- Set one with `/settings args:root /path` then use `/project new name:my-app`',
+            '- Set one with `/settings root path:/path` then use `/project new name:my-app`',
             '- Or provide an absolute path: `/project new name:/home/user/my-app`',
           ].join('\n'));
           return;
@@ -713,7 +727,7 @@ export class DiscordAdapter {
         if (root && fs.existsSync(root)) {
           await this.postProjectPicker(interaction, 0);
         } else {
-          await interaction.reply(':warning: Provide a path: `/project connect path:/absolute/path`\n_Tip: Set a projects root with `/settings args:root /path` to enable the picker._');
+          await interaction.reply(':warning: Provide a path: `/project connect path:/absolute/path`\n_Tip: Set a projects root with `/settings root path:/path` to enable the picker._');
         }
         return;
       }
@@ -970,6 +984,20 @@ export class DiscordAdapter {
   /** Handle /settings slash command. */
   private async handleSettingsCommand(interaction: any): Promise<void> {
     const channelId = interaction.channelId;
+    const subcommand = interaction.options?.getSubcommand?.() ?? 'view';
+
+    if (subcommand === 'root') {
+      const rootPath = interaction.options.getString('path');
+      if (!path.isAbsolute(rootPath)) {
+        await interaction.reply(':warning: Please provide an absolute path. Example: `/settings root path:/home/user/projects`');
+        return;
+      }
+      this.store.setSetting('projects_root', rootPath);
+      await interaction.reply(`Projects root set to \`${rootPath}\`. Use \`/project connect\` to pick from subdirectories.`);
+      return;
+    }
+
+    // backend and view both require a connected project
     const project = this.store.getProjectByChannelId(channelId);
 
     if (!project) {
@@ -977,40 +1005,21 @@ export class DiscordAdapter {
       return;
     }
 
-    const args = interaction.options?.getString?.('args') || '';
-
-    if (!args) {
+    if (subcommand === 'backend') {
+      const newBackend = interaction.options.getString('name');
+      this.store.updateProjectBackend(project.id, newBackend);
+      await interaction.reply(`Backend changed to \`${newBackend}\` for this project.`);
+    } else {
+      // view
       const root = this.store.getSetting('projects_root');
       let text = `**Settings for this project:**\n- Backend: \`${project.backend_name}\`\n- Directory: \`${project.project_dir}\``;
       if (root) {
         text += `\n- Projects root: \`${root}\``;
       }
       text += '\n\n_Commands:_';
-      text += '\n- `/settings args:backend claude` or `codex` — switch backend';
-      text += '\n- `/settings args:root /path` — set projects root folder';
+      text += '\n- `/settings backend name:claude` or `codex` — switch backend';
+      text += '\n- `/settings root path:/path` — set projects root folder';
       await interaction.reply(text);
-      return;
-    }
-
-    const parts = args.split(/\s+/);
-    if (parts[0] === 'backend' && parts[1]) {
-      const newBackend = parts[1];
-      if (!['claude', 'codex'].includes(newBackend)) {
-        await interaction.reply(`:warning: Unknown backend \`${newBackend}\`. Valid options: \`claude\`, \`codex\``);
-        return;
-      }
-      this.store.updateProjectBackend(project.id, newBackend);
-      await interaction.reply(`Backend changed to \`${newBackend}\` for this project.`);
-    } else if (parts[0] === 'root' && parts[1]) {
-      const rootPath = parts.slice(1).join(' ');
-      if (!path.isAbsolute(rootPath)) {
-        await interaction.reply(':warning: Please provide an absolute path. Example: `/settings args:root /home/user/projects`');
-        return;
-      }
-      this.store.setSetting('projects_root', rootPath);
-      await interaction.reply(`Projects root set to \`${rootPath}\`. Use \`/project connect\` to pick from subdirectories.`);
-    } else {
-      await interaction.reply('**Usage:**\n- `/settings args:backend <claude|codex>`\n- `/settings args:root /path`');
     }
   }
 
