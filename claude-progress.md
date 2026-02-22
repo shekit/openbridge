@@ -19,6 +19,8 @@ Phase 15 — Hook Bugfix (complete)
 Phase 16 — post_message MCP Tool + Output Cleanup (complete)
 Phase 17 — Consolidated Preview Server (complete)
 Phase 18 — Bug Fixes from Live Testing (complete)
+Phase 19 — Live Testing Fixes (complete)
+Phase 20 — UX Polish and Command Reorganization (complete)
 
 ## Session Log
 
@@ -617,3 +619,27 @@ Also fixed broken JSON in feature-list.json (extra `}` brace in P16 section).
 
 **Test count:** 614 tests passing across 24 test files (test count decreased due to removal of open_tunnel tests)
 - All features (P19.1–P19.10) committed individually, all marked passing
+
+### Session 25 — P20: UX Polish and Command Reorganization
+
+Phase 20 was implemented across multiple sessions (24–25). Features P20.1–P20.8 were committed in Session 24. Session 25 completed P20.9.
+
+**P20.5–P20.8 (committed in Session 24):**
+- P20.5: Register hooks in both trusted and supervised modes
+- P20.6: threadId-to-requestId index in IPC for typed responses to pending questions
+- P20.7: Update question message when user types a response
+- P20.8: Preserve question text in updated messages
+
+**P20.9: Processing indicator for all resolution paths**
+- Added `processingMessages` Map to both Slack and Discord adapters
+- `postProcessing()` and `deleteProcessing()` helper methods in each adapter
+- Processing posted after: permission Allow/Deny clicks, AskUserQuestion button clicks, typed responses, freeform text
+- Processing deleted centrally at start of `renderEvents()` (covers all success paths)
+- Processing deleted explicitly in error paths (backend failures)
+- `postProcessing()` deletes existing indicator first to prevent orphans in multi-permission turns
+- Refactored existing inline processing code in handleMessage (new thread + follow-up) to use centralized map
+- 10 new tests across both adapter test files
+
+**Test count:** 631 tests passing across 24 test files
+- All P20 features (P20.1–P20.9) committed individually, all marked passing
+- Updated feature-list.json with P20.5–P20.9 entries
