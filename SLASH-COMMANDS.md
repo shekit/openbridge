@@ -10,6 +10,7 @@
 | `connect` (no path) | Shows picker if root set | Shows button picker if root set |
 | `list` | `/project list` | `/project list` |
 | `disconnect` | `/project disconnect` | `/project disconnect` |
+| `backend <name>` | `/project backend codex` | `/project backend name:codex` |
 
 `new` creates the directory and binds the channel. If a project name (not an absolute path) is given, it's created under the projects root. If no root is set, use an absolute path or set one with `/settings root /path`.
 
@@ -19,9 +20,8 @@ Slack also supports `/project /absolute/path` (without `connect`) for backwards 
 
 | Subcommand | Slack | Discord |
 |------------|-------|---------|
-| (no args) | `/settings` — shows current settings + usage | `/settings` |
-| Switch backend | `/settings backend codex` | `/settings args:backend codex` |
-| Set projects root | `/settings root /path` | `/settings args:root /path` |
+| (no args) | `/settings` — shows current settings | `/settings view` |
+| Set projects root | `/settings root /path` | `/settings root path:/path` |
 
 ## `/new`
 

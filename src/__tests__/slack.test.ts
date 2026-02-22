@@ -893,7 +893,7 @@ describe('SlackAdapter', () => {
   });
 
   describe('P3.17: /settings displays and modifies bridge configuration', () => {
-    it('displays current project settings', async () => {
+    it('displays current settings with project info', async () => {
       createAdapter();
       await adapter.start();
 
@@ -907,15 +907,32 @@ describe('SlackAdapter', () => {
       const calls = mockApp.client.chat.postMessage.mock.calls;
       expect(calls[0][0].text).toContain('claude');
       expect(calls[0][0].text).toContain('/test/project');
+      expect(calls[0][0].text).toContain('/project backend');
     });
 
+    it('displays settings even without a connected project', async () => {
+      createAdapter();
+      await adapter.start();
+
+      await triggerCommand('/settings', {
+        channel_id: 'C_UNBOUND',
+        text: '',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      expect(calls[0][0].text).toContain('Bridge settings');
+      expect(calls[0][0].text).toContain('/settings root');
+    });
+  });
+
+  describe('/project backend changes the AI backend', () => {
     it('changes the backend when given "backend codex"', async () => {
       createAdapter();
       await adapter.start();
 
       const project = store.createProject('C_BOUND', '/test/project', 'claude');
 
-      await triggerCommand('/settings', {
+      await triggerCommand('/project', {
         channel_id: 'C_BOUND',
         text: 'backend codex',
       });
@@ -936,7 +953,7 @@ describe('SlackAdapter', () => {
 
       store.createProject('C_BOUND', '/test/project', 'claude');
 
-      await triggerCommand('/settings', {
+      await triggerCommand('/project', {
         channel_id: 'C_BOUND',
         text: 'backend unknown',
       });
@@ -945,20 +962,20 @@ describe('SlackAdapter', () => {
       expect(calls[0][0].text).toContain('Unknown backend');
     });
 
-    it('shows message for unbound channel', async () => {
+    it('shows current backend when no arg given', async () => {
       createAdapter();
       await adapter.start();
 
-      await triggerCommand('/settings', {
-        channel_id: 'C_UNBOUND',
-        text: '',
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      await triggerCommand('/project', {
+        channel_id: 'C_BOUND',
+        text: 'backend',
       });
 
-      expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          text: expect.stringContaining('not connected'),
-        })
-      );
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      expect(calls[0][0].text).toContain('Current backend');
+      expect(calls[0][0].text).toContain('claude');
     });
   });
 

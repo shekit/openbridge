@@ -1125,7 +1125,7 @@ describe('DiscordAdapter', () => {
   });
 
   describe('P4.13: Discord — /settings command', () => {
-    it('displays current project settings', async () => {
+    it('displays settings with project info', async () => {
       createAdapter();
       await adapter.start();
 
@@ -1142,31 +1142,10 @@ describe('DiscordAdapter', () => {
       const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
       expect(text).toContain('claude');
       expect(text).toContain('/test/project');
+      expect(text).toContain('/project backend');
     });
 
-    it('changes the backend with subcommand', async () => {
-      createAdapter();
-      await adapter.start();
-
-      const project = store.createProject('C_BOUND', '/test/project', 'claude');
-
-      const { interaction, replies } = createMockInteraction({
-        commandName: 'settings',
-        subcommand: 'backend',
-        channelId: 'C_BOUND',
-        options: { name: 'codex' },
-      });
-
-      await triggerInteraction(interaction);
-
-      const updated = store.getProjectById(project.id);
-      expect(updated?.backend_name).toBe('codex');
-
-      const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
-      expect(text).toContain('codex');
-    });
-
-    it('shows message for unbound channel on view', async () => {
+    it('displays settings even without a connected project', async () => {
       createAdapter();
       await adapter.start();
 
@@ -1179,7 +1158,32 @@ describe('DiscordAdapter', () => {
       await triggerInteraction(interaction);
 
       const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
-      expect(text).toContain('not connected');
+      expect(text).toContain('Bridge settings');
+      expect(text).toContain('/settings root');
+    });
+  });
+
+  describe('/project backend changes the AI backend', () => {
+    it('changes the backend with subcommand', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const project = store.createProject('C_BOUND', '/test/project', 'claude');
+
+      const { interaction, replies } = createMockInteraction({
+        commandName: 'project',
+        subcommand: 'backend',
+        channelId: 'C_BOUND',
+        options: { name: 'codex' },
+      });
+
+      await triggerInteraction(interaction);
+
+      const updated = store.getProjectById(project.id);
+      expect(updated?.backend_name).toBe('codex');
+
+      const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
+      expect(text).toContain('codex');
     });
   });
 

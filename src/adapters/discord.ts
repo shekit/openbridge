@@ -134,16 +134,6 @@ export class DiscordAdapter {
           sub.setName('new')
             .setDescription('Create a new project and connect it to a channel')
             .addStringOption((opt) => opt.setName('name').setDescription('Project name or absolute path').setRequired(true))
-        ),
-      new SlashCommandBuilder()
-        .setName('new')
-        .setDescription('Reset the current session in this thread'),
-      new SlashCommandBuilder()
-        .setName('settings')
-        .setDescription('View or modify bridge settings')
-        .addSubcommand((sub) =>
-          sub.setName('view')
-            .setDescription('View current settings for this channel')
         )
         .addSubcommand((sub) =>
           sub.setName('backend')
@@ -152,6 +142,16 @@ export class DiscordAdapter {
               opt.setName('name').setDescription('Backend name').setRequired(true)
                 .addChoices({ name: 'claude', value: 'claude' }, { name: 'codex', value: 'codex' })
             )
+        ),
+      new SlashCommandBuilder()
+        .setName('new')
+        .setDescription('Reset the current session in this thread'),
+      new SlashCommandBuilder()
+        .setName('settings')
+        .setDescription('View or modify global bridge settings')
+        .addSubcommand((sub) =>
+          sub.setName('view')
+            .setDescription('View current settings')
         )
         .addSubcommand((sub) =>
           sub.setName('root')
@@ -725,6 +725,19 @@ export class DiscordAdapter {
       return;
     }
 
+    // /project backend <claude|codex>
+    if (subcommand === 'backend') {
+      const project = this.store.getProjectByChannelId(channelId);
+      if (!project) {
+        await interaction.reply('This channel is not connected to a project. Use `/project connect` first.');
+        return;
+      }
+      const newBackend = interaction.options.getString('name');
+      this.store.updateProjectBackend(project.id, newBackend);
+      await interaction.reply(`Backend changed to \`${newBackend}\` for this project.`);
+      return;
+    }
+
     // /project connect [path]
     if (subcommand === 'connect') {
       const projectPath = interaction.options?.getString?.('path') || '';
@@ -765,7 +778,7 @@ export class DiscordAdapter {
       '**Other commands:**',
       '- `/new` — reset the session in a thread',
       '- `/cancel` — stop a running task in a thread',
-      '- `/settings` — view or change bridge settings',
+      '- `/settings` — set projects root folder',
     ].join('\n'));
   }
 
@@ -776,6 +789,7 @@ export class DiscordAdapter {
       '- `/project connect` — connect an existing project to a channel',
       '- `/project list` — show all connected projects',
       '- `/project disconnect` — disconnect this channel',
+      '- `/project backend name:claude` or `codex` — switch the AI backend',
     ];
   }
 
@@ -1005,30 +1019,21 @@ export class DiscordAdapter {
       return;
     }
 
-    // backend and view both require a connected project
+    // view
+    const root = this.store.getSetting('projects_root');
     const project = this.store.getProjectByChannelId(channelId);
-
-    if (!project) {
-      await interaction.reply('This channel is not connected to a project. Use `/project connect` first.');
-      return;
-    }
-
-    if (subcommand === 'backend') {
-      const newBackend = interaction.options.getString('name');
-      this.store.updateProjectBackend(project.id, newBackend);
-      await interaction.reply(`Backend changed to \`${newBackend}\` for this project.`);
+    let text = '**Bridge settings:**';
+    if (root) {
+      text += `\n- Projects root: \`${root}\``;
     } else {
-      // view
-      const root = this.store.getSetting('projects_root');
-      let text = `**Settings for this project:**\n- Backend: \`${project.backend_name}\`\n- Directory: \`${project.project_dir}\``;
-      if (root) {
-        text += `\n- Projects root: \`${root}\``;
-      }
-      text += '\n\n_Commands:_';
-      text += '\n- `/settings backend name:claude` or `codex` — switch backend';
-      text += '\n- `/settings root path:/path` — set projects root folder';
-      await interaction.reply(text);
+      text += '\n- Projects root: _(not set)_';
     }
+    if (project) {
+      text += `\n\n**This channel's project:**\n- Backend: \`${project.backend_name}\` — change with \`/project backend\`\n- Directory: \`${project.project_dir}\``;
+    }
+    text += '\n\n_Commands:_';
+    text += '\n- `/settings root path:/path` — set projects root folder';
+    await interaction.reply(text);
   }
 
   /** Handle file uploads in messages — downloads all file types for backend passthrough. */

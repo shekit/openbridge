@@ -652,6 +652,7 @@ export class SlackAdapter {
     }
     lines.push('• `/project list` — show all connected projects');
     lines.push('• `/project disconnect` — disconnect this channel');
+    lines.push('• `/project backend codex` — switch the AI backend for this project');
     return lines;
   }
 
@@ -670,7 +671,7 @@ export class SlackAdapter {
         ...this.getProjectCommandLines(),
         '',
         '*Other commands:*',
-        '• `/settings` — view or change bridge settings',
+        '• `/settings` — set projects root folder',
       ];
       await client.chat.postMessage({
         channel: channelId,
@@ -808,6 +809,38 @@ export class SlackAdapter {
         return;
       }
       await this.handleProjectConnect(channelId, projectDir, command, client);
+      return;
+    }
+
+    // /project backend [claude|codex]
+    if (subcommand === 'backend') {
+      const project = this.store.getProjectByChannelId(channelId);
+      if (!project) {
+        await client.chat.postMessage({
+          channel: channelId,
+          text: 'This channel is not connected to a project. Use `/project connect` first.',
+        });
+        return;
+      }
+      if (!subArg) {
+        await client.chat.postMessage({
+          channel: channelId,
+          text: `Current backend: \`${project.backend_name}\`. Use \`/project backend claude\` or \`/project backend codex\` to switch.`,
+        });
+        return;
+      }
+      if (!['claude', 'codex'].includes(subArg)) {
+        await client.chat.postMessage({
+          channel: channelId,
+          text: `:warning: Unknown backend \`${subArg}\`. Valid options: \`claude\`, \`codex\``,
+        });
+        return;
+      }
+      this.store.updateProjectBackend(project.id, subArg);
+      await client.chat.postMessage({
+        channel: channelId,
+        text: `Backend changed to \`${subArg}\` for this project.`,
+      });
       return;
     }
 
@@ -1204,27 +1237,22 @@ export class SlackAdapter {
   /** Handle /settings slash command. */
   private async handleSettingsCommand(command: any, client: any): Promise<void> {
     const channelId = command.channel_id;
-    const project = this.store.getProjectByChannelId(channelId);
-
-    if (!project) {
-      await client.chat.postMessage({
-        channel: channelId,
-        text: 'This channel is not connected to a project. Use `/project connect` first.',
-      });
-      return;
-    }
-
     const args = (command.text || '').trim();
 
     if (!args) {
-      // Show current settings with usage hints
+      // Show current settings
       const root = this.store.getSetting('projects_root');
-      let text = `*Settings for this project:*\n• Backend: \`${project.backend_name}\`\n• Directory: \`${project.project_dir}\``;
+      const project = this.store.getProjectByChannelId(channelId);
+      let text = '*Bridge settings:*';
       if (root) {
         text += `\n• Projects root: \`${root}\``;
+      } else {
+        text += '\n• Projects root: _(not set)_';
+      }
+      if (project) {
+        text += `\n\n*This channel's project:*\n• Backend: \`${project.backend_name}\` — change with \`/project backend\`\n• Directory: \`${project.project_dir}\``;
       }
       text += '\n\n_Commands:_';
-      text += '\n• `/settings backend claude` or `codex` — switch backend';
       text += '\n• `/settings root /path` — set projects root folder';
       await client.chat.postMessage({
         channel: channelId,
@@ -1233,23 +1261,8 @@ export class SlackAdapter {
       return;
     }
 
-    // Parse setting changes, e.g. "backend codex"
     const parts = args.split(/\s+/);
-    if (parts[0] === 'backend' && parts[1]) {
-      const newBackend = parts[1];
-      if (!['claude', 'codex'].includes(newBackend)) {
-        await client.chat.postMessage({
-          channel: channelId,
-          text: `:warning: Unknown backend \`${newBackend}\`. Valid options: \`claude\`, \`codex\``,
-        });
-        return;
-      }
-      this.store.updateProjectBackend(project.id, newBackend);
-      await client.chat.postMessage({
-        channel: channelId,
-        text: `Backend changed to \`${newBackend}\` for this project.`,
-      });
-    } else if (parts[0] === 'root' && parts[1]) {
+    if (parts[0] === 'root' && parts[1]) {
       const rootPath = parts.slice(1).join(' ');
       if (!path.isAbsolute(rootPath)) {
         await client.chat.postMessage({
@@ -1266,7 +1279,7 @@ export class SlackAdapter {
     } else {
       await client.chat.postMessage({
         channel: channelId,
-        text: '*Usage:*\n• `/settings backend <claude|codex>`\n• `/settings root /path`',
+        text: '*Usage:*\n• `/settings root /path` — set projects root folder',
       });
     }
   }
