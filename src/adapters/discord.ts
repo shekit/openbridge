@@ -272,7 +272,7 @@ export class DiscordAdapter {
           this.questionMessages.delete(requestId);
           this.pendingQuestionOptions.delete(requestId);
           try {
-            await questionMsg.edit({ content: `**Answered:** ${text}`, components: [] });
+            await questionMsg.edit({ content: `${questionMsg.content}\n\n**Answered:** ${text}`, components: [] });
           } catch { /* non-fatal */ }
         }
       }
@@ -448,8 +448,9 @@ export class DiscordAdapter {
       resolveUserQuestion(requestId, label);
       console.log(`[discord] resolved question ${requestId} → "${label}"`);
 
+      const originalContent = (interaction as any).message?.content ?? '';
       await interaction.update({
-        content: `**Answered:** ${label}`,
+        content: `${originalContent}\n\n**Answered:** ${label}`,
         components: [],
       });
       return;

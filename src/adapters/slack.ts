@@ -314,11 +314,18 @@ export class SlackAdapter {
         if (msgRef) {
           this.questionMessages.delete(requestId);
           try {
+            // Fetch original message to preserve question text, remove action buttons
+            const original = await client.conversations.history({
+              channel: msgRef.channel, latest: msgRef.ts, inclusive: true, limit: 1,
+            });
+            const origBlocks = (original.messages?.[0] as any)?.blocks ?? [];
+            const keptBlocks = origBlocks.filter((b: any) => b.type !== 'actions');
+            keptBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*Answered:* ${text}` } });
             await client.chat.update({
               channel: msgRef.channel,
               ts: msgRef.ts,
               text: `Answered: ${text}`,
-              blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `*Answered:* ${text}` } }],
+              blocks: keptBlocks,
             });
           } catch { /* non-fatal */ }
         }
@@ -726,16 +733,15 @@ export class SlackAdapter {
 
     if (channelId && messageTs) {
       try {
+        // Keep original question/options blocks, remove action buttons, append answer
+        const origBlocks = (body.message?.blocks ?? []) as any[];
+        const keptBlocks = origBlocks.filter((b: any) => b.type !== 'actions');
+        keptBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*Answered:* ${label}` } });
         await client.chat.update({
           channel: channelId,
           ts: messageTs,
           text: `Answered: ${label}`,
-          blocks: [
-            {
-              type: 'section',
-              text: { type: 'mrkdwn', text: `*Answered:* ${label}` },
-            },
-          ],
+          blocks: keptBlocks,
         });
       } catch { /* non-fatal */ }
     }

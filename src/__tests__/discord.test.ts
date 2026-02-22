@@ -242,7 +242,7 @@ function createMockButtonInteraction(overrides: {
     customId: overrides.customId,
     channelId: mockChannel.id,
     channel: mockChannel,
-    message: { id: overrides.messageId ?? 'msg-with-buttons' },
+    message: { id: overrides.messageId ?? 'msg-with-buttons', content: '' },
     update: vi.fn(async (opts: any) => {
       updates.push(opts);
     }),
@@ -1825,7 +1825,7 @@ describe('DiscordAdapter', () => {
 
       expect(interaction.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          content: '**Answered:** Beta',
+          content: expect.stringContaining('**Answered:** Beta'),
           components: [],
         })
       );
