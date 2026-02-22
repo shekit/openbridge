@@ -25,6 +25,8 @@ describe('getMcpConfig (updated)', () => {
         '--thread', 'T456',
         '--project-dir', '/proj',
         '--platform', 'slack',
+        '--ipc-port', '12345',
+        '--ipc-secret', 'test-secret',
       ],
       env: {
         OPENBRIDGE_IPC_PORT: '12345',

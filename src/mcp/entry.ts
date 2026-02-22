@@ -60,8 +60,10 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const ipcPort = parseInt(process.env.OPENBRIDGE_IPC_PORT ?? '', 10);
-  const ipcSecret = process.env.OPENBRIDGE_IPC_SECRET ?? '';
+  // Read IPC config from args first (needed for Codex which doesn't pass env),
+  // fall back to environment variables (Claude Code passes them via env)
+  const ipcPort = parseInt(args['ipc-port'] ?? process.env.OPENBRIDGE_IPC_PORT ?? '', 10);
+  const ipcSecret = args['ipc-secret'] ?? process.env.OPENBRIDGE_IPC_SECRET ?? '';
 
   if (!ipcPort || !ipcSecret) {
     console.error('[mcp-entry] missing env: OPENBRIDGE_IPC_PORT, OPENBRIDGE_IPC_SECRET');

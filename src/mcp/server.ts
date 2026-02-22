@@ -327,6 +327,8 @@ export function getMcpConfig(
       '--thread', context.threadId,
       '--project-dir', context.projectDir,
       '--platform', context.platform,
+      '--ipc-port', String(ipc.port),
+      '--ipc-secret', ipc.secret,
     ],
     env: {
       OPENBRIDGE_IPC_PORT: String(ipc.port),

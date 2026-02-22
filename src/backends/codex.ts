@@ -242,6 +242,7 @@ export function writeCodexMcpConfig(projectDir: string, mcpConfig: McpServerEntr
     '[mcp_servers.openbridge]',
     `command = "${mcpConfig.command}"`,
     `args = [${argsToml}]`,
+    'enabled = true',
   ];
 
   if (mcpConfig.env && Object.keys(mcpConfig.env).length > 0) {

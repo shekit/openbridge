@@ -165,6 +165,8 @@ describe('P5.2: MCP config injection', () => {
       '--thread', 'T1',
       '--project-dir', '/home/user/myapp',
       '--platform', 'slack',
+      '--ipc-port', '12345',
+      '--ipc-secret', 'sec123',
     ]);
     expect(config.env).toEqual({
       OPENBRIDGE_IPC_PORT: '12345',
