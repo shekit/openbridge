@@ -78,7 +78,8 @@ export function createMcpServer(
     'upload_file',
     {
       description:
-        'Upload a file from the project directory as a chat attachment in the originating Slack/Discord thread.',
+        'Send a file from the project to the user as an attachment. ' +
+        'Use this when the user asks you to share, send, or show them a file from the project.',
       inputSchema: {
         file_path: z.string().describe('Path to the file to upload (relative to project directory or absolute within it)'),
       },
@@ -113,10 +114,9 @@ export function createMcpServer(
     'open_tunnel',
     {
       description:
-        'Expose an already-running local server via a public tunnel. ' +
-        'Only use this if you already have a server running on a specific port. ' +
-        'For starting a NEW server + tunnel, use preview_server instead — it handles port allocation, ' +
-        'server startup, and tunneling in one step. ' +
+        'Create a public URL for a server that is already running on a local port. ' +
+        'Use this only when a server is already running and you know its port number. ' +
+        'If you need to start a new server, use preview_server instead — it handles everything in one step. ' +
         'After receiving the URL, use post_message to share it with the user.',
       inputSchema: {
         port: z.number().int().min(1).max(65535).describe('Port number to tunnel'),
@@ -147,8 +147,9 @@ export function createMcpServer(
     'serve_file_browser',
     {
       description:
-        'Serve a lightweight file browser for the project directory (or a subdirectory) behind a public tunnel. ' +
-        'Returns the URL. Use post_message to share it with the user.',
+        'Give the user a browsable view of the project files and folders via a public URL. ' +
+        'Use this when the user asks to see, browse, or explore the project file structure. ' +
+        'Returns a URL. Use post_message to share it with the user.',
       inputSchema: {
         directory: z.string().default('.').optional()
           .describe('Directory to serve (relative to project directory, defaults to project root)'),
@@ -186,10 +187,12 @@ export function createMcpServer(
     'preview_server',
     {
       description:
-        'Start a server for a project directory and expose it via a public tunnel. Returns the tunnel URL and port. ' +
-        'Use this when the user asks to preview, demo, or share their website/app. ' +
-        'For static sites: just provide the directory (e.g. "./dist", "./build", "."). ' +
-        'For dev servers: provide a command (e.g. "npm run dev") — the PORT environment variable is injected automatically, so do NOT hardcode a port. ' +
+        'Start a server and give the user a public URL to preview the project. ' +
+        'Handles port allocation, server startup, and public URL creation in one step, and works regardless of sandbox restrictions. ' +
+        'Use this when the user asks to preview, demo, or share their website or app, or asks for a live URL or dev server. ' +
+        'Always use this instead of starting servers manually via shell commands. ' +
+        'For static sites: just provide the directory. ' +
+        'For dev servers: provide a command (e.g. "npm run dev") — the PORT env var is injected automatically, do NOT hardcode a port. ' +
         'After receiving the URL, use post_message to share it with the user.',
       inputSchema: {
         directory: z.string().default('.').optional()
@@ -233,10 +236,10 @@ export function createMcpServer(
     'save_uploaded_file',
     {
       description:
-        'Save a previously uploaded image file to a location in the project directory. ' +
-        'When a user uploads an image in chat, the bridge stages it with an upload_id. ' +
-        'Use this tool to copy the staged file to your desired project location. ' +
-        'The upload_id is provided in the message text when an image is uploaded.',
+        'Save a file the user uploaded to a location in the project directory. ' +
+        'When the user sends a file, it is staged with an upload_id included in the message. ' +
+        'Use this when the user asks you to save, add, or place an uploaded file into the project. ' +
+        'The upload_id is in the message text (e.g. upload_abc123def456).',
       inputSchema: {
         upload_id: z.string().describe('The upload ID from the image upload notification (e.g., upload_abc123def456)'),
         destination: z.string().describe('Destination path relative to project directory (e.g., "public/logo.png" or "assets/images/hero.jpg")'),
@@ -263,10 +266,9 @@ export function createMcpServer(
     'post_message',
     {
       description:
-        'Post a message to the user in the chat thread. ' +
-        'Use this to share results, progress updates, links, and important information. ' +
-        'Your internal thinking is NOT shown to the user — only messages sent through this tool are visible. ' +
-        'Always call this at least once per turn to communicate your final results.',
+        'Send a message to the user. Your internal thinking is NOT shown to the user — only messages sent through this tool are visible to them. ' +
+        'Use this whenever you need to communicate anything to the user: results, progress, URLs, answers, or status updates. ' +
+        'Always call this at least once per turn.',
       inputSchema: {
         text: z.string().describe('The message text to post to the user'),
       },
