@@ -150,9 +150,23 @@ export class DiscordAdapter {
     ];
 
     const rest = new REST().setToken(this.botToken);
-    await rest.put(Routes.applicationCommands(this.clientId), {
-      body: commands.map((c) => c.toJSON()),
-    });
+    const commandData = commands.map((c) => c.toJSON());
+
+    // Clear global commands (they duplicate guild commands in the autocomplete)
+    await rest.put(Routes.applicationCommands(this.clientId), { body: [] });
+
+    // Register per-guild (shows up instantly in autocomplete)
+    const guilds = this.client.guilds.cache;
+    for (const [guildId, guild] of guilds) {
+      try {
+        await rest.put(Routes.applicationGuildCommands(this.clientId!, guildId), {
+          body: commandData,
+        });
+        console.log(`[discord] guild commands registered for ${guild.name}`);
+      } catch (err) {
+        console.warn(`[discord] failed to register guild commands for ${guild.name}:`, err);
+      }
+    }
 
     console.log('[discord] slash commands registered');
   }
@@ -196,17 +210,6 @@ export class DiscordAdapter {
       return; // Not a bound channel, ignore
     }
 
-    // Handle file attachments
-    if (message.attachments.size > 0) {
-      const files = Array.from(message.attachments.values()).map((a) => ({
-        name: a.name ?? 'unknown',
-        url: a.url,
-        contentType: a.contentType ?? undefined,
-      }));
-      await this.handleFileUpload(channelId, threadId ?? message.id, files, text, message);
-      return;
-    }
-
     // If this is a top-level message (not in a thread), create a new thread
     if (!threadId) {
       try {
@@ -219,6 +222,17 @@ export class DiscordAdapter {
         // If thread creation fails, use the message ID
         threadId = message.id;
       }
+    }
+
+    // Handle file attachments (after thread creation so they land in the thread)
+    if (message.attachments.size > 0) {
+      const files = Array.from(message.attachments.values()).map((a) => ({
+        name: a.name ?? 'unknown',
+        url: a.url,
+        contentType: a.contentType ?? undefined,
+      }));
+      await this.handleFileUpload(channelId, threadId, files, text, message);
+      return;
     }
 
     // Check if the session is waiting_for_input (freeform text response)
@@ -627,7 +641,11 @@ export class DiscordAdapter {
       }
       let text = '**Connected Projects:**\n';
       for (const p of projects) {
-        text += `- <#${p.channel_id}> → \`${p.project_dir}\` (${p.backend_name})\n`;
+        // Cross-platform channels show as "slack:#channel-id" since Discord can't resolve them
+        const channelLabel = p.platform === 'discord'
+          ? `<#${p.channel_id}>`
+          : `${p.platform} channel`;
+        text += `- ${channelLabel} → \`${p.project_dir}\` (${p.backend_name})\n`;
       }
       await interaction.reply(text);
       return;

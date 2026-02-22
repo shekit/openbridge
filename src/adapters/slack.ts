@@ -695,7 +695,10 @@ export class SlackAdapter {
       }
       let text = '*Connected Projects:*\n';
       for (const p of projects) {
-        text += `• <#${p.channel_id}> → \`${p.project_dir}\` (${p.backend_name})\n`;
+        const channelLabel = p.platform === 'slack'
+          ? `<#${p.channel_id}>`
+          : `${p.platform} channel`;
+        text += `• ${channelLabel} → \`${p.project_dir}\` (${p.backend_name})\n`;
       }
       await client.chat.postMessage({ channel: channelId, text });
       return;

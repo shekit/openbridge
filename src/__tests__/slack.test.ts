@@ -797,8 +797,8 @@ describe('SlackAdapter', () => {
         (c: any) => typeof c[0].text === 'string' && c[0].text.includes('Connected Projects')
       );
       expect(listCall).toBeDefined();
-      expect(listCall![0].text).toContain('C_PROJ1');
-      expect(listCall![0].text).toContain('C_PROJ2');
+      expect(listCall![0].text).toContain('/test/project1');
+      expect(listCall![0].text).toContain('/test/project2');
       expect(listCall![0].text).toContain('claude');
       expect(listCall![0].text).toContain('codex');
     });

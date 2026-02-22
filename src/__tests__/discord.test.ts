@@ -955,8 +955,8 @@ describe('DiscordAdapter', () => {
       expect(replies.length).toBe(1);
       const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
       expect(text).toContain('Connected Projects');
-      expect(text).toContain('C_PROJ1');
-      expect(text).toContain('C_PROJ2');
+      expect(text).toContain('/test/project1');
+      expect(text).toContain('/test/project2');
     });
 
     it('shows message when no bindings exist', async () => {
