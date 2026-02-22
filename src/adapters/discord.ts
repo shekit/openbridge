@@ -73,6 +73,8 @@ export class DiscordAdapter {
   private pendingQuestionOptions = new Map<string, string[]>();
   /** Message refs for pending AskUserQuestion prompts, for updating on resolution. */
   private questionMessages = new Map<string, Message>();
+  /** Message refs for todo checklist messages, keyed by threadId (one per thread). */
+  private todoMessages = new Map<string, Message>();
 
   constructor(options: DiscordAdapterOptions) {
     this.router = options.router;
@@ -1277,6 +1279,49 @@ export class DiscordAdapter {
     const MAX = 2000;
     const truncated = text.length > MAX ? text.slice(0, MAX - 15) + '\n... (truncated)' : text;
     await (channel as TextChannel).send({ content: truncated });
+  }
+
+  /** Format todos as Discord markdown checklist. */
+  private formatTodosDiscord(
+    todos: Array<{ content: string; status: string; activeForm: string }>,
+  ): string {
+    if (todos.length === 0) return '*No tasks*';
+    return todos.map((t) => {
+      switch (t.status) {
+        case 'completed':
+          return `~~${t.content}~~`;
+        case 'in_progress':
+          return `**${t.activeForm}...**`;
+        default:
+          return t.content;
+      }
+    }).join('\n');
+  }
+
+  async renderTodoList(
+    channelId: string,
+    threadId: string,
+    todos: Array<{ content: string; status: string; activeForm: string }>,
+  ): Promise<void> {
+    const content = this.formatTodosDiscord(todos);
+    const existing = this.todoMessages.get(threadId);
+
+    if (existing) {
+      try {
+        await existing.edit({ content });
+      } catch (err: any) {
+        console.error(`[discord] failed to update todo message for thread ${threadId}: ${err.message}`);
+        this.todoMessages.delete(threadId);
+        await this.renderTodoList(channelId, threadId, todos);
+      }
+    } else {
+      try {
+        const msg = await this.sendToThread(threadId, null, content);
+        this.todoMessages.set(threadId, msg);
+      } catch (err: any) {
+        console.error(`[discord] failed to post todo message for thread ${threadId}: ${err.message}`);
+      }
+    }
   }
 }
 

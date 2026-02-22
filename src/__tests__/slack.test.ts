@@ -1996,4 +1996,67 @@ describe('SlackAdapter', () => {
       );
     });
   });
+
+  describe('P22: Live todo checklist', () => {
+    it('posts a new checklist message on first renderTodoList call', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const todos = [
+        { content: 'Fix bug', status: 'completed', activeForm: 'Fixing bug' },
+        { content: 'Write tests', status: 'in_progress', activeForm: 'Writing tests' },
+        { content: 'Deploy', status: 'pending', activeForm: 'Deploying' },
+      ];
+
+      await adapter.renderTodoList('C_BOUND', '1111.000001', todos);
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      const todoCall = calls.find((c: any) => c[0].text === 'Task list');
+      expect(todoCall).toBeDefined();
+      expect(todoCall![0].channel).toBe('C_BOUND');
+      expect(todoCall![0].thread_ts).toBe('1111.000001');
+
+      const blockText = todoCall![0].blocks[0].text.text;
+      expect(blockText).toContain('~Fix bug~');
+      expect(blockText).toContain('*Writing tests...*');
+      expect(blockText).toContain('Deploy');
+    });
+
+    it('updates the same message on subsequent renderTodoList calls', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const todos1 = [
+        { content: 'Fix bug', status: 'in_progress', activeForm: 'Fixing bug' },
+        { content: 'Write tests', status: 'pending', activeForm: 'Writing tests' },
+      ];
+      await adapter.renderTodoList('C_BOUND', '1111.000001', todos1);
+
+      // First call should post
+      expect(mockApp.client.chat.postMessage).toHaveBeenCalled();
+
+      const todos2 = [
+        { content: 'Fix bug', status: 'completed', activeForm: 'Fixing bug' },
+        { content: 'Write tests', status: 'in_progress', activeForm: 'Writing tests' },
+      ];
+      await adapter.renderTodoList('C_BOUND', '1111.000001', todos2);
+
+      // Second call should update, not post again
+      expect(mockApp.client.chat.update).toHaveBeenCalled();
+      const updateCall = mockApp.client.chat.update.mock.calls[0][0];
+      expect(updateCall.blocks[0].text.text).toContain('~Fix bug~');
+      expect(updateCall.blocks[0].text.text).toContain('*Writing tests...*');
+    });
+
+    it('formats empty todo list', async () => {
+      createAdapter();
+      await adapter.start();
+
+      await adapter.renderTodoList('C_BOUND', '1111.000001', []);
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      const todoCall = calls.find((c: any) => c[0].text === 'Task list');
+      expect(todoCall![0].blocks[0].text.text).toBe('_No tasks_');
+    });
+  });
 });

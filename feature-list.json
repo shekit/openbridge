@@ -2200,6 +2200,34 @@
           "status": "passing"
         }
       ]
+    },
+    {
+      "id": "P22",
+      "name": "Live Todo Checklist",
+      "outcome": "TodoWrite calls render as a live-updating checklist message in Slack/Discord threads",
+      "features": [
+        {
+          "id": "P22.1",
+          "description": "PreToolUse hook intercepts TodoWrite, fires IPC render-todos, allows tool",
+          "verification": [
+            "Hook exits 0 with no output (allows tool) after POSTing to /render-todos",
+            "Without IPC configured, hook still exits 0 (no-op)",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P22.2",
+          "description": "IPC /render-todos endpoint and adapter renderTodoList method with post/update pattern",
+          "verification": [
+            "First TodoWrite posts a new checklist message in the thread",
+            "Subsequent TodoWrite calls update the same message in place",
+            "Formatting: strikethrough for completed, bold for in-progress, plain for pending",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        }
+      ]
     }
   ]
 }

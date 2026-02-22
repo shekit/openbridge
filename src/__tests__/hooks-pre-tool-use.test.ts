@@ -86,6 +86,20 @@ describe('PreToolUse hook script', () => {
     expect(exitCode).toBe(0);
   });
 
+  it('allows TodoWrite with no IPC configured (exits 0, no output)', async () => {
+    const { output, exitCode } = await runHook({
+      tool_name: 'TodoWrite',
+      tool_input: {
+        todos: [
+          { content: 'Fix bug', status: 'in_progress', activeForm: 'Fixing bug' },
+          { content: 'Write tests', status: 'pending', activeForm: 'Writing tests' },
+        ],
+      },
+    });
+    expect(output).toBeNull();
+    expect(exitCode).toBe(0);
+  });
+
   it('defers AskUserQuestion to default when no IPC configured', async () => {
     const { output, exitCode } = await runHook({
       tool_name: 'AskUserQuestion',
@@ -193,6 +207,51 @@ describe('PreToolUse hook script', () => {
       expect(output).not.toBeNull();
       expect((output as any)?.hookSpecificOutput?.hookEventName).toBe('PreToolUse');
       expect((output as any)?.hookSpecificOutput?.permissionDecision).toBe('deny');
+    }, 15000);
+
+    it('fires render-todos IPC and allows TodoWrite', async () => {
+      let receivedTodos: unknown = null;
+      const handler: IpcHandler = {
+        uploadFile: async () => {},
+        openTunnel: async () => 'https://t.example.com',
+        serveFileBrowser: async () => 'https://b.example.com',
+        postMessage: async () => {},
+        previewServer: async () => ({ url: '', port: 0 }),
+        renderTodos: async (_ch, _th, todos) => {
+          receivedTodos = todos;
+        },
+      };
+      server = await startIpcServer(handler);
+
+      const { output, exitCode } = await runHook(
+        {
+          tool_name: 'TodoWrite',
+          tool_input: {
+            todos: [
+              { content: 'Implement feature', status: 'completed', activeForm: 'Implementing feature' },
+              { content: 'Run tests', status: 'in_progress', activeForm: 'Running tests' },
+            ],
+          },
+        },
+        {
+          OPENBRIDGE_IPC_PORT: String(server.port),
+          OPENBRIDGE_IPC_SECRET: server.secret,
+          OPENBRIDGE_CHANNEL_ID: 'C123',
+          OPENBRIDGE_THREAD_ID: 'T456',
+          OPENBRIDGE_PLATFORM: 'slack',
+        },
+      );
+
+      // Allow the tool — no stdout output
+      expect(output).toBeNull();
+      expect(exitCode).toBe(0);
+
+      // Give IPC a moment to process the fire-and-forget call
+      await new Promise((r) => setTimeout(r, 500));
+      expect(receivedTodos).toEqual([
+        { content: 'Implement feature', status: 'completed', activeForm: 'Implementing feature' },
+        { content: 'Run tests', status: 'in_progress', activeForm: 'Running tests' },
+      ]);
     }, 15000);
 
     it('denies AskUserQuestion with answer when user selects an option', async () => {

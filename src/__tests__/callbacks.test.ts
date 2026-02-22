@@ -27,9 +27,11 @@ function createMockAdapter(): Adapter {
     stop: vi.fn(),
     postText: vi.fn(),
     postPermissionPrompt: vi.fn(),
+    postUserQuestion: vi.fn(),
     postError: vi.fn(),
     uploadFile: vi.fn(),
     sendMessage: vi.fn(),
+    renderTodoList: vi.fn(),
   } as unknown as Adapter;
 }
 
@@ -209,6 +211,18 @@ describe('Callback Handler', () => {
       } finally {
         vi.mocked(utils.getUploadsDir).mockRestore();
       }
+    });
+  });
+
+  describe('renderTodos', () => {
+    it('routes to the correct adapter renderTodoList', async () => {
+      const handler = createCallbackHandler({ adapters });
+      const todos = [
+        { content: 'Task 1', status: 'completed', activeForm: 'Completing task 1' },
+        { content: 'Task 2', status: 'in_progress', activeForm: 'Working on task 2' },
+      ];
+      await handler.renderTodos!('C1', 'T1', todos, 'slack');
+      expect(slackAdapter.renderTodoList).toHaveBeenCalledWith('C1', 'T1', todos);
     });
   });
 });

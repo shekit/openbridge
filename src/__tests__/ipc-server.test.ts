@@ -337,4 +337,35 @@ describe('IPC Server', () => {
       expect(res.status).toBe(401);
     });
   });
+
+  // --- /render-todos ---
+
+  describe('/render-todos', () => {
+    it('calls handler.renderTodos when set', async () => {
+      handler.renderTodos = vi.fn().mockResolvedValue(undefined);
+      const res = await post(server, '/render-todos', {
+        channelId: 'C123',
+        threadId: 'T456',
+        todos: [
+          { content: 'Fix bug', status: 'completed', activeForm: 'Fixing bug' },
+          { content: 'Write tests', status: 'in_progress', activeForm: 'Writing tests' },
+        ],
+        platform: 'slack',
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
+      expect(handler.renderTodos).toHaveBeenCalledWith('C123', 'T456', [
+        { content: 'Fix bug', status: 'completed', activeForm: 'Fixing bug' },
+        { content: 'Write tests', status: 'in_progress', activeForm: 'Writing tests' },
+      ], 'slack');
+    });
+
+    it('returns 200 even when renderTodos handler is not set', async () => {
+      const res = await post(server, '/render-todos', {
+        channelId: 'C1', threadId: 'T1', todos: [], platform: 'slack',
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
+    });
+  });
 });

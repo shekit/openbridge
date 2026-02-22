@@ -29,6 +29,10 @@ export interface IpcHandler {
     platform: string, requestId: string): Promise<void>;
   /** Copy a staged uploaded file to a destination in the project directory. */
   saveUploadedFile?(uploadId: string, destination: string, projectDir: string): Promise<string>;
+  /** Render a todo checklist in the chat thread (fire-and-forget, no pending state). */
+  renderTodos?(channelId: string, threadId: string,
+    todos: Array<{ content: string; status: string; activeForm: string }>,
+    platform: string): Promise<void>;
 }
 
 /** Pending permission request — waiting for user to click Allow/Deny. */
@@ -385,6 +389,26 @@ export function startIpcServer(handler: IpcHandler): Promise<IpcServer> {
           const savedPath = await handler.saveUploadedFile(uploadId, destination, projectDir);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, path: savedPath }));
+          break;
+        }
+
+        case '/render-todos': {
+          const { channelId, threadId, todos, platform } = data as {
+            channelId: string; threadId: string;
+            todos: Array<{ content: string; status: string; activeForm: string }>;
+            platform: string;
+          };
+          console.log(`[ipc] render-todos for thread ${threadId} (${todos.length} items)`);
+          if (handler.renderTodos) {
+            try {
+              await handler.renderTodos(channelId, threadId, todos, platform);
+            } catch (renderErr) {
+              const msg = renderErr instanceof Error ? renderErr.message : String(renderErr);
+              console.error(`[ipc] failed to render todos: ${msg}`);
+            }
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
           break;
         }
 

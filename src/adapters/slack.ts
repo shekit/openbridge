@@ -49,6 +49,8 @@ export class SlackAdapter {
   private botUserId: string | null = null;
   /** Message refs for pending AskUserQuestion prompts, for updating on resolution. */
   private questionMessages = new Map<string, { channel: string; ts: string; blocks: any[] }>();
+  /** Message refs for todo checklist messages, keyed by threadId (one per thread). */
+  private todoMessages = new Map<string, { channel: string; ts: string }>();
 
   constructor(options: SlackAdapterOptions) {
     this.router = options.router;
@@ -1444,6 +1446,62 @@ export class SlackAdapter {
       thread_ts: threadId,
       text: truncated,
     });
+  }
+
+  /** Format todos as Slack mrkdwn checklist. */
+  private formatTodosSlack(
+    todos: Array<{ content: string; status: string; activeForm: string }>,
+  ): string {
+    if (todos.length === 0) return '_No tasks_';
+    return todos.map((t) => {
+      switch (t.status) {
+        case 'completed':
+          return `~${t.content}~`;
+        case 'in_progress':
+          return `*${t.activeForm}...*`;
+        default:
+          return t.content;
+      }
+    }).join('\n');
+  }
+
+  async renderTodoList(
+    channelId: string,
+    threadId: string,
+    todos: Array<{ content: string; status: string; activeForm: string }>,
+  ): Promise<void> {
+    const text = this.formatTodosSlack(todos);
+    const blocks = [{ type: 'section' as const, text: { type: 'mrkdwn' as const, text } }];
+    const existing = this.todoMessages.get(threadId);
+
+    if (existing) {
+      try {
+        await this.app.client.chat.update({
+          channel: existing.channel,
+          ts: existing.ts,
+          text: 'Task list',
+          blocks,
+        });
+      } catch (err: any) {
+        console.error(`[slack] failed to update todo message for thread ${threadId}: ${err.message}`);
+        this.todoMessages.delete(threadId);
+        await this.renderTodoList(channelId, threadId, todos);
+      }
+    } else {
+      try {
+        const result = await this.app.client.chat.postMessage({
+          channel: channelId,
+          thread_ts: threadId,
+          text: 'Task list',
+          blocks,
+        });
+        if (result.ts) {
+          this.todoMessages.set(threadId, { channel: channelId, ts: result.ts as string });
+        }
+      } catch (err: any) {
+        console.error(`[slack] failed to post todo message for thread ${threadId}: ${err.message}`);
+      }
+    }
   }
 }
 

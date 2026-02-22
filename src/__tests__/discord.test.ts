@@ -30,7 +30,7 @@ function createMockDiscordClient() {
   const mockUser = { id: 'BOT_USER_123', tag: 'TestBot#1234', setPresence: vi.fn() };
 
   const mockSendableChannel = {
-    send: vi.fn(async () => ({ id: 'msg_123', delete: vi.fn(async () => {}) })),
+    send: vi.fn(async () => ({ id: 'msg_123', delete: vi.fn(async () => {}), edit: vi.fn(async () => {}) })),
     isThread: () => true,
   };
 
@@ -1923,6 +1923,75 @@ describe('DiscordAdapter', () => {
       await triggerInteraction(interaction);
 
       expect(interaction.message.react).toHaveBeenCalledWith('👀');
+    });
+  });
+
+  describe('P22: Live todo checklist', () => {
+    it('posts a new checklist message on first renderTodoList call', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const todos = [
+        { content: 'Fix bug', status: 'completed', activeForm: 'Fixing bug' },
+        { content: 'Write tests', status: 'in_progress', activeForm: 'Writing tests' },
+        { content: 'Deploy', status: 'pending', activeForm: 'Deploying' },
+      ];
+
+      await adapter.renderTodoList('C_BOUND', 'THREAD_TODO', todos);
+
+      const sendCalls = mockClient._mockSendableChannel.send.mock.calls;
+      const todoCall = sendCalls.find((c: any) => {
+        const content = c[0]?.content ?? c[0];
+        return typeof content === 'string' && content.includes('~~Fix bug~~');
+      });
+      expect(todoCall).toBeDefined();
+      const content = todoCall![0]?.content ?? todoCall![0];
+      expect(content).toContain('~~Fix bug~~');
+      expect(content).toContain('**Writing tests...**');
+      expect(content).toContain('Deploy');
+    });
+
+    it('updates the same message on subsequent renderTodoList calls', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const todos1 = [
+        { content: 'Fix bug', status: 'in_progress', activeForm: 'Fixing bug' },
+      ];
+      await adapter.renderTodoList('C_BOUND', 'THREAD_TODO', todos1);
+
+      // First call should send a new message
+      const sendCalls = mockClient._mockSendableChannel.send.mock.calls;
+      expect(sendCalls.length).toBeGreaterThan(0);
+
+      // Get the returned message object (has edit mock)
+      const sentMsg = await mockClient._mockSendableChannel.send.mock.results[
+        sendCalls.length - 1
+      ].value;
+
+      const todos2 = [
+        { content: 'Fix bug', status: 'completed', activeForm: 'Fixing bug' },
+      ];
+      await adapter.renderTodoList('C_BOUND', 'THREAD_TODO', todos2);
+
+      // Second call should edit the existing message
+      expect(sentMsg.edit).toHaveBeenCalled();
+      const editArg = sentMsg.edit.mock.calls[0][0];
+      expect(editArg.content).toContain('~~Fix bug~~');
+    });
+
+    it('formats empty todo list', async () => {
+      createAdapter();
+      await adapter.start();
+
+      await adapter.renderTodoList('C_BOUND', 'THREAD_EMPTY', []);
+
+      const sendCalls = mockClient._mockSendableChannel.send.mock.calls;
+      const todoCall = sendCalls.find((c: any) => {
+        const content = c[0]?.content ?? c[0];
+        return typeof content === 'string' && content.includes('No tasks');
+      });
+      expect(todoCall).toBeDefined();
     });
   });
 });

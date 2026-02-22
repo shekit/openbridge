@@ -51,4 +51,11 @@ export interface Adapter {
 
   /** Post a plain text message to a thread. Called by MCP callbacks (no context object needed). */
   sendMessage(channelId: string, threadId: string, text: string): Promise<void>;
+
+  /** Render a todo checklist in a thread (post new or update existing). */
+  renderTodoList(
+    channelId: string,
+    threadId: string,
+    todos: Array<{ content: string; status: string; activeForm: string }>,
+  ): Promise<void>;
 }

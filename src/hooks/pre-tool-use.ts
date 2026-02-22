@@ -1,15 +1,16 @@
 /**
  * PreToolUse hook for Claude Code.
  *
- * Fires before every tool execution. Four behaviors:
+ * Fires before every tool execution. Five behaviors:
  *
  * 1. MCP tools (mcp__openbridge__*) → auto-approve immediately
- * 2. AskUserQuestion → send question to Slack/Discord via IPC, wait for
+ * 2. TodoWrite → fire-and-forget render to chat, then allow
+ * 3. AskUserQuestion → send question to Slack/Discord via IPC, wait for
  *    user's button click, deny with the answer in the reason string
- * 3. Tools that typically need permission (Bash, Write, Edit, NotebookEdit) →
+ * 4. Tools that typically need permission (Bash, Write, Edit, NotebookEdit) →
  *    send a real-time permission prompt to Slack/Discord via the IPC server,
  *    block until the user clicks Allow/Deny, return the decision
- * 4. Everything else → exit 0 (defer to Claude Code's default handling)
+ * 5. Everything else → exit 0 (defer to Claude Code's default handling)
  *
  * This replaces the non-existent "PermissionRequest" hook event. PreToolUse
  * is the correct interception point for permission handling in -p mode.
@@ -157,7 +158,35 @@ async function main(): Promise<void> {
     return;
   }
 
-  // 2. AskUserQuestion → send to chat, collect answer, deny with answer in reason
+  // 2. TodoWrite → fire-and-forget render to chat, then allow
+  if (toolName === 'TodoWrite') {
+    const ipcPort = parseInt(process.env.OPENBRIDGE_IPC_PORT ?? '', 10);
+    const ipcSecret = process.env.OPENBRIDGE_IPC_SECRET ?? '';
+    const channelId = process.env.OPENBRIDGE_CHANNEL_ID ?? '';
+    const threadId = process.env.OPENBRIDGE_THREAD_ID ?? '';
+    const platform = process.env.OPENBRIDGE_PLATFORM ?? '';
+
+    if (ipcPort && ipcSecret && channelId && threadId) {
+      const toolInput = input.tool_input ?? {};
+      const todos = (toolInput as Record<string, unknown>).todos ?? [];
+      try {
+        await ipcPost(ipcPort, ipcSecret, '/render-todos', {
+          channelId,
+          threadId,
+          todos,
+          platform,
+        });
+      } catch (err) {
+        process.stderr.write(`[pre-tool-use] IPC render-todos failed: ${err}\n`);
+      }
+    }
+
+    // Allow the tool — exit 0 with no output
+    process.exit(0);
+    return;
+  }
+
+  // 3. AskUserQuestion → send to chat, collect answer, deny with answer in reason
   if (toolName === 'AskUserQuestion') {
     const ipcPort = parseInt(process.env.OPENBRIDGE_IPC_PORT ?? '', 10);
     const ipcSecret = process.env.OPENBRIDGE_IPC_SECRET ?? '';
