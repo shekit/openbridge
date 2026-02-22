@@ -2155,7 +2155,7 @@
             "writeClaudeMcpConfig logs if existing config read fails (distinguishes ENOENT from other errors)",
             "Build passes, all tests pass"
           ],
-          "status": "pending"
+          "status": "passing"
         },
         {
           "id": "P21.4",

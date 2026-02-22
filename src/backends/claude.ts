@@ -75,8 +75,8 @@ export function spawnCollect(
       logStream = fs.createWriteStream(stderrLogPath, { flags: 'w' });
       logStream.write(`[${new Date().toISOString()}] spawn: ${command} ${args.join(' ')}\n`);
       logStream.write(`[${new Date().toISOString()}] cwd: ${cwd}\n\n`);
-    } catch {
-      // If we can't create the log file, continue without it
+    } catch (err: any) {
+      console.error(`[claude] failed to create log file ${stderrLogPath}: ${err.message}`);
     }
   }
 
@@ -123,6 +123,10 @@ function parseJsonLine(line: string): Record<string, unknown> | null {
   try {
     return JSON.parse(line) as Record<string, unknown>;
   } catch {
+    // Only warn for lines that look like they were meant to be JSON (start with { or [)
+    if (line.startsWith('{') || line.startsWith('[')) {
+      console.warn(`[claude] malformed JSON line: ${line.slice(0, 200)}`);
+    }
     return null;
   }
 }
@@ -370,8 +374,11 @@ export function writeClaudeMcpConfig(projectDir: string, mcpConfig: McpServerEnt
   try {
     const content = fs.readFileSync(mcpJsonPath, 'utf8');
     existing = JSON.parse(content) as Record<string, unknown>;
-  } catch {
-    // File doesn't exist or is invalid — start fresh
+  } catch (err: any) {
+    if (err.code !== 'ENOENT') {
+      console.error(`[claude] failed to read existing MCP config at ${mcpJsonPath}: ${err.message}`);
+    }
+    // ENOENT is expected (file doesn't exist yet) — start fresh
   }
 
   // Ensure mcpServers object exists
