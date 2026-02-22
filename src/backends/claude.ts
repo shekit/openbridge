@@ -434,11 +434,11 @@ export class ClaudeBackend implements Backend {
       });
     }
 
-    // In trusted mode, skip hooks entirely — all permissions are auto-approved
     const trusted = this.permissionMode === 'trusted';
 
-    // Build hook settings if we have a hook script dir (supervised mode only)
-    const settingsJson = (!trusted && this.hookScriptDir)
+    // Always register hooks — even in trusted mode, AskUserQuestion needs to
+    // route through chat since the user isn't watching the terminal
+    const settingsJson = this.hookScriptDir
       ? buildHookSettings(this.hookScriptDir)
       : undefined;
 
@@ -462,9 +462,9 @@ export class ClaudeBackend implements Backend {
     // Clear allowed tools after use (one-shot approval)
     this.allowedTools = [];
 
-    // Build env vars for hook scripts (supervised mode only)
+    // Build env vars for hook scripts (always — hooks need IPC for AskUserQuestion routing)
     let hookEnv: Record<string, string> | undefined;
-    if (!trusted && this.ipc) {
+    if (this.ipc) {
       hookEnv = {
         OPENBRIDGE_IPC_PORT: String(this.ipc.port),
         OPENBRIDGE_IPC_SECRET: this.ipc.secret,
