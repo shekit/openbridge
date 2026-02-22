@@ -2046,6 +2046,17 @@
             "Build passes, all 621 tests pass"
           ],
           "status": "passing"
+        },
+        {
+          "id": "P20.4",
+          "description": "Fix Discord sendToThread null-context path and surface IPC rendering errors to chat",
+          "verification": [
+            "sendToThread throws on failure instead of silently swallowing errors",
+            "Null-context path fetches channel by ID and throws if not sendable",
+            "IPC /permission-request and /ask-user-question post errors back to chat on failure",
+            "Build passes, all 621 tests pass"
+          ],
+          "status": "passing"
         }
       ]
     }

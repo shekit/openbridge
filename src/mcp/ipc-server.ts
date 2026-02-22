@@ -208,7 +208,17 @@ export function startIpcServer(handler: IpcHandler): Promise<IpcServer> {
           console.log(`[ipc] permission-request: ${toolName} (${requestId})`);
           // Notify adapter to show Allow/Deny buttons
           if (handler.requestPermission) {
-            await handler.requestPermission(channelId, threadId, toolName, toolInput, platform, requestId);
+            try {
+              await handler.requestPermission(channelId, threadId, toolName, toolInput, platform, requestId);
+            } catch (renderErr) {
+              const msg = renderErr instanceof Error ? renderErr.message : String(renderErr);
+              console.error(`[ipc] failed to render permission prompt: ${msg}`);
+              // Best-effort: surface the error in chat so the user sees it
+              try {
+                await handler.postMessage(channelId, threadId,
+                  `⚠️ Failed to render permission prompt for \`${toolName}\`: ${msg}`, platform);
+              } catch { /* don't mask the original error */ }
+            }
           }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, requestId }));
@@ -275,7 +285,16 @@ export function startIpcServer(handler: IpcHandler): Promise<IpcServer> {
           });
           console.log(`[ipc] ask-user-question (${requestId})`);
           if (handler.askUserQuestion) {
-            await handler.askUserQuestion(channelId, threadId, questions, platform, requestId);
+            try {
+              await handler.askUserQuestion(channelId, threadId, questions, platform, requestId);
+            } catch (renderErr) {
+              const msg = renderErr instanceof Error ? renderErr.message : String(renderErr);
+              console.error(`[ipc] failed to render user question: ${msg}`);
+              try {
+                await handler.postMessage(channelId, threadId,
+                  `⚠️ Failed to render question buttons: ${msg}`, platform);
+              } catch { /* don't mask the original error */ }
+            }
           }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, requestId }));

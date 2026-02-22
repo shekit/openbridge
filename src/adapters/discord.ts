@@ -1164,28 +1164,22 @@ export class DiscordAdapter {
         return;
       }
       // Try to get the thread by ID from the channel
-      try {
-        const thread = await channel.threads?.fetch(threadId);
-        if (thread) {
-          await thread.send({ content, components });
-          return;
-        }
-      } catch {
-        // Fall through to direct fetch
+      const thread = await channel.threads?.fetch(threadId).catch(() => null);
+      if (thread) {
+        await thread.send({ content, components });
+        return;
       }
       await channel.send({ content, components });
       return;
     }
 
-    // No context (e.g. IPC/hook permission prompt) — fetch the thread directly
-    try {
-      const thread = await this.client.channels.fetch(threadId);
-      if (thread && 'send' in thread) {
-        await (thread as any).send({ content, components });
-      }
-    } catch (err) {
-      console.error(`[discord] sendToThread failed for thread ${threadId}:`, err);
+    // No context (e.g. IPC/hook callback) — fetch the channel directly
+    const channel = await this.client.channels.fetch(threadId).catch(() => null)
+      ?? await this.client.channels.fetch(threadId.split('/')[0]).catch(() => null);
+    if (!channel || !('send' in channel)) {
+      throw new Error(`[discord] sendToThread: cannot find sendable channel for thread ${threadId}`);
     }
+    await (channel as any).send({ content, components });
   }
 
   /** Get the channel ID from a message (parent channel for threads). */
