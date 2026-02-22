@@ -48,7 +48,7 @@ export class SlackAdapter {
   private store: Store;
   private botUserId: string | null = null;
   /** Message refs for pending AskUserQuestion prompts, for updating on resolution. */
-  private questionMessages = new Map<string, { channel: string; ts: string }>();
+  private questionMessages = new Map<string, { channel: string; ts: string; blocks: any[] }>();
 
   constructor(options: SlackAdapterOptions) {
     this.router = options.router;
@@ -314,18 +314,12 @@ export class SlackAdapter {
         if (msgRef) {
           this.questionMessages.delete(requestId);
           try {
-            // Fetch original message to preserve question text, remove action buttons
-            const original = await client.conversations.history({
-              channel: msgRef.channel, latest: msgRef.ts, inclusive: true, limit: 1,
-            });
-            const origBlocks = (original.messages?.[0] as any)?.blocks ?? [];
-            const keptBlocks = origBlocks.filter((b: any) => b.type !== 'actions');
-            keptBlocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*Answered:* ${text}` } });
+            const updatedBlocks = [...msgRef.blocks, { type: 'section', text: { type: 'mrkdwn', text: `*Answered:* ${text}` } }];
             await client.chat.update({
               channel: msgRef.channel,
               ts: msgRef.ts,
               text: `Answered: ${text}`,
-              blocks: keptBlocks,
+              blocks: updatedBlocks,
             });
           } catch { /* non-fatal */ }
         }
@@ -697,20 +691,18 @@ export class SlackAdapter {
       value: requestId,
     }));
 
+    const questionBlock = {
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*${q.question}*\n${optionLines}` },
+    };
     const result = await chatClient.chat.postMessage({
       channel: channelId,
       thread_ts: threadTs,
       text: q.question,
-      blocks: [
-        {
-          type: 'section',
-          text: { type: 'mrkdwn', text: `*${q.question}*\n${optionLines}` },
-        },
-        { type: 'actions', elements: buttons },
-      ],
+      blocks: [questionBlock, { type: 'actions', elements: buttons }],
     });
     if (result.ts) {
-      this.questionMessages.set(requestId, { channel: channelId, ts: result.ts });
+      this.questionMessages.set(requestId, { channel: channelId, ts: result.ts, blocks: [questionBlock] });
     }
   }
 
