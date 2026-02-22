@@ -2166,7 +2166,7 @@
             "writeCodexMcpConfig distinguishes ENOENT (expected) from other errors (logged)",
             "Build passes, all tests pass"
           ],
-          "status": "pending"
+          "status": "passing"
         },
         {
           "id": "P21.5",

@@ -28,6 +28,9 @@ function parseJsonLine(line: string): Record<string, unknown> | null {
   try {
     return JSON.parse(line) as Record<string, unknown>;
   } catch {
+    if (line.startsWith('{') || line.startsWith('[')) {
+      console.warn(`[codex] malformed JSON line: ${line.slice(0, 200)}`);
+    }
     return null;
   }
 }
@@ -165,7 +168,11 @@ export function cleanupTempImages(paths: string[]): void {
   for (const p of paths) {
     try {
       fs.unlinkSync(p);
-    } catch { /* file may already be gone */ }
+    } catch (err: any) {
+      if (err.code !== 'ENOENT') {
+        console.error(`[codex] failed to clean up temp image ${p}: ${err.message}`);
+      }
+    }
   }
 }
 
@@ -222,8 +229,11 @@ export function writeCodexMcpConfig(projectDir: string, mcpConfig: McpServerEntr
   let existingLines: string[] = [];
   try {
     existingLines = fs.readFileSync(configPath, 'utf8').split('\n');
-  } catch {
-    // File doesn't exist — start fresh
+  } catch (err: any) {
+    if (err.code !== 'ENOENT') {
+      console.error(`[codex] failed to read existing config at ${configPath}: ${err.message}`);
+    }
+    // ENOENT is expected (file doesn't exist yet) — start fresh
   }
 
   // Remove any existing openbridge MCP server block
