@@ -19,7 +19,6 @@ const LOG_DIR = path.join(os.homedir(), '.openbridge-ai', 'logs');
 
 /** MCP tools that should always be pre-approved (our own tools, safe by design). */
 export const MCP_TOOLS = [
-  'mcp__openbridge__open_tunnel',
   'mcp__openbridge__serve_file_browser',
   'mcp__openbridge__preview_server',
   'mcp__openbridge__upload_file',

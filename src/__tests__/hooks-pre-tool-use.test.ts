@@ -48,8 +48,8 @@ async function runHook(
 describe('PreToolUse hook script', () => {
   it('auto-approves mcp__openbridge__ tools', async () => {
     const { output } = await runHook({
-      tool_name: 'mcp__openbridge__open_tunnel',
-      tool_input: { port: 3000 },
+      tool_name: 'mcp__openbridge__preview_server',
+      tool_input: { directory: '.' },
     });
     expect(output).not.toBeNull();
     const decision = (output as any)?.hookSpecificOutput;

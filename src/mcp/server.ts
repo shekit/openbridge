@@ -1,7 +1,7 @@
 /**
  * Bridge MCP server for OpenBridge.
  *
- * Exposes tools (upload_file, open_tunnel, serve_file_browser) to coding
+ * Exposes tools (upload_file, serve_file_browser, preview_server, etc.) to coding
  * backends via stdio transport. When the bridge spawns a backend session,
  * it injects MCP config pointing to this server so the agent gains access
  * to platform-specific actions without knowing about Slack or Discord.
@@ -79,9 +79,10 @@ export function createMcpServer(
     {
       description:
         'Send a file from the project to the user as an attachment. ' +
-        'Use this when the user asks you to share, send, or show them a file from the project.',
+        'Use this when the user asks you to share, send, or show them a file from the project. ' +
+        'Provide the file path relative to the project directory. Use post_message to confirm the file was sent.',
       inputSchema: {
-        file_path: z.string().describe('Path to the file to upload (relative to project directory or absolute within it)'),
+        file_path: z.string().describe('Path to the file (relative to project directory)'),
       },
     },
     async ({ file_path }) => {
@@ -109,39 +110,6 @@ export function createMcpServer(
     },
   );
 
-  // --- open_tunnel tool ---
-  server.registerTool(
-    'open_tunnel',
-    {
-      description:
-        'Create a public URL for a server that is already running on a local port. ' +
-        'Use this only when a server is already running and you know its port number. ' +
-        'If you need to start a new server, use preview_server instead — it handles everything in one step. ' +
-        'After receiving the URL, use post_message to share it with the user.',
-      inputSchema: {
-        port: z.number().int().min(1).max(65535).describe('Port number to tunnel'),
-        ttl: z.number().int().min(60).max(86400).default(3600).optional()
-          .describe('Time-to-live in seconds (default 3600, max 86400)'),
-      },
-    },
-    async ({ port, ttl }) => {
-      try {
-        const tunnelTtl = ttl ?? 3600;
-        const url = await callbacks.openTunnel(port, tunnelTtl);
-
-        return {
-          content: [{ type: 'text', text: `Tunnel opened: ${url} (TTL: ${tunnelTtl}s)` }],
-        };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return {
-          content: [{ type: 'text', text: `Error opening tunnel: ${message}` }],
-          isError: true,
-        };
-      }
-    },
-  );
-
   // --- serve_file_browser tool ---
   server.registerTool(
     'serve_file_browser',
@@ -149,7 +117,7 @@ export function createMcpServer(
       description:
         'Give the user a browsable view of the project files and folders via a public URL. ' +
         'Use this when the user asks to see, browse, or explore the project file structure. ' +
-        'Returns a URL. Use post_message to share it with the user.',
+        'Optionally provide a subdirectory to scope the view. Use post_message to share the URL with the user.',
       inputSchema: {
         directory: z.string().default('.').optional()
           .describe('Directory to serve (relative to project directory, defaults to project root)'),
@@ -188,12 +156,11 @@ export function createMcpServer(
     {
       description:
         'Start a server and give the user a public URL to preview the project. ' +
-        'Handles port allocation, server startup, and public URL creation in one step, and works regardless of sandbox restrictions. ' +
+        'Handles port allocation, server startup, and public URL creation in one step. Works regardless of sandbox restrictions. ' +
         'Use this when the user asks to preview, demo, or share their website or app, or asks for a live URL or dev server. ' +
-        'Always use this instead of starting servers manually via shell commands. ' +
-        'For static sites: just provide the directory. ' +
-        'For dev servers: provide a command (e.g. "npm run dev") — the PORT env var is injected automatically, do NOT hardcode a port. ' +
-        'After receiving the URL, use post_message to share it with the user.',
+        'For static sites: provide the directory. For dev servers: provide a command (e.g. "npm run dev") — the PORT env var is injected automatically. ' +
+        'Use post_message to share the URL with the user. ' +
+        'Do NOT start servers manually via shell commands. Do NOT hardcode a port number.',
       inputSchema: {
         directory: z.string().default('.').optional()
           .describe('Directory to serve (relative to project directory, defaults to project root)'),
@@ -239,7 +206,7 @@ export function createMcpServer(
         'Save a file the user uploaded to a location in the project directory. ' +
         'When the user sends a file, it is staged with an upload_id included in the message. ' +
         'Use this when the user asks you to save, add, or place an uploaded file into the project. ' +
-        'The upload_id is in the message text (e.g. upload_abc123def456).',
+        'Provide the upload_id from the message and a destination path relative to the project directory (e.g. "src/assets/logo.png").',
       inputSchema: {
         upload_id: z.string().describe('The upload ID from the image upload notification (e.g., upload_abc123def456)'),
         destination: z.string().describe('Destination path relative to project directory (e.g., "public/logo.png" or "assets/images/hero.jpg")'),
@@ -266,9 +233,10 @@ export function createMcpServer(
     'post_message',
     {
       description:
-        'Send a message to the user. Your internal thinking is NOT shown to the user — only messages sent through this tool are visible to them. ' +
-        'Use this whenever you need to communicate anything to the user: results, progress, URLs, answers, or status updates. ' +
-        'Always call this at least once per turn.',
+        'Send a message to the user. Your internal thinking is NOT visible — only messages sent through this tool reach the user. ' +
+        'Use this whenever you need to communicate anything to the user: results, answers, URLs, or status updates. ' +
+        'Provide a clear, concise, and succinct summary of what you did or found. Keep it focused on what matters to the user. ' +
+        'Do NOT dump internal reasoning or verbose logs. Always call this at least once per turn.',
       inputSchema: {
         text: z.string().describe('The message text to post to the user'),
       },
@@ -289,7 +257,7 @@ export function createMcpServer(
     },
   );
 
-  console.error('[mcp] server created with tools: upload_file, open_tunnel, serve_file_browser, preview_server, save_uploaded_file, post_message');
+  console.error('[mcp] server created with tools: upload_file, serve_file_browser, preview_server, save_uploaded_file, post_message');
   return server;
 }
 

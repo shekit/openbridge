@@ -3,7 +3,7 @@
  *
  * The bridge starts this on 127.0.0.1:0 (random port). The MCP entry
  * script (grandchild process) makes fetch() calls to it when the agent
- * invokes MCP tools like upload_file or open_tunnel.
+ * invokes MCP tools like upload_file or preview_server.
  *
  * Auth: every request must include the OPENBRIDGE_IPC_SECRET header.
  */

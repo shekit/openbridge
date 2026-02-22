@@ -70,12 +70,6 @@ describe('P5.1: MCP server setup with stdio transport', () => {
     expect(tools['upload_file']).toBeDefined();
   });
 
-  it('server registers open_tunnel tool', () => {
-    const server = createMcpServer(context, callbacks);
-    const tools = (server as any)._registeredTools;
-    expect(tools['open_tunnel']).toBeDefined();
-  });
-
   it('server registers serve_file_browser tool', () => {
     const server = createMcpServer(context, callbacks);
     const tools = (server as any)._registeredTools;
@@ -352,73 +346,6 @@ describe('P5.3: upload_file MCP tool', () => {
   });
 });
 
-describe('P5.4: open_tunnel MCP tool', () => {
-  let projectDir: string;
-  let callbacks: ReturnType<typeof createMockCallbacks>;
-  let context: McpSessionContext;
-
-  beforeEach(() => {
-    projectDir = makeTempProjectDir();
-    callbacks = createMockCallbacks();
-    context = createContext(projectDir);
-  });
-
-  it('open_tunnel calls callback with port and TTL', async () => {
-    const server = createMcpServer(context, callbacks);
-    const tools = (server as any)._registeredTools;
-    const tunnelTool = tools['open_tunnel'];
-    const handler = tunnelTool.handler;
-
-    const result = await handler({ port: 3000, ttl: 1800 }, {});
-    expect(callbacks.openTunnel).toHaveBeenCalledWith(3000, 1800);
-    expect(result.content[0].text).toContain('https://tunnel.example.com');
-  });
-
-  it('open_tunnel uses default TTL when not provided', async () => {
-    const server = createMcpServer(context, callbacks);
-    const tools = (server as any)._registeredTools;
-    const tunnelTool = tools['open_tunnel'];
-    const handler = tunnelTool.handler;
-
-    const result = await handler({ port: 8080 }, {});
-    expect(callbacks.openTunnel).toHaveBeenCalledWith(8080, 3600);
-    expect(result.content[0].text).toContain('TTL: 3600s');
-  });
-
-  it('open_tunnel does not auto-post URL (Claude uses post_message instead)', async () => {
-    const server = createMcpServer(context, callbacks);
-    const tools = (server as any)._registeredTools;
-    const tunnelTool = tools['open_tunnel'];
-    const handler = tunnelTool.handler;
-
-    await handler({ port: 3000, ttl: 1800 }, {});
-    expect(callbacks.postMessage).not.toHaveBeenCalled();
-  });
-
-  it('open_tunnel returns error on callback failure', async () => {
-    (callbacks.openTunnel as any).mockRejectedValue(new Error('Tunnel binary not found'));
-
-    const server = createMcpServer(context, callbacks);
-    const tools = (server as any)._registeredTools;
-    const tunnelTool = tools['open_tunnel'];
-    const handler = tunnelTool.handler;
-
-    const result = await handler({ port: 3000 }, {});
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('Tunnel binary not found');
-  });
-
-  it('open_tunnel returns the public URL', async () => {
-    const server = createMcpServer(context, callbacks);
-    const tools = (server as any)._registeredTools;
-    const tunnelTool = tools['open_tunnel'];
-    const handler = tunnelTool.handler;
-
-    const result = await handler({ port: 5000, ttl: 7200 }, {});
-    expect(result.content[0].text).toContain('https://tunnel.example.com');
-  });
-});
-
 describe('P5.5: serve_file_browser MCP tool', () => {
   let projectDir: string;
   let callbacks: ReturnType<typeof createMockCallbacks>;
@@ -607,12 +534,6 @@ describe('P5.5: serve_file_browser MCP tool', () => {
       expect(result.content[0].text).toContain('Server command failed');
     });
 
-    it('open_tunnel description references preview_server', () => {
-      const server = createMcpServer(context, callbacks);
-      const tools = (server as any)._registeredTools;
-      const openTunnelDesc = tools['open_tunnel'].description;
-      expect(openTunnelDesc).toContain('preview_server');
-    });
   });
 
   describe('P16.2: post_message MCP tool', () => {
