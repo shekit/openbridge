@@ -1073,26 +1073,35 @@ export class DiscordAdapter {
     content: string,
     components?: ActionRowBuilder<ButtonBuilder>[]
   ): Promise<void> {
-    // If context is a Message
+    // If context is a Message with a channel reference, use it directly
     if (context?.channel) {
       const channel = context.channel;
-      // If the message is in a thread, send directly to the thread
       if (channel.isThread?.()) {
         await channel.send({ content, components });
-      } else {
-        // Try to get the thread by ID
-        try {
-          const thread = await channel.threads?.fetch(threadId);
-          if (thread) {
-            await thread.send({ content, components });
-          } else {
-            await channel.send({ content, components });
-          }
-        } catch {
-          // Fallback: reply in the current channel
-          await channel.send({ content, components });
-        }
+        return;
       }
+      // Try to get the thread by ID from the channel
+      try {
+        const thread = await channel.threads?.fetch(threadId);
+        if (thread) {
+          await thread.send({ content, components });
+          return;
+        }
+      } catch {
+        // Fall through to direct fetch
+      }
+      await channel.send({ content, components });
+      return;
+    }
+
+    // No context (e.g. IPC/hook permission prompt) — fetch the thread directly
+    try {
+      const thread = await this.client.channels.fetch(threadId);
+      if (thread && 'send' in thread) {
+        await (thread as any).send({ content, components });
+      }
+    } catch (err) {
+      console.error(`[discord] sendToThread failed for thread ${threadId}:`, err);
     }
   }
 

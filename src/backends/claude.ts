@@ -74,7 +74,7 @@ export function spawnCollect(
     try {
       fs.mkdirSync(path.dirname(stderrLogPath), { recursive: true });
       logStream = fs.createWriteStream(stderrLogPath, { flags: 'w' });
-      logStream.write(`[${new Date().toISOString()}] spawn: ${command} ${args.join(' ').slice(0, 200)}\n`);
+      logStream.write(`[${new Date().toISOString()}] spawn: ${command} ${args.join(' ')}\n`);
       logStream.write(`[${new Date().toISOString()}] cwd: ${cwd}\n\n`);
     } catch {
       // If we can't create the log file, continue without it
