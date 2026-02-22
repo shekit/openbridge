@@ -12,14 +12,14 @@
     "slash_commands": [
       {
         "command": "/project",
-        "description": "Manage project connections and settings",
-        "usage_hint": "connect /path | list | disconnect | backend claude",
+        "description": "Project-related commands",
+        "usage_hint": "connect /path | list | disconnect | new name",
         "should_escape": false
       },
       {
         "command": "/settings",
-        "description": "View or change global bridge settings",
-        "usage_hint": "root /path",
+        "description": "View/change settings",
+        "usage_hint": "view | backend claude | root /path",
         "should_escape": false
       }
     ]
