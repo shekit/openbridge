@@ -2197,7 +2197,7 @@
             "cleanupStaleEntries logs when auto-denying stale permission requests",
             "Build passes, all tests pass"
           ],
-          "status": "pending"
+          "status": "passing"
         }
       ]
     }

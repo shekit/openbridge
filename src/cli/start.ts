@@ -342,8 +342,9 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
   } finally {
     try {
       store.close();
-    } catch {
+    } catch (err: any) {
       // Already closed (e.g. rerun_setup closes it before wiping)
+      console.error(`[start] error closing store: ${err.message}`);
     }
   }
 }
@@ -470,7 +471,7 @@ export async function runStart(deps?: StartDeps): Promise<void> {
     adapterList.push({ name: 'discord', start: () => discord.start(), stop: () => discord.stop() });
   }
 
-  // Start all adapters
+  // Start all adapters — if any adapter fails, exit the bridge (don't run half-broken)
   for (const adapter of adapterList) {
     try {
       await adapter.start();
@@ -486,6 +487,10 @@ export async function runStart(deps?: StartDeps): Promise<void> {
       } else {
         console.error(`[start] failed to start ${adapter.name}:`, err);
       }
+      await ipcServer.close();
+      store.close();
+      process.exit(1);
+      return;
     }
   }
 
@@ -525,8 +530,8 @@ export async function runStart(deps?: StartDeps): Promise<void> {
       try {
         await adapter.stop();
         console.log(`[start] ${adapter.name} adapter stopped`);
-      } catch {
-        // ignore errors during shutdown
+      } catch (err: any) {
+        console.error(`[start] error stopping ${adapter.name} during shutdown: ${err.message}`);
       }
     }
     store.close();

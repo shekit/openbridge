@@ -104,6 +104,7 @@ function cleanupStaleEntries(): void {
   const now = Date.now();
   for (const [id, entry] of pendingPermissions) {
     if (now - entry.createdAt > STALE_TIMEOUT_MS) {
+      console.warn(`[ipc] auto-denying stale permission request ${id} (age: ${Math.round((now - entry.createdAt) / 1000)}s)`);
       for (const resolver of entry.resolvers) {
         resolver('deny');
       }
@@ -112,6 +113,7 @@ function cleanupStaleEntries(): void {
   }
   for (const [id, entry] of pendingQuestions) {
     if (now - entry.createdAt > STALE_TIMEOUT_MS) {
+      console.warn(`[ipc] expiring stale question ${id} (age: ${Math.round((now - entry.createdAt) / 1000)}s)`);
       // Don't resolve with a value — let the poller time out naturally
       pendingQuestions.delete(id);
       // Clean up thread index
