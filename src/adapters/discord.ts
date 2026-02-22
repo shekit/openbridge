@@ -218,6 +218,14 @@ export class DiscordAdapter {
     const text = message.content || '';
     let threadId = this.getThreadId(message);
 
+    // Intercept messages that look like our slash commands typed as plain text
+    const COMMAND_NAMES = ['/project', '/settings', '/new', '/cancel'];
+    const firstWord = text.split(/\s/)[0]?.toLowerCase();
+    if (firstWord && COMMAND_NAMES.includes(firstWord)) {
+      await message.reply('That looks like a slash command — type `/` to use Discord slash commands instead.');
+      return;
+    }
+
     // Check if this channel is bound to a project
     const project = this.store.getProjectByChannelId(channelId);
     if (!project) {
