@@ -643,3 +643,29 @@ Phase 20 was implemented across multiple sessions (24–25). Features P20.1–P2
 **Test count:** 631 tests passing across 24 test files
 - All P20 features (P20.1–P20.9) committed individually, all marked passing
 - Updated feature-list.json with P20.5–P20.9 entries
+
+### Session 26 — P21: Error Handling Cleanup — Eliminate Silent Failures
+
+Full audit of all silent error swallowing patterns in the codebase, followed by systematic cleanup across 7 features.
+
+**Strategy (three-tier approach):**
+1. **Critical errors** — catch → send error to chat thread → re-throw/exit
+2. **Cosmetic errors** — catch → `console.error` with context (e.g., processing indicator failures)
+3. **Shutdown/probes** — keep as-is (shutdown paths, nested fallback catches)
+
+**P21.1: Slack adapter** — 11 empty/silent catches replaced with contextual logging. `postError()` truncates at 3000 chars.
+
+**P21.2: Discord adapter** — 8 empty catches logged. Critical `.catch(() => null)` on `sendToThread`, `uploadFile`, `sendMessage` replaced with try/catch that propagates errors. `postError()` truncates at 1800 chars (within Discord's 2000-char limit).
+
+**P21.3: Claude backend** — Log stream empty catch logged. `parseJsonLine` warns on JSON-looking lines. `writeClaudeMcpConfig` distinguishes ENOENT from real errors.
+
+**P21.4: Codex backend** — Same `parseJsonLine` pattern. `cleanupTempImages` logs non-ENOENT. `writeCodexMcpConfig` ENOENT distinction.
+
+**P21.5: Hooks** — `pre-tool-use.ts` logs errors to stderr before exit. `permission-request.ts` includes error message in deny output.
+
+**P21.6: Utils and callbacks** — `downloadToBase64` now throws (was returning null). `downloadAndStageFile` catches and returns null. `cleanupStagingFiles` logs non-ENOENT. `closeAllFileBrowsers` logs errors.
+
+**P21.7: start.ts and IPC** — Bridge exits with `process.exit(1)` if adapter start fails (no half-broken state). `cleanupStaleEntries` logs when auto-denying stale permissions or expiring stale questions. Shutdown error handlers log instead of silently catching.
+
+**Test count:** 631 tests passing across 24 test files
+- All 7 features (P21.1–P21.7) committed individually, all marked passing
