@@ -574,6 +574,8 @@ export class DiscordAdapter {
           break;
 
         case 'permission_denied':
+          // AskUserQuestion denials are expected — the hook already rendered buttons
+          if (event.toolName === 'AskUserQuestion') break;
           if (event.toolName === 'sandbox') {
             await this.postSandboxUpgradePrompt(channelId, threadId, event.context || '', context);
           } else {

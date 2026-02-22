@@ -520,6 +520,8 @@ export class SlackAdapter {
           break;
 
         case 'permission_denied':
+          // AskUserQuestion denials are expected — the hook already rendered buttons
+          if (event.toolName === 'AskUserQuestion') break;
           if (event.toolName === 'sandbox') {
             await this.postSandboxUpgradePrompt(channelId, threadTs, event.context || '', client);
           } else {

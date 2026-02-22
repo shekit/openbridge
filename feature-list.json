@@ -2036,6 +2036,16 @@
             "Build passes, all 621 tests pass"
           ],
           "status": "passing"
+        },
+        {
+          "id": "P20.3",
+          "description": "Skip AskUserQuestion permission_denied events in renderEvents to prevent double rendering",
+          "verification": [
+            "renderEvents in both Slack and Discord adapters skips permission_denied events where toolName is AskUserQuestion",
+            "Only question buttons appear in chat, no redundant Allow/Deny prompt",
+            "Build passes, all 621 tests pass"
+          ],
+          "status": "passing"
         }
       ]
     }
