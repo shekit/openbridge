@@ -2187,7 +2187,7 @@
             "closeAllFileBrowsers logs each close failure",
             "Build passes, all tests pass"
           ],
-          "status": "pending"
+          "status": "passing"
         },
         {
           "id": "P21.7",

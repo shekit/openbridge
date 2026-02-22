@@ -140,8 +140,8 @@ export async function closeAllFileBrowsers(): Promise<void> {
   for (const browser of activeFileBrowsers) {
     try {
       await browser.close();
-    } catch {
-      // Best effort
+    } catch (err: any) {
+      console.error(`[callbacks] failed to close file browser: ${err.message}`);
     }
   }
   activeFileBrowsers.length = 0;

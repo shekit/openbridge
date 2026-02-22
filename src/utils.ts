@@ -35,23 +35,21 @@ export function isImageMimeType(mimeType: string | undefined | null): boolean {
 }
 
 /**
- * Download a URL to a base64 string. Returns null on failure.
+ * Download a URL to a base64 string. Throws on failure.
  * Uses Node 18+ built-in fetch.
  */
 export async function downloadToBase64(
   url: string,
   headers?: Record<string, string>,
-): Promise<{ base64: string; mediaType: string } | null> {
-  try {
-    const response = await fetch(url, { headers });
-    if (!response.ok) return null;
-    const buffer = Buffer.from(await response.arrayBuffer());
-    const mediaType = (response.headers.get('content-type') || 'application/octet-stream')
-      .split(';')[0].trim();
-    return { base64: buffer.toString('base64'), mediaType };
-  } catch {
-    return null;
+): Promise<{ base64: string; mediaType: string }> {
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    throw new Error(`Download failed: HTTP ${response.status} ${response.statusText} for ${url}`);
   }
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const mediaType = (response.headers.get('content-type') || 'application/octet-stream')
+    .split(';')[0].trim();
+  return { base64: buffer.toString('base64'), mediaType };
 }
 
 /** Uploads staging directory: ~/.openbridge-ai/uploads/ */
@@ -88,7 +86,11 @@ export function cleanupStagingFiles(stagingPaths: string[]): void {
     try {
       fs.unlinkSync(p);
       console.log(`[uploads] cleaned up staging file: ${p}`);
-    } catch { /* file may already be gone */ }
+    } catch (err: any) {
+      if (err.code !== 'ENOENT') {
+        console.error(`[uploads] failed to clean up staging file ${p}: ${err.message}`);
+      }
+    }
   }
 }
 
@@ -140,8 +142,13 @@ export async function downloadAndStageFile(
   mimeType: string | undefined,
   authHeaders?: Record<string, string>,
 ): Promise<FileAttachment | null> {
-  const downloaded = await downloadToBase64(url, authHeaders);
-  if (!downloaded) return null;
+  let downloaded: { base64: string; mediaType: string };
+  try {
+    downloaded = await downloadToBase64(url, authHeaders);
+  } catch (err: any) {
+    console.error(`[uploads] failed to download file ${filename} from ${url}: ${err.message}`);
+    return null;
+  }
 
   const kind = classifyMimeType(downloaded.mediaType, filename);
   const staging = saveToStagingDir(downloaded.base64, downloaded.mediaType, filename);
