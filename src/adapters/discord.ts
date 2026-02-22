@@ -1181,7 +1181,10 @@ export class DiscordAdapter {
     if (!channel || !('send' in channel)) {
       throw new Error(`Cannot find sendable channel for ${channelId}/${threadId}`);
     }
-    await (channel as TextChannel).send({ content: text });
+    // Discord message limit is 2000 chars — truncate as a failsafe
+    const MAX = 2000;
+    const truncated = text.length > MAX ? text.slice(0, MAX - 15) + '\n... (truncated)' : text;
+    await (channel as TextChannel).send({ content: truncated });
   }
 }
 

@@ -1349,10 +1349,13 @@ export class SlackAdapter {
 
   /** Post a plain text message to a Slack thread. Called by MCP callback handler. */
   async sendMessage(channelId: string, threadId: string, text: string): Promise<void> {
+    // Slack message limit is 40000 chars — truncate as a failsafe
+    const MAX = 40000;
+    const truncated = text.length > MAX ? text.slice(0, MAX - 15) + '\n... (truncated)' : text;
     await this.app.client.chat.postMessage({
       channel: channelId,
       thread_ts: threadId,
-      text,
+      text: truncated,
     });
   }
 }
