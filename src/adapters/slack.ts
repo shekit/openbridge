@@ -14,7 +14,7 @@ import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
 import { splitText, downloadAndStageFile } from '../utils.js';
 import type { FileAttachment } from '../types/backend.js';
-import { resolvePermission, resolveUserQuestion } from '../mcp/ipc-server.js';
+import { resolvePermission, resolveUserQuestion, hasPendingQuestion, resolveQuestionByThread } from '../mcp/ipc-server.js';
 import { clearPostMessageFlag, wasPostMessageCalled } from '../mcp/callbacks.js';
 
 const SLACK_MESSAGE_LIMIT = 4000;
@@ -299,6 +299,13 @@ export class SlackAdapter {
     // Handle file attachments — route through handleFileUpload
     if (Array.isArray(message.files) && message.files.length > 0) {
       await this.handleFileUpload(channelId, threadTs, message.files, text, client);
+      return;
+    }
+
+    // If there's a pending AskUserQuestion for this thread, resolve it with the typed text
+    if (hasPendingQuestion(threadTs)) {
+      resolveQuestionByThread(threadTs, text);
+      console.log(`[slack] resolved pending question for thread ${threadTs} with typed response`);
       return;
     }
 

@@ -51,6 +51,9 @@ interface PendingQuestion {
 /** In-memory store for pending user questions. */
 const pendingQuestions = new Map<string, PendingQuestion>();
 
+/** Index: threadId → requestId for resolving questions by thread (typed responses). */
+const questionsByThread = new Map<string, string>();
+
 /** Stale entry cleanup interval (10 minutes). */
 const STALE_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -75,7 +78,23 @@ export function resolveUserQuestion(requestId: string, answer: string): boolean 
     resolver(answer);
   }
   entry.resolvers = [];
+  // Clean up thread index
+  for (const [tid, rid] of questionsByThread) {
+    if (rid === requestId) { questionsByThread.delete(tid); break; }
+  }
   return true;
+}
+
+/** Resolve a pending user question by thread ID (called when user types instead of clicking). */
+export function resolveQuestionByThread(threadId: string, answer: string): boolean {
+  const requestId = questionsByThread.get(threadId);
+  if (!requestId) return false;
+  return resolveUserQuestion(requestId, answer);
+}
+
+/** Check if a thread has a pending user question. */
+export function hasPendingQuestion(threadId: string): boolean {
+  return questionsByThread.has(threadId);
 }
 
 /** Clean up stale permission and question entries older than STALE_TIMEOUT_MS. */
@@ -93,6 +112,10 @@ function cleanupStaleEntries(): void {
     if (now - entry.createdAt > STALE_TIMEOUT_MS) {
       // Don't resolve with a value — let the poller time out naturally
       pendingQuestions.delete(id);
+      // Clean up thread index
+      for (const [tid, rid] of questionsByThread) {
+        if (rid === id) { questionsByThread.delete(tid); break; }
+      }
     }
   }
 }
@@ -283,7 +306,8 @@ export function startIpcServer(handler: IpcHandler): Promise<IpcServer> {
             resolvers: [],
             createdAt: Date.now(),
           });
-          console.log(`[ipc] ask-user-question (${requestId})`);
+          questionsByThread.set(threadId, requestId);
+          console.log(`[ipc] ask-user-question (${requestId}) for thread ${threadId}`);
           if (handler.askUserQuestion) {
             try {
               await handler.askUserQuestion(channelId, threadId, questions, platform, requestId);

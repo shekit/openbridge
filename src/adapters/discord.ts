@@ -31,7 +31,7 @@ import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
 import { splitText, downloadAndStageFile } from '../utils.js';
 import type { FileAttachment } from '../types/backend.js';
-import { resolvePermission, resolveUserQuestion } from '../mcp/ipc-server.js';
+import { resolvePermission, resolveUserQuestion, hasPendingQuestion, resolveQuestionByThread } from '../mcp/ipc-server.js';
 import { clearPostMessageFlag, wasPostMessageCalled } from '../mcp/callbacks.js';
 
 const DISCORD_MESSAGE_LIMIT = 2000;
@@ -256,6 +256,13 @@ export class DiscordAdapter {
         contentType: a.contentType ?? undefined,
       }));
       await this.handleFileUpload(channelId, threadId, files, text, message);
+      return;
+    }
+
+    // If there's a pending AskUserQuestion for this thread, resolve it with the typed text
+    if (hasPendingQuestion(threadId)) {
+      resolveQuestionByThread(threadId, text);
+      console.log(`[discord] resolved pending question for thread ${threadId} with typed response`);
       return;
     }
 
