@@ -85,11 +85,13 @@ export function resolveUserQuestion(requestId: string, answer: string): boolean 
   return true;
 }
 
-/** Resolve a pending user question by thread ID (called when user types instead of clicking). */
-export function resolveQuestionByThread(threadId: string, answer: string): boolean {
+/** Resolve a pending user question by thread ID (called when user types instead of clicking).
+ *  Returns the requestId if resolved, null otherwise (so caller can update the button message). */
+export function resolveQuestionByThread(threadId: string, answer: string): string | null {
   const requestId = questionsByThread.get(threadId);
-  if (!requestId) return false;
-  return resolveUserQuestion(requestId, answer);
+  if (!requestId) return null;
+  const resolved = resolveUserQuestion(requestId, answer);
+  return resolved ? requestId : null;
 }
 
 /** Check if a thread has a pending user question. */

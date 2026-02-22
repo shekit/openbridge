@@ -47,6 +47,8 @@ export class SlackAdapter {
   private router: Router;
   private store: Store;
   private botUserId: string | null = null;
+  /** Message refs for pending AskUserQuestion prompts, for updating on resolution. */
+  private questionMessages = new Map<string, { channel: string; ts: string }>();
 
   constructor(options: SlackAdapterOptions) {
     this.router = options.router;
@@ -304,8 +306,23 @@ export class SlackAdapter {
 
     // If there's a pending AskUserQuestion for this thread, resolve it with the typed text
     if (hasPendingQuestion(threadTs)) {
-      resolveQuestionByThread(threadTs, text);
+      const requestId = resolveQuestionByThread(threadTs, text);
       console.log(`[slack] resolved pending question for thread ${threadTs} with typed response`);
+      // Update the button message to show it's been answered
+      if (requestId) {
+        const msgRef = this.questionMessages.get(requestId);
+        if (msgRef) {
+          this.questionMessages.delete(requestId);
+          try {
+            await client.chat.update({
+              channel: msgRef.channel,
+              ts: msgRef.ts,
+              text: `Answered: ${text}`,
+              blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `*Answered:* ${text}` } }],
+            });
+          } catch { /* non-fatal */ }
+        }
+      }
       return;
     }
 
@@ -673,7 +690,7 @@ export class SlackAdapter {
       value: requestId,
     }));
 
-    await chatClient.chat.postMessage({
+    const result = await chatClient.chat.postMessage({
       channel: channelId,
       thread_ts: threadTs,
       text: q.question,
@@ -685,6 +702,9 @@ export class SlackAdapter {
         { type: 'actions', elements: buttons },
       ],
     });
+    if (result.ts) {
+      this.questionMessages.set(requestId, { channel: channelId, ts: result.ts });
+    }
   }
 
   /** Handle AskUserQuestion option button clicks.
@@ -701,6 +721,7 @@ export class SlackAdapter {
     if (!requestId || !label) return;
 
     resolveUserQuestion(requestId, label);
+    this.questionMessages.delete(requestId);
     console.log(`[slack] resolved question ${requestId} → "${label}"`);
 
     if (channelId && messageTs) {

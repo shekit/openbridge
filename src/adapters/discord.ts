@@ -71,6 +71,8 @@ export class DiscordAdapter {
   private botUserId: string | null = null;
   /** Option labels for pending AskUserQuestion prompts, keyed by requestId. */
   private pendingQuestionOptions = new Map<string, string[]>();
+  /** Message refs for pending AskUserQuestion prompts, for updating on resolution. */
+  private questionMessages = new Map<string, Message>();
 
   constructor(options: DiscordAdapterOptions) {
     this.router = options.router;
@@ -261,8 +263,19 @@ export class DiscordAdapter {
 
     // If there's a pending AskUserQuestion for this thread, resolve it with the typed text
     if (hasPendingQuestion(threadId)) {
-      resolveQuestionByThread(threadId, text);
+      const requestId = resolveQuestionByThread(threadId, text);
       console.log(`[discord] resolved pending question for thread ${threadId} with typed response`);
+      // Update the button message to show it's been answered
+      if (requestId) {
+        const questionMsg = this.questionMessages.get(requestId);
+        if (questionMsg) {
+          this.questionMessages.delete(requestId);
+          this.pendingQuestionOptions.delete(requestId);
+          try {
+            await questionMsg.edit({ content: `**Answered:** ${text}`, components: [] });
+          } catch { /* non-fatal */ }
+        }
+      }
       return;
     }
 
@@ -430,6 +443,7 @@ export class DiscordAdapter {
       const labels = this.pendingQuestionOptions.get(requestId);
       const label = labels?.[index] ?? `Option ${index}`;
       this.pendingQuestionOptions.delete(requestId);
+      this.questionMessages.delete(requestId);
 
       resolveUserQuestion(requestId, label);
       console.log(`[discord] resolved question ${requestId} → "${label}"`);
@@ -687,7 +701,8 @@ export class DiscordAdapter {
     );
 
     const content = `**${q.question}**\n${optionLines}`;
-    await this.sendToThread(threadId, context, content, [row]);
+    const msg = await this.sendToThread(threadId, context, content, [row]);
+    this.questionMessages.set(requestId, msg);
   }
 
   /** Post a sandbox upgrade prompt for Codex sandbox denials. */
@@ -1156,28 +1171,26 @@ export class DiscordAdapter {
     await this.renderEvents(channelId, threadId, result.events, context);
   }
 
-  /** Send a message to a thread (or channel if no thread context). */
+  /** Send a message to a thread (or channel if no thread context).
+   *  Returns the sent Message for callers that need to update it later. */
   private async sendToThread(
     threadId: string,
     context: any,
     content: string,
     components?: ActionRowBuilder<ButtonBuilder>[]
-  ): Promise<void> {
+  ): Promise<Message> {
     // If context is a Message with a channel reference, use it directly
     if (context?.channel) {
       const channel = context.channel;
       if (channel.isThread?.()) {
-        await channel.send({ content, components });
-        return;
+        return await channel.send({ content, components });
       }
       // Try to get the thread by ID from the channel
       const thread = await channel.threads?.fetch(threadId).catch(() => null);
       if (thread) {
-        await thread.send({ content, components });
-        return;
+        return await thread.send({ content, components });
       }
-      await channel.send({ content, components });
-      return;
+      return await channel.send({ content, components });
     }
 
     // No context (e.g. IPC/hook callback) — fetch the channel directly
@@ -1186,7 +1199,7 @@ export class DiscordAdapter {
     if (!channel || !('send' in channel)) {
       throw new Error(`[discord] sendToThread: cannot find sendable channel for thread ${threadId}`);
     }
-    await (channel as any).send({ content, components });
+    return await (channel as any).send({ content, components });
   }
 
   /** Get the channel ID from a message (parent channel for threads). */
