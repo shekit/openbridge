@@ -2144,7 +2144,7 @@
             "Button interaction updates log error but don't throw",
             "Build passes, all tests pass"
           ],
-          "status": "pending"
+          "status": "passing"
         },
         {
           "id": "P21.3",

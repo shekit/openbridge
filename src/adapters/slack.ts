@@ -1429,7 +1429,9 @@ export class SlackAdapter {
           try {
             const content = fs.readFileSync(attachment.stagingPath, 'utf8');
             textInclusions.push(`\`\`\`${attachment.filename}\n${content}\n\`\`\``);
-          } catch { /* skip inline inclusion on read error */ }
+          } catch (err: any) {
+            console.error(`[slack] failed to read staged text file ${attachment.stagingPath}: ${err.message}`);
+          }
         }
         console.log(`[slack] downloaded ${attachment.kind} file ${fileName} (${attachment.mediaType}, staged as ${attachment.uploadId})`);
       } else {

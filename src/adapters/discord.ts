@@ -219,8 +219,8 @@ export class DiscordAdapter {
     try {
       const msg = await this.sendToThread(threadId, context, 'Processing...');
       this.processingMessages.set(threadId, msg);
-    } catch {
-      // Non-fatal — continue without indicator
+    } catch (err: any) {
+      console.error(`[discord] failed to post processing indicator for thread ${threadId}: ${err.message}`);
     }
   }
 
@@ -231,8 +231,8 @@ export class DiscordAdapter {
     this.processingMessages.delete(threadId);
     try {
       await msg.delete();
-    } catch {
-      // Non-fatal
+    } catch (err: any) {
+      console.error(`[discord] failed to delete processing indicator for thread ${threadId}: ${err.message}`);
     }
   }
 
@@ -271,7 +271,9 @@ export class DiscordAdapter {
         try {
           const processingMsg = await thread.send('Processing...');
           this.processingMessages.set(threadId, processingMsg);
-        } catch { /* non-fatal */ }
+        } catch (err: any) {
+          console.error(`[discord] failed to post processing indicator in new thread ${threadId}: ${err.message}`);
+        }
       } catch {
         // If thread creation fails, use the message ID
         threadId = message.id;
@@ -306,7 +308,9 @@ export class DiscordAdapter {
           this.pendingQuestionOptions.delete(requestId);
           try {
             await questionMsg.edit({ content: `${questionMsg.content}\n\n**Answered:** ${text}`, components: [] });
-          } catch { /* non-fatal */ }
+          } catch (err: any) {
+            console.error(`[discord] failed to update question message for thread ${threadId}: ${err.message}`);
+          }
         }
       }
       return;
@@ -418,7 +422,9 @@ export class DiscordAdapter {
             try {
               this.router.resetSession(channelId, threadId);
               console.log(`[discord] reset session for thread ${threadId} after sandbox upgrade`);
-            } catch { /* session may not exist yet */ }
+            } catch (err: any) {
+              console.error(`[discord] failed to reset session after sandbox upgrade for thread ${threadId}: ${err.message}`);
+            }
           }
         }
       }
@@ -511,8 +517,8 @@ export class DiscordAdapter {
         content: `**Permission ${actionLabel}**`,
         components: [],
       });
-    } catch {
-      // Non-fatal if update fails
+    } catch (err: any) {
+      console.error(`[discord] failed to update permission interaction: ${err.message}`);
     }
 
     // Hook-based flow: resolve in-process, no need to call router.respond()
@@ -742,7 +748,11 @@ export class DiscordAdapter {
 
   /** Post an error message. */
   async postError(channelId: string, threadId: string, message: string, context: any): Promise<void> {
-    await this.sendToThread(threadId, context, `:warning: **Error:** ${message}`);
+    const MAX_ERROR = 1800; // Leave room for the prefix within Discord's 2000-char limit
+    const truncated = message.length > MAX_ERROR
+      ? message.slice(0, MAX_ERROR) + '\n... (truncated)'
+      : message;
+    await this.sendToThread(threadId, context, `:warning: **Error:** ${truncated}`);
   }
 
   /** Handle /project slash command. */
@@ -1161,7 +1171,9 @@ export class DiscordAdapter {
           try {
             const content = fs.readFileSync(attachment.stagingPath, 'utf8');
             textInclusions.push(`\`\`\`${attachment.filename}\n${content}\n\`\`\``);
-          } catch { /* skip inline inclusion on read error */ }
+          } catch (err: any) {
+            console.error(`[discord] failed to read staged text file ${attachment.stagingPath}: ${err.message}`);
+          }
         }
         console.log(`[discord] downloaded ${attachment.kind} file ${file.name} (${attachment.mediaType}, staged as ${attachment.uploadId})`);
       } else {
@@ -1204,16 +1216,28 @@ export class DiscordAdapter {
         return await channel.send({ content, components });
       }
       // Try to get the thread by ID from the channel
-      const thread = await channel.threads?.fetch(threadId).catch(() => null);
-      if (thread) {
-        return await thread.send({ content, components });
+      try {
+        const thread = await channel.threads?.fetch(threadId);
+        if (thread) {
+          return await thread.send({ content, components });
+        }
+      } catch {
+        // Thread not found — fall through to send in channel
       }
       return await channel.send({ content, components });
     }
 
     // No context (e.g. IPC/hook callback) — fetch the channel directly
-    const channel = await this.client.channels.fetch(threadId).catch(() => null)
-      ?? await this.client.channels.fetch(threadId.split('/')[0]).catch(() => null);
+    let channel: any = null;
+    try {
+      channel = await this.client.channels.fetch(threadId);
+    } catch {
+      try {
+        channel = await this.client.channels.fetch(threadId.split('/')[0]);
+      } catch {
+        // Both fetches failed
+      }
+    }
     if (!channel || !('send' in channel)) {
       throw new Error(`[discord] sendToThread: cannot find sendable channel for thread ${threadId}`);
     }
@@ -1261,10 +1285,14 @@ export class DiscordAdapter {
   /** Upload a file to a Discord thread. Called by MCP callback handler. */
   async uploadFile(channelId: string, threadId: string, filePath: string): Promise<void> {
     const filename = path.basename(filePath);
-    const channel = await this.client.channels.fetch(threadId).catch(() => null)
-      ?? await this.client.channels.fetch(channelId).catch(() => null);
+    let channel: any = null;
+    try {
+      channel = await this.client.channels.fetch(threadId);
+    } catch {
+      channel = await this.client.channels.fetch(channelId);
+    }
     if (!channel || !('send' in channel)) {
-      throw new Error(`Cannot find sendable channel for ${channelId}/${threadId}`);
+      throw new Error(`[discord] uploadFile: cannot find sendable channel for ${channelId}/${threadId}`);
     }
     await (channel as TextChannel).send({
       files: [{ attachment: filePath, name: filename }],
@@ -1274,10 +1302,14 @@ export class DiscordAdapter {
 
   /** Post a plain text message to a Discord thread. Called by MCP callback handler. */
   async sendMessage(channelId: string, threadId: string, text: string): Promise<void> {
-    const channel = await this.client.channels.fetch(threadId).catch(() => null)
-      ?? await this.client.channels.fetch(channelId).catch(() => null);
+    let channel: any = null;
+    try {
+      channel = await this.client.channels.fetch(threadId);
+    } catch {
+      channel = await this.client.channels.fetch(channelId);
+    }
     if (!channel || !('send' in channel)) {
-      throw new Error(`Cannot find sendable channel for ${channelId}/${threadId}`);
+      throw new Error(`[discord] sendMessage: cannot find sendable channel for ${channelId}/${threadId}`);
     }
     // Discord message limit is 2000 chars — truncate as a failsafe
     const MAX = 2000;
