@@ -175,14 +175,22 @@ export function buildCodexArgs(
   sessionId: string | null,
   sandbox: SandboxMode,
   imagePaths?: string[],
+  mcpConfig?: McpServerEntry,
 ): string[] {
   if (sessionId) {
     // Resume: codex exec resume --skip-git-repo-check --json SESSION_ID -- "prompt"
-    // Note: --sandbox and -i are NOT included in resume (persists from initial invocation)
+    // Note: --sandbox, -i, and -c are NOT included in resume (persists from initial invocation)
     return ['exec', 'resume', '--skip-git-repo-check', '--json', sessionId, '--', text];
   }
 
   const args = ['exec', '--skip-git-repo-check', '--json', '--sandbox', sandbox];
+
+  // Inject MCP server config via -c flag so Codex picks it up at runtime
+  if (mcpConfig) {
+    const argsToml = mcpConfig.args.map((a) => `"${a}"`).join(', ');
+    const configValue = `mcp_servers.openbridge={command = "${mcpConfig.command}", args = [${argsToml}]}`;
+    args.push('-c', configValue);
+  }
 
   // Attach images via -i/--image flag (Codex CLI multimodal input)
   if (imagePaths) {
@@ -306,9 +314,9 @@ export class CodexBackend implements Backend {
       }
     }
 
-    const args = buildCodexArgs(text, this.sessionId, this.sandbox, imagePaths);
+    const args = buildCodexArgs(text, this.sessionId, this.sandbox, imagePaths, this.mcpConfig);
 
-    console.log(`[codex] spawning: codex ${args.join(' ').slice(0, 120)}...`);
+    console.log(`[codex] spawning: codex ${args.join(' ')}`);
     const handle = spawnCollect('codex', args, this.projectDir);
     this.activeHandle = handle;
 
