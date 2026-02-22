@@ -231,9 +231,13 @@ describe('Utils', () => {
       expect(markdownToSlackMrkdwn('This is ~~deleted~~ text')).toBe('This is ~deleted~ text');
     });
 
-    it('converts links [text](url) to <url|text>', () => {
+    it('converts links [text](url) to text (url)', () => {
       expect(markdownToSlackMrkdwn('See [docs](https://example.com)'))
-        .toBe('See <https://example.com|docs>');
+        .toBe('See docs (https://example.com)');
+    });
+
+    it('converts bold+italic ***text*** to *_text_*', () => {
+      expect(markdownToSlackMrkdwn('This is ***important***')).toBe('This is *_important_*');
     });
 
     it('converts headers to bold', () => {

@@ -217,8 +217,13 @@ export function markdownToSlackMrkdwn(text: string): string {
     // Headers → bold (Slack has no header syntax)
     converted = converted.replace(/^(#{1,6})\s+(.+)$/, (_m, _hashes, content) => `**${content}**`);
 
+    // Bold+italic: ***text*** → placeholder (must come before bold and italic)
     // Bold: **text** → placeholder to protect from italic pass
     const boldSlots: string[] = [];
+    converted = converted.replace(/\*\*\*(.+?)\*\*\*/g, (_m, content) => {
+      boldSlots.push(`_${content}_`);
+      return `\x01BOLD${boldSlots.length - 1}\x01`;
+    });
     converted = converted.replace(/\*\*(.+?)\*\*/g, (_m, content) => {
       boldSlots.push(content);
       return `\x01BOLD${boldSlots.length - 1}\x01`;
@@ -233,8 +238,8 @@ export function markdownToSlackMrkdwn(text: string): string {
     // Strikethrough: ~~text~~ → ~text~
     converted = converted.replace(/~~(.+?)~~/g, '~$1~');
 
-    // Links: [text](url) → <url|text>
-    converted = converted.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<$2|$1>');
+    // Links: [text](url) → text (url) — Slack auto-links bare URLs
+    converted = converted.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)');
 
     result.push(converted);
   }
