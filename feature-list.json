@@ -1807,7 +1807,6 @@
           "status": "passing"
         }
       ]
-    }
     },
     {
       "id": "P17",
@@ -1893,6 +1892,116 @@
           "verification": [
             "buildCodexArgs uses -i flag for image paths, not --image",
             "Resume mode does not include -i (images persist from initial invocation)",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P19",
+      "name": "Live Testing Fixes — Discord, Codex MCP, Tool Descriptions",
+      "outcome": "Discord UX polished, Codex MCP tools working, MCP tool descriptions rewritten for model clarity, open_tunnel removed",
+      "features": [
+        {
+          "id": "P19.1",
+          "description": "Discord fixes — guild-scoped slash commands, cross-platform /project list, file upload threading",
+          "verification": [
+            "Slash commands registered per-guild (not global)",
+            "Cross-platform /project list works",
+            "File uploads thread correctly in Discord"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P19.2",
+          "description": "Fix Discord permission prompts and untruncate spawn log",
+          "verification": [
+            "Permission prompts render correctly in Discord",
+            "Spawn log output not truncated for debugging"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P19.3",
+          "description": "Disable staging file cleanup to persist uploads across turns",
+          "verification": [
+            "Staging files not cleaned up after router send",
+            "Existing cleanup tests skipped",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P19.4",
+          "description": "/settings uses subcommands (backend, root, view) on Discord instead of flat args",
+          "verification": [
+            "Discord /settings has view, backend, root subcommands",
+            "Backend subcommand has choices dropdown",
+            "Tests updated for subcommand structure"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P19.5",
+          "description": "Intercept plain-text slash commands in Discord messages",
+          "verification": [
+            "Messages starting with /project, /settings, /new, /cancel are intercepted",
+            "Bot replies with a hint to use the slash command picker",
+            "Regular messages still route to backend"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P19.6",
+          "description": "Fix MCP tools for Codex — pass IPC port/secret as CLI args instead of env vars",
+          "verification": [
+            "getMcpConfig adds --ipc-port and --ipc-secret args",
+            "entry.ts reads args first, env vars as fallback",
+            "TOML config includes enabled = true",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P19.7",
+          "description": "Pass MCP config via -c flag to codex exec at runtime",
+          "verification": [
+            "buildCodexArgs generates -c mcp_servers.openbridge={...} flag",
+            "No .codex/config.toml file needed in user project",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P19.8",
+          "description": "Rewrite MCP tool descriptions to be model-friendly (what/when/how/enforcements)",
+          "verification": [
+            "Descriptions written from model perspective, no platform references",
+            "Each tool has: what it does, when to use it, how to use it",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P19.9",
+          "description": "Remove open_tunnel tool (superseded by preview_server), refine all MCP tool descriptions",
+          "verification": [
+            "open_tunnel removed from server.ts, claude.ts MCP_TOOLS, all tests",
+            "upload_file mentions post_message for confirmation",
+            "preview_server has DO NOT enforcements",
+            "post_message emphasizes succinct output",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P19.10",
+          "description": "Add sendMessage truncation failsafe in adapters (Discord 2000, Slack 40000)",
+          "verification": [
+            "Discord sendMessage truncates at 2000 chars",
+            "Slack sendMessage truncates at 40000 chars",
+            "Truncated messages show '... (truncated)' indicator",
             "Build passes, all tests pass"
           ],
           "status": "passing"

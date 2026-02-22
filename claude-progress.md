@@ -592,3 +592,28 @@ Four bugs reported from live testing. Three required code fixes, one is a known 
 
 **Test count:** 621 tests passing across 24 test files
 - All features (P18.1–P18.3) committed individually, all marked passing
+
+### Session 24 — P19: Live Testing Fixes — Discord, Codex MCP, Tool Descriptions
+
+Ten fixes from live testing covering Discord UX, Codex MCP integration, and MCP tool descriptions.
+
+**Discord UX (P19.1–P19.5):**
+- P19.1: Guild-scoped slash commands, cross-platform `/project list`, file upload threading
+- P19.2: Fix Discord permission prompts and untruncate spawn log
+- P19.3: Disable staging file cleanup to persist uploads across turns
+- P19.4: `/settings` refactored to use subcommands (view, backend, root) instead of flat `args` parameter
+- P19.5: Plain-text slash command interception — messages starting with `/project`, `/settings`, `/new`, `/cancel` get a hint to use the command picker
+
+**Codex MCP (P19.6–P19.7):**
+- P19.6: Pass IPC port/secret as CLI args (`--ipc-port`, `--ipc-secret`) instead of env vars (Codex doesn't support env in MCP config)
+- P19.7: Pass MCP config via `-c` flag on `codex exec` command line (eliminates writing `.codex/config.toml` to user projects)
+
+**MCP tool descriptions (P19.8–P19.10):**
+- P19.8: Rewrote all descriptions from model's perspective (no Slack/Discord references)
+- P19.9: Removed `open_tunnel` tool (superseded by `preview_server`), refined all descriptions with what/when/how/enforcements structure
+- P19.10: Added `sendMessage()` truncation failsafe in adapters (Discord 2000 chars, Slack 40000 chars)
+
+Also fixed broken JSON in feature-list.json (extra `}` brace in P16 section).
+
+**Test count:** 614 tests passing across 24 test files (test count decreased due to removal of open_tunnel tests)
+- All features (P19.1–P19.10) committed individually, all marked passing
