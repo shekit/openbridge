@@ -93,14 +93,14 @@ export function createBackendFactory(): BackendFactory {
   };
 }
 
-type StartMenuAction = 'start' | 'add_platform' | 'update_tokens' | 'change_backend' | 'projects_root' | 'setup_previews' | 'rerun_setup' | 'exit';
+type ConfigMenuAction = 'add_platform' | 'update_tokens' | 'change_backend' | 'projects_root' | 'setup_previews' | 'rerun_setup' | 'exit';
 
 /**
- * Show the settings menu on subsequent interactive runs.
+ * Show the settings menu for `openbridge-ai configure`.
  * Handles the chosen action (add platform, update tokens, etc.)
- * then returns so the bridge can start normally.
+ * and reminds the user to restart the bridge if it's running.
  */
-async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
+async function handleConfigMenu(dbPath: string, envPath: string): Promise<void> {
   const store = new Store(dbPath);
 
   try {
@@ -108,11 +108,9 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
     const platforms: Platform[] = platformsJson ? JSON.parse(platformsJson) : [];
     const defaultBackend = requireSetting(store, 'default_backend');
 
-    clack.intro('OpenBridge');
+    clack.intro('OpenBridge — Configure');
 
-    const options: { label: string; value: StartMenuAction; hint?: string }[] = [
-      { label: 'Start the bridge', value: 'start', hint: 'default' },
-    ];
+    const options: { label: string; value: ConfigMenuAction; hint?: string }[] = [];
 
     const allPlatforms: Platform[] = ['slack', 'discord'];
     const unconfigured = allPlatforms.filter((p) => !platforms.includes(p));
@@ -174,7 +172,6 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
     const action = await clack.select({
       message: 'What would you like to do?',
       options,
-      initialValue: 'start' as StartMenuAction,
     });
 
     if (clack.isCancel(action)) {
@@ -182,10 +179,9 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
       process.exit(0);
     }
 
-    switch (action) {
-      case 'start':
-        return;
+    const RESTART_HINT = 'If the bridge is running, restart it for changes to take effect.';
 
+    switch (action) {
       case 'exit':
         clack.outro('Goodbye!');
         process.exit(0);
@@ -217,7 +213,7 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
         platforms.push(platformToAdd);
         store.setSetting('platforms', JSON.stringify(platforms));
         clack.log.success(
-          `${platformToAdd.charAt(0).toUpperCase() + platformToAdd.slice(1)} added. Starting the bridge...`,
+          `${platformToAdd.charAt(0).toUpperCase() + platformToAdd.slice(1)} added. ${RESTART_HINT}`,
         );
         return;
       }
@@ -247,14 +243,14 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
 
         const tokens = await inputTokens(null, platformsToUpdate);
         mergeEnvFile(envPath, tokens);
-        clack.log.success('Tokens updated. Starting the bridge...');
+        clack.log.success(`Tokens updated. ${RESTART_HINT}`);
         return;
       }
 
       case 'change_backend': {
         const newBackend = await detectBackend(null);
         store.setSetting('default_backend', newBackend);
-        clack.log.success(`Default backend changed to ${newBackend}. Starting the bridge...`);
+        clack.log.success(`Default backend changed to ${newBackend}. ${RESTART_HINT}`);
         return;
       }
 
@@ -269,12 +265,11 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
             ],
           });
           if (clack.isCancel(rootAction) || rootAction === 'cancel') {
-            clack.log.info('Starting the bridge...');
             return;
           }
           if (rootAction === 'clear') {
             store.setSetting('projects_root', '');
-            clack.log.success('Projects root cleared. Starting the bridge...');
+            clack.log.success(`Projects root cleared. ${RESTART_HINT}`);
             return;
           }
         }
@@ -289,11 +284,10 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
           },
         });
         if (clack.isCancel(newRoot)) {
-          clack.log.info('Cancelled. Starting the bridge...');
           return;
         }
         store.setSetting('projects_root', path.resolve(newRoot));
-        clack.log.success(`Projects root set to ${path.resolve(newRoot)}. Starting the bridge...`);
+        clack.log.success(`Projects root set to ${path.resolve(newRoot)}. ${RESTART_HINT}`);
         return;
       }
 
@@ -318,7 +312,6 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
           clack.note(installSteps, 'Install a tunnel tool');
           clack.log.info('Install one of these, then start the bridge — previews will work automatically.');
         }
-        clack.log.info('Starting the bridge...');
         return;
       }
 
@@ -328,7 +321,6 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
           initialValue: false,
         });
         if (clack.isCancel(confirm) || !confirm) {
-          clack.log.info('Cancelled. Starting the bridge...');
           return;
         }
         store.close();
@@ -336,6 +328,7 @@ async function handleStartMenu(dbPath: string, envPath: string): Promise<void> {
         fs.rmSync(dbDir, { recursive: true, force: true });
         if (fs.existsSync(envPath)) fs.rmSync(envPath);
         await runInit();
+        clack.log.info(RESTART_HINT);
         return;
       }
     }
@@ -361,9 +354,6 @@ export async function runStart(deps?: StartDeps): Promise<void> {
   if (!fs.existsSync(path.dirname(dbPath))) {
     console.log('[start] first run detected — running setup wizard...\n');
     await runInit();
-  } else if (process.stdin.isTTY && !dryRun) {
-    // Subsequent interactive runs: show the settings menu
-    await handleStartMenu(dbPath, envPath);
   }
 
   // Load environment variables
@@ -541,4 +531,20 @@ export async function runStart(deps?: StartDeps): Promise<void> {
 
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
+}
+
+/**
+ * openbridge-ai configure — Show the settings menu.
+ */
+export async function runConfigure(): Promise<void> {
+  const dbPath = getDbPath();
+  const envPath = getEnvPath();
+
+  if (!fs.existsSync(path.dirname(dbPath))) {
+    console.log('[configure] no configuration found — running setup wizard...\n');
+    await runInit();
+    return;
+  }
+
+  await handleConfigMenu(dbPath, envPath);
 }

@@ -222,6 +222,16 @@ export class DiscordAdapter {
     }
   }
 
+  /** Remove the 👀 reaction after the backend has responded. */
+  private async removeReactSeen(message: Message): Promise<void> {
+    try {
+      const reaction = message.reactions.cache.get('👀');
+      if (reaction) await reaction.users.remove(this.client.user?.id);
+    } catch {
+      // Non-fatal — reaction may already be removed or missing
+    }
+  }
+
   /** Handle an incoming Discord message. */
   private async handleMessage(message: Message): Promise<void> {
     // Ignore bot messages (including our own)
@@ -312,6 +322,7 @@ export class DiscordAdapter {
     }
 
     await this.renderEvents(channelId, threadId, result.events, message);
+    await this.removeReactSeen(message);
   }
 
   /** Handle an interaction (slash command or button click). */
@@ -353,6 +364,7 @@ export class DiscordAdapter {
     }
 
     await this.renderEvents(channelId, threadId, result.events, message);
+    await this.removeReactSeen(message);
   }
 
   /** Handle button clicks for permission prompts and project bind actions. */
@@ -1164,6 +1176,7 @@ export class DiscordAdapter {
     }
 
     await this.renderEvents(channelId, threadId, result.events, context);
+    await this.removeReactSeen(context);
   }
 
   /** Send a message to a thread (or channel if no thread context).
@@ -1276,9 +1289,10 @@ export class DiscordAdapter {
     if (!channel || !('send' in channel)) {
       throw new Error(`[discord] sendMessage: cannot find sendable channel for ${channelId}/${threadId}`);
     }
+    const converted = markdownToDiscord(text);
     // Discord message limit is 2000 chars — truncate as a failsafe
     const MAX = 2000;
-    const truncated = text.length > MAX ? text.slice(0, MAX - 15) + '\n... (truncated)' : text;
+    const truncated = converted.length > MAX ? converted.slice(0, MAX - 15) + '\n... (truncated)' : converted;
     await (channel as TextChannel).send({ content: truncated });
   }
 

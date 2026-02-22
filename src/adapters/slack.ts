@@ -231,6 +231,15 @@ export class SlackAdapter {
     }
   }
 
+  /** Remove the 👀 reaction after the backend has responded. */
+  private async removeReactSeen(channelId: string, messageTs: string, client: any): Promise<void> {
+    try {
+      await client.reactions.remove({ channel: channelId, timestamp: messageTs, name: 'eyes' });
+    } catch {
+      // Non-fatal — reaction may already be removed or missing
+    }
+  }
+
   /** Handle an incoming Slack message. */
   private async handleMessage(message: any, client: any): Promise<void> {
     // Ignore bot messages (including our own) and system messages
@@ -304,7 +313,7 @@ export class SlackAdapter {
 
     // Handle file attachments — route through handleFileUpload
     if (Array.isArray(message.files) && message.files.length > 0) {
-      await this.handleFileUpload(channelId, threadTs, message.files, text, client);
+      await this.handleFileUpload(channelId, threadTs, message.files, text, client, message.ts);
       return;
     }
 
@@ -336,7 +345,7 @@ export class SlackAdapter {
     // Check if the session is waiting_for_input (freeform text response)
     const session = this.store.getSessionByThreadId(threadTs);
     if (session && session.state === 'waiting_for_input') {
-      await this.handleFreeformResponse(channelId, threadTs, text, client);
+      await this.handleFreeformResponse(channelId, threadTs, text, client, message.ts);
       return;
     }
 
@@ -351,6 +360,7 @@ export class SlackAdapter {
     }
 
     await this.renderEvents(channelId, threadTs, result.events, client);
+    await this.removeReactSeen(channelId, message.ts, client);
   }
 
   /** Handle freeform text when session is waiting_for_input. */
@@ -358,7 +368,8 @@ export class SlackAdapter {
     channelId: string,
     threadTs: string,
     text: string,
-    client: any
+    client: any,
+    messageTs?: string,
   ): Promise<void> {
     clearPostMessageFlag(threadTs);
     let result: RouteResult;
@@ -370,6 +381,7 @@ export class SlackAdapter {
     }
 
     await this.renderEvents(channelId, threadTs, result.events, client);
+    if (messageTs) await this.removeReactSeen(channelId, messageTs, client);
   }
 
   /** Handle permission Allow/Deny/Always Allow button clicks.
@@ -1365,7 +1377,8 @@ export class SlackAdapter {
     threadTs: string,
     files: any[],
     text: string,
-    client: any
+    client: any,
+    messageTs?: string,
   ): Promise<void> {
     const project = this.store.getProjectByChannelId(channelId);
     if (!project) return;
@@ -1423,6 +1436,7 @@ export class SlackAdapter {
     }
 
     await this.renderEvents(channelId, threadTs, result.events, client);
+    if (messageTs) await this.removeReactSeen(channelId, messageTs, client);
   }
 
   /** Upload a file to a Slack thread. Called by MCP callback handler. */
@@ -1439,9 +1453,10 @@ export class SlackAdapter {
 
   /** Post a plain text message to a Slack thread. Called by MCP callback handler. */
   async sendMessage(channelId: string, threadId: string, text: string): Promise<void> {
+    const converted = markdownToSlackMrkdwn(text);
     // Slack message limit is 40000 chars — truncate as a failsafe
     const MAX = 40000;
-    const truncated = text.length > MAX ? text.slice(0, MAX - 15) + '\n... (truncated)' : text;
+    const truncated = converted.length > MAX ? converted.slice(0, MAX - 15) + '\n... (truncated)' : converted;
     await this.app.client.chat.postMessage({
       channel: channelId,
       thread_ts: threadId,

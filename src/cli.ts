@@ -6,14 +6,15 @@
  * Usage: openbridge-ai start
  */
 
-import { runStart } from './cli/start.js';
+import { runStart, runConfigure } from './cli/start.js';
 
 const USAGE = `
 openbridge-ai — Remote control for coding agents via Slack/Discord
 
 Usage:
-  openbridge-ai start    Launch the bridge (runs setup wizard on first use)
-  openbridge-ai --help   Show this help message
+  openbridge-ai start       Launch the bridge (runs setup wizard on first use)
+  openbridge-ai configure   Change settings (platforms, tokens, backend, etc.)
+  openbridge-ai --help      Show this help message
 `.trim();
 
 export function parseArgs(argv: string[]): { command: string | null; args: string[] } {
@@ -52,6 +53,10 @@ export async function cli(argv: string[]): Promise<void> {
 
     case 'start':
       await runStart();
+      break;
+
+    case 'configure':
+      await runConfigure();
       break;
 
     default:
