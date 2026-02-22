@@ -2057,6 +2057,61 @@
             "Build passes, all 621 tests pass"
           ],
           "status": "passing"
+        },
+        {
+          "id": "P20.5",
+          "description": "Register hooks in both trusted and supervised modes (not just supervised)",
+          "verification": [
+            "Hooks are registered when trustMode is 'trusted' or 'supervised'",
+            "AskUserQuestion and permission buttons work in trusted mode",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P20.6",
+          "description": "threadId-to-requestId index in IPC server for typed responses to pending questions",
+          "verification": [
+            "IPC server maintains threadToQuestionId map for pending questions",
+            "Typed responses in thread resolve the pending question via hasPendingQuestion check",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P20.7",
+          "description": "Update original question message when user types a response instead of clicking a button",
+          "verification": [
+            "Slack updates question message to show 'Answered: <text>' when user types a response",
+            "Discord updates question message to show 'Answered: <text>' and removes buttons",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P20.8",
+          "description": "Preserve question text when updating question message after button click or typed response",
+          "verification": [
+            "Updated question message shows original question text plus selected answer",
+            "Both Slack and Discord preserve question text in the updated message",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P20.9",
+          "description": "Processing indicator for all resolution paths — post Processing after every user interaction, delete centrally in renderEvents",
+          "verification": [
+            "Processing posted after permission Allow/Deny button clicks",
+            "Processing posted after AskUserQuestion button clicks",
+            "Processing posted after typed responses to pending questions",
+            "Processing posted after freeform text responses",
+            "Processing deleted centrally at start of renderEvents()",
+            "Processing deleted on backend error paths",
+            "No orphaned Processing messages on multi-permission turns",
+            "Build passes, all 631 tests pass"
+          ],
+          "status": "passing"
         }
       ]
     }

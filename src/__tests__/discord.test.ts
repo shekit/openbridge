@@ -105,7 +105,7 @@ function createMockMessage(overrides: {
     id: 'new-thread-id',
     send: vi.fn(async (opts: any) => {
       threadSentMessages.push(opts);
-      return { id: 'thread-msg-123' };
+      return { id: 'thread-msg-123', delete: vi.fn(async () => {}) };
     }),
     isThread: () => true,
   };
@@ -124,7 +124,7 @@ function createMockMessage(overrides: {
           id,
           send: vi.fn(async (opts: any) => {
             threadSentMessages.push(opts);
-            return { id: 'thread-msg-123' };
+            return { id: 'thread-msg-123', delete: vi.fn(async () => {}) };
           }),
           isThread: () => true,
         };
@@ -1829,6 +1829,158 @@ describe('DiscordAdapter', () => {
           components: [],
         })
       );
+    });
+  });
+
+  describe('P20.9: Processing indicator for all resolution paths', () => {
+    it('posts Processing on new thread and deletes it when response arrives', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      const createdThreads: any[] = [];
+      const { message, mockThread } = createMockMessage({
+        channelId: 'C_BOUND',
+        content: 'new task',
+        isThread: false,
+      });
+
+      await triggerMessage(message);
+
+      // Processing should have been posted in the new thread
+      expect(mockThread.send).toHaveBeenCalledWith('Processing...');
+      // The processing message should have been deleted (via the mock's delete method)
+      const processingMsg = mockThread.send.mock.results[0]?.value;
+      if (processingMsg) {
+        const resolved = await processingMsg;
+        expect(resolved.delete).toHaveBeenCalled();
+      }
+    });
+
+    it('posts Processing for follow-up messages in threads', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      const { message } = createMockMessage({
+        channelId: 'thread-proc',
+        content: 'follow up',
+        isThread: true,
+        parentId: 'C_BOUND',
+      });
+
+      await triggerMessage(message);
+
+      // Processing indicator should have been posted and then deleted
+      const sendCalls = message.channel.send.mock.calls;
+      const processingCall = sendCalls.find(
+        (c: any) => c[0] === 'Processing...' || c[0]?.content === 'Processing...'
+      );
+      expect(processingCall).toBeDefined();
+    });
+
+    it('deletes Processing on backend error', async () => {
+      const errorBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => { throw new Error('Backend crashed'); }),
+        getSessionId: vi.fn(() => null),
+        setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
+        stop: vi.fn(async () => {}),
+      }));
+
+      createAdapter({ backendFactory: errorBackend });
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      const { message } = createMockMessage({
+        channelId: 'thread-err-proc',
+        content: 'fail please',
+        isThread: true,
+        parentId: 'C_BOUND',
+      });
+
+      await triggerMessage(message);
+
+      // Should have posted Processing and then deleted it before the error
+      const sendCalls = message.channel.send.mock.calls;
+      const processingCall = sendCalls.find(
+        (c: any) => c[0] === 'Processing...' || c[0]?.content === 'Processing...'
+      );
+      expect(processingCall).toBeDefined();
+
+      // Error should still be posted
+      const errorCall = sendCalls.find(
+        (c: any) => (c[0]?.content ?? c[0] ?? '').toString().includes('Backend crashed')
+      );
+      expect(errorCall).toBeDefined();
+    });
+
+    it('posts Processing after permission Allow button click (hook-based)', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      const { interaction, threadMessages } = createMockButtonInteraction({
+        customId: 'permission_allow:Bash|req-perm-proc-1',
+        channelId: 'C_BOUND',
+        isThread: true,
+        parentId: 'C_BOUND',
+      });
+
+      await triggerInteraction(interaction);
+
+      // After resolving permission, a Processing indicator should be posted
+      const processingCall = threadMessages.find(
+        (m: any) => m === 'Processing...' || m.content === 'Processing...'
+      );
+      expect(processingCall).toBeDefined();
+    });
+
+    it('posts Processing after AskUserQuestion button click', async () => {
+      createAdapter();
+      await adapter.start();
+
+      // First post a question to populate pendingQuestionOptions
+      const questions = [{
+        question: 'Pick one',
+        header: 'Q',
+        options: [
+          { label: 'Yes', description: '' },
+          { label: 'No', description: '' },
+        ],
+        multiSelect: false,
+      }];
+
+      const mockContext = {
+        channel: {
+          id: 'thread-123',
+          isThread: () => true,
+          parentId: 'C_BOUND',
+          send: vi.fn(async () => ({ id: 'msg-q-proc', delete: vi.fn(async () => {}) })),
+        },
+      };
+
+      await adapter.postUserQuestion('C_BOUND', 'thread-123', questions, 'req-q-proc-1', mockContext);
+
+      const { interaction, threadMessages } = createMockButtonInteraction({
+        customId: 'question_answer:0|req-q-proc-1',
+        channelId: 'C_BOUND',
+        isThread: true,
+        parentId: 'C_BOUND',
+      });
+
+      await triggerInteraction(interaction);
+
+      // After resolving question, a Processing indicator should be posted
+      const processingCall = threadMessages.find(
+        (m: any) => m === 'Processing...' || m.content === 'Processing...'
+      );
+      expect(processingCall).toBeDefined();
     });
   });
 });

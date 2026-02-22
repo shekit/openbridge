@@ -49,6 +49,8 @@ export class SlackAdapter {
   private botUserId: string | null = null;
   /** Message refs for pending AskUserQuestion prompts, for updating on resolution. */
   private questionMessages = new Map<string, { channel: string; ts: string; blocks: any[] }>();
+  /** Processing indicator messages, keyed by threadId. Cleaned up centrally in renderEvents(). */
+  private processingMessages = new Map<string, { channel: string; ts: string }>();
 
   constructor(options: SlackAdapterOptions) {
     this.router = options.router;
@@ -224,6 +226,35 @@ export class SlackAdapter {
     }
   }
 
+  /** Post a "Processing..." indicator and store it for later cleanup. */
+  private async postProcessing(channelId: string, threadTs: string, client: any): Promise<void> {
+    await this.deleteProcessing(threadTs, client);
+    try {
+      const result = await client.chat.postMessage({
+        channel: channelId,
+        thread_ts: threadTs,
+        text: 'Processing...',
+      });
+      if (result.ts) {
+        this.processingMessages.set(threadTs, { channel: channelId, ts: result.ts });
+      }
+    } catch {
+      // Non-fatal — continue without indicator
+    }
+  }
+
+  /** Delete a stored processing indicator for a thread. */
+  private async deleteProcessing(threadTs: string, client: any): Promise<void> {
+    const ref = this.processingMessages.get(threadTs);
+    if (!ref) return;
+    this.processingMessages.delete(threadTs);
+    try {
+      await client.chat.delete({ channel: ref.channel, ts: ref.ts });
+    } catch {
+      // Non-fatal
+    }
+  }
+
   /** Handle an incoming Slack message. */
   private async handleMessage(message: any, client: any): Promise<void> {
     // Ignore bot messages (including our own) and system messages
@@ -290,12 +321,12 @@ export class SlackAdapter {
     // If this is a top-level message (no thread_ts), create a new thread
     if (!threadTs) {
       threadTs = message.ts;
-      // Post a "thinking" indicator in the new thread
-      await client.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadTs,
-        text: 'Processing...',
-      });
+      await this.postProcessing(channelId, threadTs, client);
+    }
+
+    // For follow-up messages in existing threads, post a processing indicator
+    if (threadTs !== message.ts) {
+      await this.postProcessing(channelId, threadTs, client);
     }
 
     // Handle file attachments — route through handleFileUpload
@@ -334,40 +365,18 @@ export class SlackAdapter {
       return;
     }
 
-    // Post a processing indicator for follow-up messages in existing threads
-    let processingTs: string | null = null;
-    if (threadTs !== message.ts) {
-      try {
-        const processingMsg = await client.chat.postMessage({
-          channel: channelId,
-          thread_ts: threadTs,
-          text: 'Processing...',
-        });
-        processingTs = processingMsg.ts ?? null;
-      } catch {
-        // Non-fatal — continue without indicator
-      }
-    }
-
     // Route through the router
     clearPostMessageFlag(threadTs);
     let result: RouteResult;
     try {
       result = await this.router.send(channelId, threadTs, text);
     } catch (err: any) {
-      if (processingTs) {
-        await client.chat.delete({ channel: channelId, ts: processingTs }).catch(() => {});
-      }
+      await this.deleteProcessing(threadTs, client);
       await this.postError(channelId, threadTs, err.message, client);
       return;
     }
 
-    // Remove the processing indicator before posting real response
-    if (processingTs) {
-      await client.chat.delete({ channel: channelId, ts: processingTs }).catch(() => {});
-    }
-
-    // Render the response events
+    // Render the response events (renderEvents deletes the processing indicator)
     await this.renderEvents(channelId, threadTs, result.events, client);
   }
 
@@ -378,36 +387,19 @@ export class SlackAdapter {
     text: string,
     client: any
   ): Promise<void> {
-    // Post a processing indicator while waiting for the backend response
-    let processingTs: string | null = null;
-    try {
-      const processingMsg = await client.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadTs,
-        text: 'Processing...',
-      });
-      processingTs = processingMsg.ts ?? null;
-    } catch {
-      // Non-fatal — continue without indicator
-    }
+    // Processing indicator already posted by handleMessage
 
     clearPostMessageFlag(threadTs);
     let result: RouteResult;
     try {
       result = await this.router.respond(channelId, threadTs, text);
     } catch (err: any) {
-      if (processingTs) {
-        await client.chat.delete({ channel: channelId, ts: processingTs }).catch(() => {});
-      }
+      await this.deleteProcessing(threadTs, client);
       await this.postError(channelId, threadTs, err.message, client);
       return;
     }
 
-    // Remove the processing indicator before posting real response
-    if (processingTs) {
-      await client.chat.delete({ channel: channelId, ts: processingTs }).catch(() => {});
-    }
-
+    // renderEvents deletes the processing indicator
     await this.renderEvents(channelId, threadTs, result.events, client);
   }
 
@@ -466,21 +458,15 @@ export class SlackAdapter {
       const decision = isAllow ? 'allow' : 'deny';
       resolvePermission(requestId, decision);
       console.log(`[slack] resolved permission ${requestId} → ${decision}`);
+      // Post processing indicator — cleaned up by renderEvents when turn completes
+      if (channelId && threadTs) {
+        await this.postProcessing(channelId, threadTs, client);
+      }
       return;
     }
 
     // Legacy flow: route through router.respond()
-    let processingTs: string | null = null;
-    try {
-      const processingMsg = await client.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadTs,
-        text: 'Processing...',
-      });
-      processingTs = processingMsg.ts ?? null;
-    } catch {
-      // Non-fatal — continue without indicator
-    }
+    await this.postProcessing(channelId, threadTs, client);
 
     const responseText = isAllow ? 'yes' : 'no';
     const allowedTools = isAllow && toolName ? [toolName] : undefined;
@@ -489,17 +475,12 @@ export class SlackAdapter {
     try {
       result = await this.router.respond(channelId, threadTs, responseText, allowedTools);
     } catch (err: any) {
-      if (processingTs) {
-        await client.chat.delete({ channel: channelId, ts: processingTs }).catch(() => {});
-      }
+      await this.deleteProcessing(threadTs, client);
       await this.postError(channelId, threadTs, err.message, client);
       return;
     }
 
-    if (processingTs) {
-      await client.chat.delete({ channel: channelId, ts: processingTs }).catch(() => {});
-    }
-
+    // renderEvents deletes the processing indicator
     await this.renderEvents(channelId, threadTs, result.events, client);
   }
 
@@ -510,6 +491,9 @@ export class SlackAdapter {
     events: NormalizedEvent[],
     client: any
   ): Promise<void> {
+    // Delete any processing indicator for this thread before rendering
+    await this.deleteProcessing(threadTs, client);
+
     // Deduplicate consecutive identical permission_denied events
     const seenDenials = new Set<string>();
     const deduped = events.filter((event) => {
@@ -716,6 +700,7 @@ export class SlackAdapter {
     const label = action.text?.text ?? '';
     const channelId = body.channel?.id;
     const messageTs = body.message?.ts;
+    const threadTs = body.message?.thread_ts;
 
     if (!requestId || !label) return;
 
@@ -736,6 +721,11 @@ export class SlackAdapter {
           blocks: keptBlocks,
         });
       } catch { /* non-fatal */ }
+    }
+
+    // Post processing indicator — cleaned up by renderEvents when turn completes
+    if (channelId && threadTs) {
+      await this.postProcessing(channelId, threadTs, client);
     }
   }
 
@@ -1451,6 +1441,7 @@ export class SlackAdapter {
         attachments.length > 0 ? attachments : undefined,
       );
     } catch (err: any) {
+      await this.deleteProcessing(threadTs, client);
       await this.postError(channelId, threadTs, err.message, client);
       return;
     }

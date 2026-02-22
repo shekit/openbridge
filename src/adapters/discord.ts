@@ -73,6 +73,8 @@ export class DiscordAdapter {
   private pendingQuestionOptions = new Map<string, string[]>();
   /** Message refs for pending AskUserQuestion prompts, for updating on resolution. */
   private questionMessages = new Map<string, Message>();
+  /** Processing indicator messages, keyed by threadId. Cleaned up centrally in renderEvents(). */
+  private processingMessages = new Map<string, Message>();
 
   constructor(options: DiscordAdapterOptions) {
     this.router = options.router;
@@ -211,6 +213,29 @@ export class DiscordAdapter {
     });
   }
 
+  /** Post a "Processing..." indicator and store it for later cleanup. */
+  private async postProcessing(threadId: string, context: any): Promise<void> {
+    await this.deleteProcessing(threadId);
+    try {
+      const msg = await this.sendToThread(threadId, context, 'Processing...');
+      this.processingMessages.set(threadId, msg);
+    } catch {
+      // Non-fatal — continue without indicator
+    }
+  }
+
+  /** Delete a stored processing indicator for a thread. */
+  private async deleteProcessing(threadId: string): Promise<void> {
+    const msg = this.processingMessages.get(threadId);
+    if (!msg) return;
+    this.processingMessages.delete(threadId);
+    try {
+      await msg.delete();
+    } catch {
+      // Non-fatal
+    }
+  }
+
   /** Handle an incoming Discord message. */
   private async handleMessage(message: Message): Promise<void> {
     // Ignore bot messages (including our own)
@@ -243,11 +268,19 @@ export class DiscordAdapter {
           name: text.slice(0, 100) || 'Session',
         });
         threadId = thread.id;
-        await thread.send('Processing...');
+        try {
+          const processingMsg = await thread.send('Processing...');
+          this.processingMessages.set(threadId, processingMsg);
+        } catch { /* non-fatal */ }
       } catch {
         // If thread creation fails, use the message ID
         threadId = message.id;
       }
+    }
+
+    // For follow-up messages in existing threads, post a processing indicator
+    if (message.channel.isThread?.()) {
+      await this.postProcessing(threadId, message);
     }
 
     // Handle file attachments (after thread creation so they land in the thread)
@@ -286,31 +319,18 @@ export class DiscordAdapter {
       return;
     }
 
-    // Post a processing indicator for follow-up messages in threads
-    let processingMsg: Message | null = null;
-    if (message.channel.isThread?.()) {
-      try {
-        processingMsg = await message.channel.send('Processing...');
-      } catch {
-        // Non-fatal
-      }
-    }
-
     // Route through the router
     clearPostMessageFlag(threadId);
     let result: RouteResult;
     try {
       result = await this.router.send(channelId, threadId, text);
     } catch (err: any) {
-      if (processingMsg) await processingMsg.delete().catch(() => {});
+      await this.deleteProcessing(threadId);
       await this.postError(channelId, threadId, err.message, message);
       return;
     }
 
-    // Remove the processing indicator before posting real response
-    if (processingMsg) await processingMsg.delete().catch(() => {});
-
-    // Render the response events
+    // Render the response events (renderEvents deletes the processing indicator)
     await this.renderEvents(channelId, threadId, result.events, message);
   }
 
@@ -343,29 +363,19 @@ export class DiscordAdapter {
     text: string,
     message: Message
   ): Promise<void> {
-    // Post a processing indicator while waiting for the backend response
-    let processingMsg: Message | null = null;
-    try {
-      if (message.channel.isThread?.()) {
-        processingMsg = await message.channel.send('Processing...');
-      }
-    } catch {
-      // Non-fatal — continue without indicator
-    }
+    // Processing indicator already posted by handleMessage
 
     clearPostMessageFlag(threadId);
     let result: RouteResult;
     try {
       result = await this.router.respond(channelId, threadId, text);
     } catch (err: any) {
-      if (processingMsg) await processingMsg.delete().catch(() => {});
+      await this.deleteProcessing(threadId);
       await this.postError(channelId, threadId, err.message, message);
       return;
     }
 
-    // Remove the processing indicator before posting real response
-    if (processingMsg) await processingMsg.delete().catch(() => {});
-
+    // renderEvents deletes the processing indicator
     await this.renderEvents(channelId, threadId, result.events, message);
   }
 
@@ -453,6 +463,12 @@ export class DiscordAdapter {
         content: `${originalContent}\n\n**Answered:** ${label}`,
         components: [],
       });
+
+      // Post processing indicator — cleaned up by renderEvents when turn completes
+      const questionThreadId = this.getInteractionThreadId(interaction);
+      if (questionThreadId) {
+        await this.postProcessing(questionThreadId, interaction);
+      }
       return;
     }
 
@@ -504,18 +520,16 @@ export class DiscordAdapter {
       const decision = isAllow ? 'allow' : 'deny';
       resolvePermission(requestId, decision);
       console.log(`[discord] resolved permission ${requestId} → ${decision}`);
+      // Post processing indicator — cleaned up by renderEvents when turn completes
+      if (threadId) {
+        await this.postProcessing(threadId, interaction);
+      }
       return;
     }
 
     // Legacy flow: route through router.respond()
-    let processingMsg: Message | null = null;
-    try {
-      const channel = interaction.channel;
-      if (channel && 'send' in channel) {
-        processingMsg = await (channel as any).send('Processing...');
-      }
-    } catch {
-      // Non-fatal — continue without indicator
+    if (threadId) {
+      await this.postProcessing(threadId, interaction);
     }
 
     const responseText = isAllow ? 'yes' : 'no';
@@ -525,13 +539,12 @@ export class DiscordAdapter {
     try {
       result = await this.router.respond(channelId, threadId, responseText, allowedTools);
     } catch (err: any) {
-      if (processingMsg) await processingMsg.delete().catch(() => {});
+      if (threadId) await this.deleteProcessing(threadId);
       await this.sendToThread(threadId, interaction, `:warning: **Error:** ${err.message}`);
       return;
     }
 
-    if (processingMsg) await processingMsg.delete().catch(() => {});
-
+    // renderEvents deletes the processing indicator
     await this.renderEvents(channelId, threadId, result.events, interaction);
   }
 
@@ -561,6 +574,9 @@ export class DiscordAdapter {
     events: NormalizedEvent[],
     context: any
   ): Promise<void> {
+    // Delete any processing indicator for this thread before rendering
+    await this.deleteProcessing(threadId);
+
     // Deduplicate consecutive identical permission_denied events
     const seenDenials = new Set<string>();
     const deduped = events.filter((event) => {
@@ -1165,6 +1181,7 @@ export class DiscordAdapter {
         attachments.length > 0 ? attachments : undefined,
       );
     } catch (err: any) {
+      await this.deleteProcessing(threadId);
       await this.postError(channelId, threadId, err.message, context);
       return;
     }

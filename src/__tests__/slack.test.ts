@@ -1869,7 +1869,7 @@ describe('SlackAdapter', () => {
             text: { type: 'plain_text', text: 'TypeScript' },
           }],
           channel: { id: 'C_BOUND' },
-          message: { ts: '1234567890.000010' },
+          message: { ts: '1234567890.000010', thread_ts: '1234567890.000001' },
         },
         ack: vi.fn(),
         client: mockApp.client,
@@ -1884,6 +1884,143 @@ describe('SlackAdapter', () => {
           text: 'Answered: TypeScript',
         })
       );
+    });
+  });
+
+  describe('P20.9: Processing indicator for all resolution paths', () => {
+    it('posts Processing on new thread and deletes it when response arrives', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_PROC', '/test/proc', 'claude');
+
+      mockApp.client.chat.postMessage.mockClear();
+
+      await triggerMessage({
+        channel: 'C_PROC',
+        text: 'hello',
+        user: 'U_USER1',
+        ts: '1111.000001',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      // First call should be the Processing indicator
+      expect(calls[0][0].text).toBe('Processing...');
+      expect(calls[0][0].thread_ts).toBe('1111.000001');
+
+      // Processing should be deleted (chat.delete called)
+      expect(mockApp.client.chat.delete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: 'C_PROC',
+          ts: '1234567890.123456', // the ts returned by our mock postMessage
+        })
+      );
+    });
+
+    it('posts Processing for follow-up messages in threads', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_PROC2', '/test/proc2', 'claude');
+
+      mockApp.client.chat.postMessage.mockClear();
+
+      await triggerMessage({
+        channel: 'C_PROC2',
+        text: 'follow up',
+        user: 'U_USER1',
+        ts: '2222.000002',
+        thread_ts: '2222.000001',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      // First call should be the Processing indicator
+      expect(calls[0][0].text).toBe('Processing...');
+      // Processing should be deleted
+      expect(mockApp.client.chat.delete).toHaveBeenCalled();
+    });
+
+    it('deletes Processing on backend error', async () => {
+      const errorBackend = vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        send: vi.fn(async () => { throw new Error('Backend crashed'); }),
+        getSessionId: vi.fn(() => null),
+        setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
+        stop: vi.fn(async () => {}),
+      }));
+
+      createAdapter({ backendFactory: errorBackend });
+      await adapter.start();
+
+      store.createProject('C_ERR_PROC', '/test/err-proc', 'claude');
+
+      await triggerMessage({
+        channel: 'C_ERR_PROC',
+        text: 'fail',
+        user: 'U_USER1',
+        ts: '3333.000002',
+        thread_ts: '3333.000001',
+      });
+
+      // Processing should still be deleted even on error
+      expect(mockApp.client.chat.delete).toHaveBeenCalled();
+    });
+
+    it('posts Processing after permission Allow button click (hook-based)', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_PERM_PROC', '/test/perm-proc', 'claude');
+      mockApp.client.chat.postMessage.mockClear();
+
+      await triggerAction('permission_allow', {
+        actions: [{ value: 'Bash|req-perm-1' }],
+        channel: { id: 'C_PERM_PROC' },
+        message: {
+          thread_ts: '4444.000001',
+          ts: '4444.000005',
+        },
+      });
+
+      // After resolving permission, a Processing indicator should be posted
+      const postCalls = mockApp.client.chat.postMessage.mock.calls;
+      const processingCall = postCalls.find(
+        (c: any) => c[0].text === 'Processing...' && c[0].thread_ts === '4444.000001'
+      );
+      expect(processingCall).toBeDefined();
+    });
+
+    it('posts Processing after AskUserQuestion button click', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_Q_PROC', '/test/q-proc', 'claude');
+      mockApp.client.chat.postMessage.mockClear();
+
+      const regexKey = String(/^question_answer_/);
+      const handler = mockApp._actionHandlers[regexKey];
+
+      await handler({
+        body: {
+          actions: [{
+            action_id: 'question_answer_0',
+            value: 'req-q-proc-1',
+            text: { type: 'plain_text', text: 'Option A' },
+          }],
+          channel: { id: 'C_Q_PROC' },
+          message: { ts: '5555.000005', thread_ts: '5555.000001' },
+        },
+        ack: vi.fn(),
+        client: mockApp.client,
+      });
+
+      // After resolving question, a Processing indicator should be posted
+      const postCalls = mockApp.client.chat.postMessage.mock.calls;
+      const processingCall = postCalls.find(
+        (c: any) => c[0].text === 'Processing...' && c[0].thread_ts === '5555.000001'
+      );
+      expect(processingCall).toBeDefined();
     });
   });
 });
