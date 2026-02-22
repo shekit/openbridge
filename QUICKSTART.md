@@ -1,7 +1,7 @@
 # Quick Start
 
 ```bash
-npx openbridge start
+npx openbridge-ai start
 ```
 
 That's it. The setup wizard runs automatically on first launch and walks you through everything:

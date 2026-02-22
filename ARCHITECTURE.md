@@ -94,8 +94,8 @@ Users choose per-project or globally.
 ## Setup Experience
 
 ```
-npm install -g openbridge
-openbridge init
+npm install -g openbridge-ai
+openbridge-ai start
 ```
 
 The wizard asks: which platform, paste your token (with a manifest/link to make app creation trivial), which coding backend. First project created automatically. Under five minutes from install to first message.

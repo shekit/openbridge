@@ -3,17 +3,17 @@
 /**
  * OpenBridge CLI entry point.
  *
- * Usage: openbridge start
+ * Usage: openbridge-ai start
  */
 
 import { runStart } from './cli/start.js';
 
 const USAGE = `
-openbridge — Remote control for coding agents via Slack/Discord
+openbridge-ai — Remote control for coding agents via Slack/Discord
 
 Usage:
-  openbridge start    Launch the bridge (runs setup wizard on first use)
-  openbridge --help   Show this help message
+  openbridge-ai start    Launch the bridge (runs setup wizard on first use)
+  openbridge-ai --help   Show this help message
 `.trim();
 
 export function parseArgs(argv: string[]): { command: string | null; args: string[] } {
@@ -47,7 +47,7 @@ export async function cli(argv: string[]): Promise<void> {
       break;
 
     case 'version':
-      console.log('openbridge 0.1.0');
+      console.log('openbridge-ai 0.1.0');
       break;
 
     case 'start':
@@ -56,7 +56,7 @@ export async function cli(argv: string[]): Promise<void> {
 
     default:
       console.error(`[cli] unknown command: ${command}`);
-      console.error('[cli] run "openbridge --help" for usage.');
+      console.error('[cli] run "openbridge-ai --help" for usage.');
       process.exit(1);
   }
 }

@@ -396,9 +396,9 @@ export async function setupFilePreviews(io: PromptIO | null): Promise<void> {
 
   if (!wantPreviews) {
     if (!io) {
-      clack.log.info('You can set this up anytime by running `openbridge start`.');
+      clack.log.info('You can set this up anytime by running `openbridge-ai start`.');
     } else {
-      console.log('[init] skipped file previews — set up later via `openbridge start`.');
+      console.log('[init] skipped file previews — set up later via `openbridge-ai start`.');
     }
     return;
   }

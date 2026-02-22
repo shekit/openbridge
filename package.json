@@ -1,11 +1,11 @@
 {
-  "name": "openbridge",
+  "name": "openbridge-ai",
   "version": "0.1.0",
   "description": "Remote control for coding agents via Slack/Discord",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "openbridge": "dist/cli.js"
+    "openbridge-ai": "dist/cli.js"
   },
   "scripts": {
     "prepublishOnly": "npm run build",

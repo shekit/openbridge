@@ -375,7 +375,7 @@ export async function runStart(deps?: StartDeps): Promise<void> {
   // Read config from settings
   const platformsJson = store.getSetting('platforms');
   if (!platformsJson) {
-    console.error('[start] no platforms configured. Run "openbridge start" to set up.');
+    console.error('[start] no platforms configured. Run "openbridge-ai start" to set up.');
     store.close();
     process.exit(1);
     return;
