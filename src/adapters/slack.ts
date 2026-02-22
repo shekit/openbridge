@@ -49,8 +49,6 @@ export class SlackAdapter {
   private botUserId: string | null = null;
   /** Message refs for pending AskUserQuestion prompts, for updating on resolution. */
   private questionMessages = new Map<string, { channel: string; ts: string; blocks: any[] }>();
-  /** Processing indicator messages, keyed by threadId. Cleaned up centrally in renderEvents(). */
-  private processingMessages = new Map<string, { channel: string; ts: string }>();
 
   constructor(options: SlackAdapterOptions) {
     this.router = options.router;
@@ -222,32 +220,12 @@ export class SlackAdapter {
     }
   }
 
-  /** Post a "Processing..." indicator and store it for later cleanup. */
-  private async postProcessing(channelId: string, threadTs: string, client: any): Promise<void> {
-    await this.deleteProcessing(threadTs, client);
+  /** React with 👀 to acknowledge a user's message. */
+  private async reactSeen(channelId: string, messageTs: string, client: any): Promise<void> {
     try {
-      const result = await client.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadTs,
-        text: 'Processing...',
-      });
-      if (result.ts) {
-        this.processingMessages.set(threadTs, { channel: channelId, ts: result.ts });
-      }
+      await client.reactions.add({ channel: channelId, timestamp: messageTs, name: 'eyes' });
     } catch (err: any) {
-      console.error(`[slack] failed to post processing indicator in ${channelId}/${threadTs}: ${err.message}`);
-    }
-  }
-
-  /** Delete a stored processing indicator for a thread. */
-  private async deleteProcessing(threadTs: string, client: any): Promise<void> {
-    const ref = this.processingMessages.get(threadTs);
-    if (!ref) return;
-    this.processingMessages.delete(threadTs);
-    try {
-      await client.chat.delete({ channel: ref.channel, ts: ref.ts });
-    } catch (err: any) {
-      console.error(`[slack] failed to delete processing indicator in ${ref.channel}/${threadTs}: ${err.message}`);
+      console.error(`[slack] failed to add eyes reaction in ${channelId}: ${err.message}`);
     }
   }
 
@@ -317,13 +295,10 @@ export class SlackAdapter {
     // If this is a top-level message (no thread_ts), create a new thread
     if (!threadTs) {
       threadTs = message.ts;
-      await this.postProcessing(channelId, threadTs, client);
     }
 
-    // For follow-up messages in existing threads, post a processing indicator
-    if (threadTs !== message.ts) {
-      await this.postProcessing(channelId, threadTs, client);
-    }
+    // React with 👀 to acknowledge the user's message
+    await this.reactSeen(channelId, message.ts, client);
 
     // Handle file attachments — route through handleFileUpload
     if (Array.isArray(message.files) && message.files.length > 0) {
@@ -369,12 +344,10 @@ export class SlackAdapter {
     try {
       result = await this.router.send(channelId, threadTs, text);
     } catch (err: any) {
-      await this.deleteProcessing(threadTs, client);
       await this.postError(channelId, threadTs, err.message, client);
       return;
     }
 
-    // Render the response events (renderEvents deletes the processing indicator)
     await this.renderEvents(channelId, threadTs, result.events, client);
   }
 
@@ -385,19 +358,15 @@ export class SlackAdapter {
     text: string,
     client: any
   ): Promise<void> {
-    // Processing indicator already posted by handleMessage
-
     clearPostMessageFlag(threadTs);
     let result: RouteResult;
     try {
       result = await this.router.respond(channelId, threadTs, text);
     } catch (err: any) {
-      await this.deleteProcessing(threadTs, client);
       await this.postError(channelId, threadTs, err.message, client);
       return;
     }
 
-    // renderEvents deletes the processing indicator
     await this.renderEvents(channelId, threadTs, result.events, client);
   }
 
@@ -451,21 +420,20 @@ export class SlackAdapter {
       console.error(`[slack] failed to update permission message in ${channelId}: ${err.message}`);
     }
 
+    // React with 👀 on the permission message to acknowledge the click
+    if (channelId && messageTs) {
+      await this.reactSeen(channelId, messageTs, client);
+    }
+
     // Hook-based flow: resolve in-process, no need to call router.respond()
     if (requestId) {
       const decision = isAllow ? 'allow' : 'deny';
       resolvePermission(requestId, decision);
       console.log(`[slack] resolved permission ${requestId} → ${decision}`);
-      // Post processing indicator — cleaned up by renderEvents when turn completes
-      if (channelId && threadTs) {
-        await this.postProcessing(channelId, threadTs, client);
-      }
       return;
     }
 
     // Legacy flow: route through router.respond()
-    await this.postProcessing(channelId, threadTs, client);
-
     const responseText = isAllow ? 'yes' : 'no';
     const allowedTools = isAllow && toolName ? [toolName] : undefined;
     clearPostMessageFlag(threadTs);
@@ -473,12 +441,10 @@ export class SlackAdapter {
     try {
       result = await this.router.respond(channelId, threadTs, responseText, allowedTools);
     } catch (err: any) {
-      await this.deleteProcessing(threadTs, client);
       await this.postError(channelId, threadTs, err.message, client);
       return;
     }
 
-    // renderEvents deletes the processing indicator
     await this.renderEvents(channelId, threadTs, result.events, client);
   }
 
@@ -489,9 +455,6 @@ export class SlackAdapter {
     events: NormalizedEvent[],
     client: any
   ): Promise<void> {
-    // Delete any processing indicator for this thread before rendering
-    await this.deleteProcessing(threadTs, client);
-
     // Deduplicate consecutive identical permission_denied events
     const seenDenials = new Set<string>();
     const deduped = events.filter((event) => {
@@ -698,7 +661,6 @@ export class SlackAdapter {
     const label = action.text?.text ?? '';
     const channelId = body.channel?.id;
     const messageTs = body.message?.ts;
-    const threadTs = body.message?.thread_ts;
 
     if (!requestId || !label) return;
 
@@ -723,9 +685,9 @@ export class SlackAdapter {
       }
     }
 
-    // Post processing indicator — cleaned up by renderEvents when turn completes
-    if (channelId && threadTs) {
-      await this.postProcessing(channelId, threadTs, client);
+    // React with 👀 on the question message to acknowledge the click
+    if (channelId && messageTs) {
+      await this.reactSeen(channelId, messageTs, client);
     }
   }
 
@@ -1453,7 +1415,6 @@ export class SlackAdapter {
         attachments.length > 0 ? attachments : undefined,
       );
     } catch (err: any) {
-      await this.deleteProcessing(threadTs, client);
       await this.postError(channelId, threadTs, err.message, client);
       return;
     }

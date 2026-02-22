@@ -148,6 +148,7 @@ function createMockMessage(overrides: {
     },
     channel: mockChannel,
     attachments: attachmentMap,
+    react: vi.fn(async () => {}),
     startThread: vi.fn(async (opts: any) => {
       createdThreads.push(opts);
       return mockThread;
@@ -242,7 +243,7 @@ function createMockButtonInteraction(overrides: {
     customId: overrides.customId,
     channelId: mockChannel.id,
     channel: mockChannel,
-    message: { id: overrides.messageId ?? 'msg-with-buttons', content: '' },
+    message: { id: overrides.messageId ?? 'msg-with-buttons', content: '', react: vi.fn(async () => {}) },
     update: vi.fn(async (opts: any) => {
       updates.push(opts);
     }),
@@ -505,13 +506,13 @@ describe('DiscordAdapter', () => {
       expect(createdThreads[0].name).toBe('new task');
     });
 
-    it('posts Processing indicator when creating a new thread', async () => {
+    it('reacts with eyes when creating a new thread', async () => {
       createAdapter();
       await adapter.start();
 
       store.createProject('C_BOUND', '/test/project', 'claude');
 
-      const { message, mockThread } = createMockMessage({
+      const { message } = createMockMessage({
         channelId: 'C_BOUND',
         content: 'new task',
         isThread: false,
@@ -519,7 +520,7 @@ describe('DiscordAdapter', () => {
 
       await triggerMessage(message);
 
-      expect(mockThread.send).toHaveBeenCalledWith('Processing...');
+      expect(message.react).toHaveBeenCalledWith('👀');
     });
 
     it('new thread creates a new session automatically', async () => {
@@ -1832,15 +1833,14 @@ describe('DiscordAdapter', () => {
     });
   });
 
-  describe('P20.9: Processing indicator for all resolution paths', () => {
-    it('posts Processing on new thread and deletes it when response arrives', async () => {
+  describe('P20.9: Eyes reaction acknowledgement for all resolution paths', () => {
+    it('reacts with eyes on new thread message', async () => {
       createAdapter();
       await adapter.start();
 
       store.createProject('C_BOUND', '/test/project', 'claude');
 
-      const createdThreads: any[] = [];
-      const { message, mockThread } = createMockMessage({
+      const { message } = createMockMessage({
         channelId: 'C_BOUND',
         content: 'new task',
         isThread: false,
@@ -1848,17 +1848,10 @@ describe('DiscordAdapter', () => {
 
       await triggerMessage(message);
 
-      // Processing should have been posted in the new thread
-      expect(mockThread.send).toHaveBeenCalledWith('Processing...');
-      // The processing message should have been deleted (via the mock's delete method)
-      const processingMsg = mockThread.send.mock.results[0]?.value;
-      if (processingMsg) {
-        const resolved = await processingMsg;
-        expect(resolved.delete).toHaveBeenCalled();
-      }
+      expect(message.react).toHaveBeenCalledWith('👀');
     });
 
-    it('posts Processing for follow-up messages in threads', async () => {
+    it('reacts with eyes on follow-up messages in threads', async () => {
       createAdapter();
       await adapter.start();
 
@@ -1873,59 +1866,16 @@ describe('DiscordAdapter', () => {
 
       await triggerMessage(message);
 
-      // Processing indicator should have been posted and then deleted
-      const sendCalls = message.channel.send.mock.calls;
-      const processingCall = sendCalls.find(
-        (c: any) => c[0] === 'Processing...' || c[0]?.content === 'Processing...'
-      );
-      expect(processingCall).toBeDefined();
+      expect(message.react).toHaveBeenCalledWith('👀');
     });
 
-    it('deletes Processing on backend error', async () => {
-      const errorBackend = vi.fn(() => ({
-        start: vi.fn(async () => {}),
-        send: vi.fn(async () => { throw new Error('Backend crashed'); }),
-        getSessionId: vi.fn(() => null),
-        setSessionId: vi.fn(),
-        setAllowedTools: vi.fn(),
-        stop: vi.fn(async () => {}),
-      }));
-
-      createAdapter({ backendFactory: errorBackend });
-      await adapter.start();
-
-      store.createProject('C_BOUND', '/test/project', 'claude');
-
-      const { message } = createMockMessage({
-        channelId: 'thread-err-proc',
-        content: 'fail please',
-        isThread: true,
-        parentId: 'C_BOUND',
-      });
-
-      await triggerMessage(message);
-
-      // Should have posted Processing and then deleted it before the error
-      const sendCalls = message.channel.send.mock.calls;
-      const processingCall = sendCalls.find(
-        (c: any) => c[0] === 'Processing...' || c[0]?.content === 'Processing...'
-      );
-      expect(processingCall).toBeDefined();
-
-      // Error should still be posted
-      const errorCall = sendCalls.find(
-        (c: any) => (c[0]?.content ?? c[0] ?? '').toString().includes('Backend crashed')
-      );
-      expect(errorCall).toBeDefined();
-    });
-
-    it('posts Processing after permission Allow button click (hook-based)', async () => {
+    it('reacts with eyes after permission Allow button click (hook-based)', async () => {
       createAdapter();
       await adapter.start();
 
       store.createProject('C_BOUND', '/test/project', 'claude');
 
-      const { interaction, threadMessages } = createMockButtonInteraction({
+      const { interaction } = createMockButtonInteraction({
         customId: 'permission_allow:Bash|req-perm-proc-1',
         channelId: 'C_BOUND',
         isThread: true,
@@ -1934,14 +1884,10 @@ describe('DiscordAdapter', () => {
 
       await triggerInteraction(interaction);
 
-      // After resolving permission, a Processing indicator should be posted
-      const processingCall = threadMessages.find(
-        (m: any) => m === 'Processing...' || m.content === 'Processing...'
-      );
-      expect(processingCall).toBeDefined();
+      expect(interaction.message.react).toHaveBeenCalledWith('👀');
     });
 
-    it('posts Processing after AskUserQuestion button click', async () => {
+    it('reacts with eyes after AskUserQuestion button click', async () => {
       createAdapter();
       await adapter.start();
 
@@ -1967,7 +1913,7 @@ describe('DiscordAdapter', () => {
 
       await adapter.postUserQuestion('C_BOUND', 'thread-123', questions, 'req-q-proc-1', mockContext);
 
-      const { interaction, threadMessages } = createMockButtonInteraction({
+      const { interaction } = createMockButtonInteraction({
         customId: 'question_answer:0|req-q-proc-1',
         channelId: 'C_BOUND',
         isThread: true,
@@ -1976,11 +1922,7 @@ describe('DiscordAdapter', () => {
 
       await triggerInteraction(interaction);
 
-      // After resolving question, a Processing indicator should be posted
-      const processingCall = threadMessages.find(
-        (m: any) => m === 'Processing...' || m.content === 'Processing...'
-      );
-      expect(processingCall).toBeDefined();
+      expect(interaction.message.react).toHaveBeenCalledWith('👀');
     });
   });
 });

@@ -73,6 +73,9 @@ function createMockBoltApp() {
       update: vi.fn(async () => ({ ok: true })),
       delete: vi.fn(async () => ({ ok: true })),
     },
+    reactions: {
+      add: vi.fn(async () => ({ ok: true })),
+    },
     conversations: {
       create: vi.fn(async () => ({ ok: true, channel: { id: 'C_NEW123' } })),
     },
@@ -183,19 +186,18 @@ describe('P7.1: End-to-end Slack → Claude Code → response posted in thread',
       client: mockApp.client,
     });
 
-    // Verify "Processing..." was posted
-    const postCalls = mockApp.client.chat.postMessage.mock.calls;
-    expect(postCalls.length).toBeGreaterThanOrEqual(2);
-
-    // First call should be "Processing..." in thread
-    expect(postCalls[0][0]).toEqual({
+    // Verify 👀 reaction was added to the user's message
+    expect(mockApp.client.reactions.add).toHaveBeenCalledWith({
       channel: 'C_PROJ1',
-      thread_ts: '1111111111.111111',
-      text: 'Processing...',
+      timestamp: '1111111111.111111',
+      name: 'eyes',
     });
 
-    // Second call should be the response
-    expect(postCalls[1][0]).toEqual({
+    // Verify the response was posted
+    const postCalls = mockApp.client.chat.postMessage.mock.calls;
+    expect(postCalls.length).toBeGreaterThanOrEqual(1);
+
+    expect(postCalls[0][0]).toEqual({
       channel: 'C_PROJ1',
       thread_ts: '1111111111.111111',
       text: 'I created the file for you.',
@@ -637,6 +639,7 @@ describe('P7.4: End-to-end Discord → Codex CLI → response', () => {
       },
       attachments: new Map(),
       id: 'MSG_TOP_1',
+      react: vi.fn(async () => {}),
       startThread: vi.fn(async () => createdThread),
     };
 
@@ -647,8 +650,8 @@ describe('P7.4: End-to-end Discord → Codex CLI → response', () => {
       name: 'Build a login page',
     });
 
-    // Verify "Processing..." posted in thread
-    expect(createdThread.send).toHaveBeenCalledWith('Processing...');
+    // Verify 👀 reaction on the user's message
+    expect(mockMessage.react).toHaveBeenCalledWith('👀');
 
     // Verify response posted
     expect(createdThread.send).toHaveBeenCalledWith(
