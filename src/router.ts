@@ -217,7 +217,8 @@ export class Router {
       // But if cancelBackend already cleaned up, skip state transition
       try { await backend.stop(); } catch { /* ignore stop errors */ }
       this.activeBackends.delete(session.thread_id);
-      this.cleanupFileStaging(files);
+      // TODO: Re-enable staging cleanup once per-session TTL is implemented
+      // this.cleanupFileStaging(files);
       const currentState = this.store.getSessionById(session.id)?.state;
       if (currentState === 'running') {
         this.store.updateSessionState(session.id, 'dead');
@@ -254,8 +255,8 @@ export class Router {
       this.store.updateSessionState(session.id, 'idle');
     }
 
-    // Clean up staging files after backend turn
-    this.cleanupFileStaging(files);
+    // TODO: Re-enable staging cleanup once per-session TTL is implemented
+    // this.cleanupFileStaging(files);
 
     // Fetch the updated session
     const updatedSession = this.store.getSessionById(session.id)!;
