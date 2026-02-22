@@ -9,6 +9,8 @@ import {
   classifyMimeType,
   downloadAndStageFile,
   splitText,
+  markdownToSlackMrkdwn,
+  markdownToDiscord,
 } from '../utils.js';
 
 describe('Utils', () => {
@@ -213,6 +215,63 @@ describe('Utils', () => {
     it('splits at word boundaries', () => {
       const chunks = splitText('hello world foo', 11);
       expect(chunks).toEqual(['hello world', 'foo']);
+    });
+  });
+
+  describe('markdownToSlackMrkdwn', () => {
+    it('converts bold **text** to *text*', () => {
+      expect(markdownToSlackMrkdwn('This is **bold** text')).toBe('This is *bold* text');
+    });
+
+    it('converts italic *text* to _text_', () => {
+      expect(markdownToSlackMrkdwn('This is *italic* text')).toBe('This is _italic_ text');
+    });
+
+    it('converts strikethrough ~~text~~ to ~text~', () => {
+      expect(markdownToSlackMrkdwn('This is ~~deleted~~ text')).toBe('This is ~deleted~ text');
+    });
+
+    it('converts links [text](url) to <url|text>', () => {
+      expect(markdownToSlackMrkdwn('See [docs](https://example.com)'))
+        .toBe('See <https://example.com|docs>');
+    });
+
+    it('converts headers to bold', () => {
+      expect(markdownToSlackMrkdwn('# Title')).toBe('*Title*');
+      expect(markdownToSlackMrkdwn('## Subtitle')).toBe('*Subtitle*');
+      expect(markdownToSlackMrkdwn('### Section')).toBe('*Section*');
+    });
+
+    it('preserves code blocks', () => {
+      const input = '```\n**not bold**\n*not italic*\n```';
+      expect(markdownToSlackMrkdwn(input)).toBe(input);
+    });
+
+    it('handles mixed formatting', () => {
+      const input = '## Results\n\nThe **main** finding was *significant*.';
+      const expected = '*Results*\n\nThe *main* finding was _significant_.';
+      expect(markdownToSlackMrkdwn(input)).toBe(expected);
+    });
+
+    it('passes plain text through unchanged', () => {
+      expect(markdownToSlackMrkdwn('Just plain text')).toBe('Just plain text');
+    });
+  });
+
+  describe('markdownToDiscord', () => {
+    it('converts links [text](url) to text (<url>)', () => {
+      expect(markdownToDiscord('See [docs](https://example.com)'))
+        .toBe('See docs (<https://example.com>)');
+    });
+
+    it('preserves bold, italic, strikethrough, headers', () => {
+      const input = '## Title\n**bold** and *italic* and ~~strike~~';
+      expect(markdownToDiscord(input)).toBe(input);
+    });
+
+    it('preserves code blocks', () => {
+      const input = '```\n[not a link](http://example.com)\n```';
+      expect(markdownToDiscord(input)).toBe(input);
     });
   });
 });

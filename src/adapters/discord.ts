@@ -29,7 +29,7 @@ import * as fs from 'node:fs';
 import type { Router, RouteResult } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
-import { splitText, downloadAndStageFile } from '../utils.js';
+import { splitText, downloadAndStageFile, markdownToDiscord } from '../utils.js';
 import type { FileAttachment } from '../types/backend.js';
 import { resolvePermission, resolveUserQuestion, hasPendingQuestion, resolveQuestionByThread } from '../mcp/ipc-server.js';
 import { clearPostMessageFlag, wasPostMessageCalled } from '../mcp/callbacks.js';
@@ -604,10 +604,11 @@ export class DiscordAdapter {
 
   /** Post text response, splitting if it exceeds Discord's limit. */
   async postText(channelId: string, threadId: string, text: string, context: any): Promise<void> {
-    if (text.length <= DISCORD_MESSAGE_LIMIT) {
-      await this.sendToThread(threadId, context, text);
+    const converted = markdownToDiscord(text);
+    if (converted.length <= DISCORD_MESSAGE_LIMIT) {
+      await this.sendToThread(threadId, context, converted);
     } else {
-      const chunks = splitText(text, DISCORD_MESSAGE_LIMIT);
+      const chunks = splitText(converted, DISCORD_MESSAGE_LIMIT);
       for (const chunk of chunks) {
         await this.sendToThread(threadId, context, chunk);
       }

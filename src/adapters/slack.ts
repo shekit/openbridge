@@ -12,7 +12,7 @@ import { App, type LogLevel } from '@slack/bolt';
 import type { Router, RouteResult } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
-import { splitText, downloadAndStageFile } from '../utils.js';
+import { splitText, downloadAndStageFile, markdownToSlackMrkdwn } from '../utils.js';
 import type { FileAttachment } from '../types/backend.js';
 import { resolvePermission, resolveUserQuestion, hasPendingQuestion, resolveQuestionByThread } from '../mcp/ipc-server.js';
 import { clearPostMessageFlag, wasPostMessageCalled } from '../mcp/callbacks.js';
@@ -515,15 +515,16 @@ export class SlackAdapter {
 
   /** Post text response, splitting if it exceeds Slack's limit. */
   async postText(channelId: string, threadTs: string, text: string, client: any): Promise<void> {
-    if (text.length <= SLACK_MESSAGE_LIMIT) {
+    const converted = markdownToSlackMrkdwn(text);
+    if (converted.length <= SLACK_MESSAGE_LIMIT) {
       await client.chat.postMessage({
         channel: channelId,
         thread_ts: threadTs,
-        text,
+        text: converted,
       });
     } else {
       // Split into chunks
-      const chunks = splitText(text, SLACK_MESSAGE_LIMIT);
+      const chunks = splitText(converted, SLACK_MESSAGE_LIMIT);
       for (const chunk of chunks) {
         await client.chat.postMessage({
           channel: channelId,

@@ -185,3 +185,93 @@ export function splitText(text: string, limit: number): string[] {
 
   return chunks;
 }
+
+/**
+ * Convert standard Markdown to Slack mrkdwn format.
+ *
+ * Handles: bold, italic, strikethrough, links, headers.
+ * Does NOT handle tables — those pass through as-is.
+ */
+export function markdownToSlackMrkdwn(text: string): string {
+  // Process line by line to handle headers and preserve code blocks
+  const lines = text.split('\n');
+  let inCodeBlock = false;
+  const result: string[] = [];
+
+  for (const line of lines) {
+    // Toggle code block state
+    if (line.trimStart().startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      result.push(line);
+      continue;
+    }
+
+    // Don't transform inside code blocks
+    if (inCodeBlock) {
+      result.push(line);
+      continue;
+    }
+
+    let converted = line;
+
+    // Headers → bold (Slack has no header syntax)
+    converted = converted.replace(/^(#{1,6})\s+(.+)$/, (_m, _hashes, content) => `**${content}**`);
+
+    // Bold: **text** → placeholder to protect from italic pass
+    const boldSlots: string[] = [];
+    converted = converted.replace(/\*\*(.+?)\*\*/g, (_m, content) => {
+      boldSlots.push(content);
+      return `\x01BOLD${boldSlots.length - 1}\x01`;
+    });
+
+    // Italic: *text* → _text_ (now safe — bold markers are placeholders)
+    converted = converted.replace(/\*([^*]+?)\*/g, '_$1_');
+
+    // Restore bold placeholders as Slack bold *text*
+    converted = converted.replace(/\x01BOLD(\d+)\x01/g, (_m, idx) => `*${boldSlots[parseInt(idx, 10)]}*`);
+
+    // Strikethrough: ~~text~~ → ~text~
+    converted = converted.replace(/~~(.+?)~~/g, '~$1~');
+
+    // Links: [text](url) → <url|text>
+    converted = converted.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<$2|$1>');
+
+    result.push(converted);
+  }
+
+  return result.join('\n');
+}
+
+/**
+ * Convert standard Markdown to Discord-compatible format.
+ *
+ * Discord supports most standard Markdown natively (bold, italic,
+ * strikethrough, headers, code blocks). Only links need conversion
+ * since Discord bot messages don't render [text](url) as clickable.
+ */
+export function markdownToDiscord(text: string): string {
+  // Process line by line to preserve code blocks
+  const lines = text.split('\n');
+  let inCodeBlock = false;
+  const result: string[] = [];
+
+  for (const line of lines) {
+    if (line.trimStart().startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      result.push(line);
+      continue;
+    }
+
+    if (inCodeBlock) {
+      result.push(line);
+      continue;
+    }
+
+    // Links: [text](url) → text (<url>) — Discord doesn't render MD links from bots
+    let converted = line.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 (<$2>)');
+
+    result.push(converted);
+  }
+
+  return result.join('\n');
+}
