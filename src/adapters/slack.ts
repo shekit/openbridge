@@ -1474,7 +1474,7 @@ export class SlackAdapter {
         case 'completed':
           return `~${t.content}~`;
         case 'in_progress':
-          return `*${t.activeForm}...*`;
+          return `> *${t.activeForm}...*`;
         default:
           return t.content;
       }

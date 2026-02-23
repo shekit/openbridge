@@ -16,9 +16,13 @@
   "engines": {
     "node": ">=18"
   },
-  "private": true,
   "files": ["dist"],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shekit/openbridge"
+  },
+  "keywords": ["slack", "discord", "claude", "codex", "ai", "coding-agent", "openbridge"],
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.3.0",
