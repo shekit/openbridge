@@ -51,6 +51,8 @@ export class SlackAdapter {
   private questionMessages = new Map<string, { channel: string; ts: string; blocks: any[] }>();
   /** Message refs for todo checklist messages, keyed by threadId (one per thread). */
   private todoMessages = new Map<string, { channel: string; ts: string }>();
+  /** Tracked permission/question ack messages per thread, for 👀 cleanup after backend responds. */
+  private permissionAckMessages = new Map<string, Array<{ channel: string; ts: string }>>();
 
   constructor(options: SlackAdapterOptions) {
     this.router = options.router;
@@ -240,6 +242,23 @@ export class SlackAdapter {
     }
   }
 
+  /** Track a permission/question ack message for later 👀 cleanup. */
+  private trackPermissionAck(threadTs: string, channelId: string, messageTs: string): void {
+    const list = this.permissionAckMessages.get(threadTs) ?? [];
+    list.push({ channel: channelId, ts: messageTs });
+    this.permissionAckMessages.set(threadTs, list);
+  }
+
+  /** Remove 👀 from all tracked permission ack messages for a thread. */
+  private async cleanupPermissionAcks(threadTs: string, client: any): Promise<void> {
+    const acks = this.permissionAckMessages.get(threadTs);
+    if (!acks || acks.length === 0) return;
+    this.permissionAckMessages.delete(threadTs);
+    for (const ack of acks) {
+      await this.removeReactSeen(ack.channel, ack.ts, client);
+    }
+  }
+
   /** Handle an incoming Slack message. */
   private async handleMessage(message: any, client: any): Promise<void> {
     // Ignore bot messages (including our own) and system messages
@@ -361,6 +380,7 @@ export class SlackAdapter {
 
     await this.renderEvents(channelId, threadTs, result.events, client);
     await this.removeReactSeen(channelId, message.ts, client);
+    await this.cleanupPermissionAcks(threadTs, client);
   }
 
   /** Handle freeform text when session is waiting_for_input. */
@@ -382,6 +402,7 @@ export class SlackAdapter {
 
     await this.renderEvents(channelId, threadTs, result.events, client);
     if (messageTs) await this.removeReactSeen(channelId, messageTs, client);
+    await this.cleanupPermissionAcks(threadTs, client);
   }
 
   /** Handle permission Allow/Deny/Always Allow button clicks.
@@ -437,6 +458,7 @@ export class SlackAdapter {
     // React with 👀 on the permission message to acknowledge the click
     if (channelId && messageTs) {
       await this.reactSeen(channelId, messageTs, client);
+      this.trackPermissionAck(threadTs, channelId, messageTs);
     }
 
     // Hook-based flow: resolve in-process, no need to call router.respond()
@@ -460,6 +482,7 @@ export class SlackAdapter {
     }
 
     await this.renderEvents(channelId, threadTs, result.events, client);
+    await this.cleanupPermissionAcks(threadTs, client);
   }
 
   /** Render normalized events as Slack messages in a thread. */
@@ -676,6 +699,7 @@ export class SlackAdapter {
     const label = action.text?.text ?? '';
     const channelId = body.channel?.id;
     const messageTs = body.message?.ts;
+    const threadTs = body.message?.thread_ts;
 
     if (!requestId || !label) return;
 
@@ -703,6 +727,7 @@ export class SlackAdapter {
     // React with 👀 on the question message to acknowledge the click
     if (channelId && messageTs) {
       await this.reactSeen(channelId, messageTs, client);
+      if (threadTs) this.trackPermissionAck(threadTs, channelId, messageTs);
     }
   }
 
@@ -1437,6 +1462,7 @@ export class SlackAdapter {
 
     await this.renderEvents(channelId, threadTs, result.events, client);
     if (messageTs) await this.removeReactSeen(channelId, messageTs, client);
+    await this.cleanupPermissionAcks(threadTs, client);
   }
 
   /** Upload a file to a Slack thread. Called by MCP callback handler. */

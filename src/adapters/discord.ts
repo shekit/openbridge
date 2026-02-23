@@ -75,6 +75,8 @@ export class DiscordAdapter {
   private questionMessages = new Map<string, Message>();
   /** Message refs for todo checklist messages, keyed by threadId (one per thread). */
   private todoMessages = new Map<string, Message>();
+  /** Tracked permission/question ack messages per thread, for 👀 cleanup after backend responds. */
+  private permissionAckMessages = new Map<string, Message[]>();
 
   constructor(options: DiscordAdapterOptions) {
     this.router = options.router;
@@ -232,6 +234,23 @@ export class DiscordAdapter {
     }
   }
 
+  /** Track a permission/question ack message for later 👀 cleanup. */
+  private trackPermissionAck(threadId: string, message: Message): void {
+    const list = this.permissionAckMessages.get(threadId) ?? [];
+    list.push(message);
+    this.permissionAckMessages.set(threadId, list);
+  }
+
+  /** Remove 👀 from all tracked permission ack messages for a thread. */
+  private async cleanupPermissionAcks(threadId: string): Promise<void> {
+    const acks = this.permissionAckMessages.get(threadId);
+    if (!acks || acks.length === 0) return;
+    this.permissionAckMessages.delete(threadId);
+    for (const msg of acks) {
+      await this.removeReactSeen(msg);
+    }
+  }
+
   /** Handle an incoming Discord message. */
   private async handleMessage(message: Message): Promise<void> {
     // Ignore bot messages (including our own)
@@ -323,6 +342,7 @@ export class DiscordAdapter {
 
     await this.renderEvents(channelId, threadId, result.events, message);
     await this.removeReactSeen(message);
+    await this.cleanupPermissionAcks(threadId);
   }
 
   /** Handle an interaction (slash command or button click). */
@@ -365,6 +385,7 @@ export class DiscordAdapter {
 
     await this.renderEvents(channelId, threadId, result.events, message);
     await this.removeReactSeen(message);
+    await this.cleanupPermissionAcks(threadId);
   }
 
   /** Handle button clicks for permission prompts and project bind actions. */
@@ -458,6 +479,8 @@ export class DiscordAdapter {
       const questionMsg = (interaction as any).message;
       if (questionMsg?.react) {
         try { await questionMsg.react('👀'); } catch { /* non-fatal */ }
+        const qThreadId = this.getInteractionThreadId(interaction);
+        if (qThreadId) this.trackPermissionAck(qThreadId, questionMsg);
       }
       return;
     }
@@ -509,6 +532,7 @@ export class DiscordAdapter {
     const permMsg = (interaction as any).message;
     if (permMsg?.react) {
       try { await permMsg.react('👀'); } catch { /* non-fatal */ }
+      if (threadId) this.trackPermissionAck(threadId, permMsg);
     }
 
     // Hook-based flow: resolve in-process, no need to call router.respond()
@@ -532,6 +556,7 @@ export class DiscordAdapter {
     }
 
     await this.renderEvents(channelId, threadId, result.events, interaction);
+    if (threadId) await this.cleanupPermissionAcks(threadId);
   }
 
   /** Handle "Use this channel" button for project binding. */
@@ -1177,6 +1202,7 @@ export class DiscordAdapter {
 
     await this.renderEvents(channelId, threadId, result.events, context);
     await this.removeReactSeen(context);
+    await this.cleanupPermissionAcks(threadId);
   }
 
   /** Send a message to a thread (or channel if no thread context).
