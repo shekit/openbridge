@@ -1,0 +1,57 @@
+# OpenBridge
+
+Chat with your projects directly from Slack or Discord. 
+
+Openbridge uses your existing Claude Code or Codex subscriptions so there are no additional API fees.
+
+Each channel is a project. Each conversation within it becomes a thread, keeping things nicely organized.
+
+Set it up on a your laptop or a VPS and then chat with your projects from anywhere!
+
+## Demo
+
+[![Watch the demo](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](https://www.youtube.com/watch?v=VIDEO_ID)
+
+## Quick Start
+
+```bash
+npx openbridge-ai start
+```
+
+Or install globally:
+
+```bash
+npm install -g openbridge-ai
+openbridge-ai start
+```
+
+To change settings later:
+
+```bash
+openbridge-ai configure
+```
+
+## Chat Commands
+
+| Command | Description |
+|---------|-------------|
+| `/project connect` | Pick a project from your projects root |
+| `/project connect /absolute/path` | Connect a specific directory |
+| `/project new my-app` | Create a new project directory |
+| `/project list` | Show all connected projects |
+| `/project disconnect` | Disconnect this channel |
+| `/project backend claude\|codex` | Switch backend for this project |
+| `/settings root /path` | Set the projects root folder |
+
+In Slack threads: type `cancel` to stop a running task, `new` to reset the session.
+
+On Discord, the same commands are available as slash commands, plus `/new` and `/cancel`.
+
+## Platform Setup
+
+The setup wizard walks you through creating your Slack or Discord bot and entering tokens. For detailed manual instructions, see [PLATFORM-SETUP.md](https://github.com/shekit/openbridge/blob/main/PLATFORM-SETUP.md).
+
+## Requirements
+
+- Node.js >= 18
+- Claude Code (`claude`) and/or Codex CLI (`codex`) installed and available on PATH
