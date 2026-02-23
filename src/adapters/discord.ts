@@ -320,6 +320,9 @@ export class DiscordAdapter {
           }
         }
       }
+      // Track the 👀 on this freeform message so it gets cleaned up
+      // when the original handleMessage call finishes (cleanupPermissionAcks)
+      this.trackPermissionAck(threadId, message);
       return;
     }
 

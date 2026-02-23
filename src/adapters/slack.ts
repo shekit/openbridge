@@ -358,6 +358,9 @@ export class SlackAdapter {
           }
         }
       }
+      // Track the 👀 on this freeform message so it gets cleaned up
+      // when the original handleMessage call finishes (cleanupPermissionAcks)
+      this.trackPermissionAck(threadTs, channelId, message.ts);
       return;
     }
 

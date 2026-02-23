@@ -240,13 +240,19 @@ async function main(): Promise<void> {
     return;
   }
 
-  // 3. For tools that don't need permission, defer to Claude Code default
+  // 3. Trusted mode — auto-allow everything (hooks still run for AskUserQuestion routing)
+  if (process.env.OPENBRIDGE_PERMISSION_MODE === 'trusted') {
+    process.exit(0);
+    return;
+  }
+
+  // 4. For tools that don't need permission, defer to Claude Code default
   if (!PERMISSION_TOOLS.has(toolName)) {
     process.exit(0);
     return;
   }
 
-  // 4. For tools that need permission, send real-time prompt to Slack/Discord
+  // 5. For tools that need permission, send real-time prompt to Slack/Discord
   const ipcPort = parseInt(process.env.OPENBRIDGE_IPC_PORT ?? '', 10);
   const ipcSecret = process.env.OPENBRIDGE_IPC_SECRET ?? '';
   const channelId = process.env.OPENBRIDGE_CHANNEL_ID ?? '';

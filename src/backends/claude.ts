@@ -478,6 +478,7 @@ export class ClaudeBackend implements Backend {
         ...(this.channelId ? { OPENBRIDGE_CHANNEL_ID: this.channelId } : {}),
         ...(this.threadId ? { OPENBRIDGE_THREAD_ID: this.threadId } : {}),
         ...(this.platform ? { OPENBRIDGE_PLATFORM: this.platform } : {}),
+        ...(this.permissionMode ? { OPENBRIDGE_PERMISSION_MODE: this.permissionMode } : {}),
       };
     }
 
