@@ -187,12 +187,81 @@ export function splitText(text: string, limit: number): string[] {
 }
 
 /**
+ * Wrap markdown tables in code blocks so they render with monospace alignment.
+ *
+ * Detects tables by finding separator rows (|---|---|), expands one line up
+ * for the header and down as long as lines start with |. Skips tables that
+ * are already inside code blocks.
+ */
+export function wrapTablesInCodeBlocks(text: string): string {
+  const lines = text.split('\n');
+  const separatorPattern = /^\|[\s\-:]+(\|[\s\-:]+)+\|?\s*$/;
+  let inCodeBlock = false;
+
+  // First pass: identify which lines belong to tables
+  const tableLines = new Set<number>();
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trimStart().startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+    if (inCodeBlock) continue;
+
+    if (separatorPattern.test(lines[i])) {
+      // Mark the separator line
+      tableLines.add(i);
+
+      // Expand up: header row (one line before separator)
+      if (i > 0 && lines[i - 1].trimStart().startsWith('|')) {
+        tableLines.add(i - 1);
+      }
+
+      // Expand down: data rows after separator
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j].trimStart().startsWith('|')) {
+          tableLines.add(j);
+        } else {
+          break;
+        }
+      }
+    }
+  }
+
+  if (tableLines.size === 0) return text;
+
+  // Second pass: wrap contiguous table regions in code blocks
+  const result: string[] = [];
+  let inTable = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (tableLines.has(i)) {
+      if (!inTable) {
+        result.push('```');
+        inTable = true;
+      }
+      result.push(lines[i]);
+    } else {
+      if (inTable) {
+        result.push('```');
+        inTable = false;
+      }
+      result.push(lines[i]);
+    }
+  }
+  if (inTable) {
+    result.push('```');
+  }
+
+  return result.join('\n');
+}
+
+/**
  * Convert standard Markdown to Slack mrkdwn format.
  *
- * Handles: bold, italic, strikethrough, links, headers.
- * Does NOT handle tables — those pass through as-is.
+ * Handles: bold, italic, strikethrough, links, headers, tables (wrapped in code blocks).
  */
 export function markdownToSlackMrkdwn(text: string): string {
+  // Wrap tables in code blocks before converting
+  text = wrapTablesInCodeBlocks(text);
   // Process line by line to handle headers and preserve code blocks
   const lines = text.split('\n');
   let inCodeBlock = false;
@@ -251,10 +320,13 @@ export function markdownToSlackMrkdwn(text: string): string {
  * Convert standard Markdown to Discord-compatible format.
  *
  * Discord supports most standard Markdown natively (bold, italic,
- * strikethrough, headers, code blocks). Only links need conversion
- * since Discord bot messages don't render [text](url) as clickable.
+ * strikethrough, headers, code blocks). Tables are wrapped in code blocks.
+ * Only links need conversion since Discord bot messages don't render [text](url) as clickable.
  */
 export function markdownToDiscord(text: string): string {
+  // Wrap tables in code blocks before converting
+  text = wrapTablesInCodeBlocks(text);
+
   // Process line by line to preserve code blocks
   const lines = text.split('\n');
   let inCodeBlock = false;

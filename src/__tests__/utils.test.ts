@@ -11,6 +11,7 @@ import {
   splitText,
   markdownToSlackMrkdwn,
   markdownToDiscord,
+  wrapTablesInCodeBlocks,
 } from '../utils.js';
 
 describe('Utils', () => {
@@ -276,6 +277,48 @@ describe('Utils', () => {
     it('preserves code blocks', () => {
       const input = '```\n[not a link](http://example.com)\n```';
       expect(markdownToDiscord(input)).toBe(input);
+    });
+  });
+
+  describe('wrapTablesInCodeBlocks', () => {
+    it('wraps a simple table', () => {
+      const input = '| A | B |\n|---|---|\n| 1 | 2 |';
+      const expected = '```\n| A | B |\n|---|---|\n| 1 | 2 |\n```';
+      expect(wrapTablesInCodeBlocks(input)).toBe(expected);
+    });
+
+    it('wraps a table sandwiched between text', () => {
+      const input = 'Before\n| A | B |\n|---|---|\n| 1 | 2 |\nAfter';
+      const expected = 'Before\n```\n| A | B |\n|---|---|\n| 1 | 2 |\n```\nAfter';
+      expect(wrapTablesInCodeBlocks(input)).toBe(expected);
+    });
+
+    it('wraps multiple tables separately', () => {
+      const input = '| A | B |\n|---|---|\n| 1 | 2 |\nSome text\n| X | Y |\n|---|---|\n| 3 | 4 |';
+      const expected = '```\n| A | B |\n|---|---|\n| 1 | 2 |\n```\nSome text\n```\n| X | Y |\n|---|---|\n| 3 | 4 |\n```';
+      expect(wrapTablesInCodeBlocks(input)).toBe(expected);
+    });
+
+    it('handles table with multiple data rows', () => {
+      const input = '| Name | Score |\n|------|-------|\n| Alice | 95 |\n| Bob | 87 |\n| Carol | 92 |';
+      const expected = '```\n| Name | Score |\n|------|-------|\n| Alice | 95 |\n| Bob | 87 |\n| Carol | 92 |\n```';
+      expect(wrapTablesInCodeBlocks(input)).toBe(expected);
+    });
+
+    it('does not wrap tables already inside code blocks', () => {
+      const input = '```\n| A | B |\n|---|---|\n| 1 | 2 |\n```';
+      expect(wrapTablesInCodeBlocks(input)).toBe(input);
+    });
+
+    it('returns text unchanged when there are no tables', () => {
+      const input = 'Just some text\nWith multiple lines\nNo tables here';
+      expect(wrapTablesInCodeBlocks(input)).toBe(input);
+    });
+
+    it('handles alignment markers in separator', () => {
+      const input = '| Left | Center | Right |\n|:-----|:------:|------:|\n| a | b | c |';
+      const expected = '```\n| Left | Center | Right |\n|:-----|:------:|------:|\n| a | b | c |\n```';
+      expect(wrapTablesInCodeBlocks(input)).toBe(expected);
     });
   });
 });
