@@ -146,7 +146,7 @@ export async function inputTokens(
     const slackCreateSteps = [
       '1. Go to api.slack.com/apps → Create New App → From an app manifest',
       '2. Pick your workspace, switch to the JSON tab',
-      '3. Paste the contents of slack-manifest.json from this project',
+      '3. Paste the manifest from: https://github.com/shekit/openbridge/blob/main/slack-manifest.json',
       '4. Click Create',
       '5. Install to Workspace → copy the Bot Token (xoxb-...)',
       '6. Basic Information → App-Level Tokens → Generate Token',

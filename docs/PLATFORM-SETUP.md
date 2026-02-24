@@ -2,6 +2,10 @@
 
 ## Slack Setup
 
+**Quick way:** Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From an app manifest** → paste the [slack-manifest.json](https://github.com/shekit/openbridge/blob/main/slack-manifest.json) → **Create** → skip to step 5 below.
+
+**Manual way:**
+
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From scratch**
 2. Name it whatever you want (e.g., "OpenBridge"), pick your workspace
 3. **Socket Mode** → Enable it → Create an app-level token (give it `connections:write` scope) → copy the `xapp-...` token → that's your `SLACK_APP_TOKEN`
