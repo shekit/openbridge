@@ -110,11 +110,18 @@ export class Scheduler {
 
     console.log(`[scheduler] firing schedule ${schedule.id}: "${schedule.original_request}"`);
 
-    // Create a new thread for this scheduled session
-    const threadId = await adapter.createThread(
-      schedule.channel_id,
-      `Scheduled: ${schedule.original_request}`,
-    );
+    // One-time schedules with a stored thread_id reply in the original thread.
+    // Recurring schedules always create a new thread.
+    let threadId: string;
+    if (!schedule.is_recurring && schedule.thread_id) {
+      threadId = schedule.thread_id;
+      console.log(`[scheduler] schedule ${schedule.id}: replying in original thread ${threadId}`);
+    } else {
+      threadId = await adapter.createThread(
+        schedule.channel_id,
+        `Scheduled: ${schedule.original_request}`,
+      );
+    }
 
     // Run the session through the router (same path as user messages)
     try {

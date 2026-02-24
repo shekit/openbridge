@@ -45,6 +45,7 @@ export interface Schedule {
   id: number;
   project_id: number;
   channel_id: string;
+  thread_id: string | null;
   prompt: string;
   original_request: string;
   cron_expression: string | null;
@@ -138,6 +139,10 @@ const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS idx_schedules_next_run ON schedules(next_run_at);
+  `,
+  // Version 4: add thread_id to schedules for replying in original thread
+  `
+  ALTER TABLE schedules ADD COLUMN thread_id TEXT;
   `,
 ];
 
@@ -297,15 +302,15 @@ export class Store {
     channelId: string,
     prompt: string,
     originalRequest: string,
-    opts: { cronExpression?: string; scheduledAt?: string; nextRunAt: string },
+    opts: { cronExpression?: string; scheduledAt?: string; nextRunAt: string; threadId?: string },
   ): Schedule {
     const isRecurring = opts.cronExpression ? 1 : 0;
     const stmt = this.db.prepare(
-      `INSERT INTO schedules (project_id, channel_id, prompt, original_request, cron_expression, scheduled_at, next_run_at, is_recurring)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO schedules (project_id, channel_id, thread_id, prompt, original_request, cron_expression, scheduled_at, next_run_at, is_recurring)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const info = stmt.run(
-      projectId, channelId, prompt, originalRequest,
+      projectId, channelId, opts.threadId ?? null, prompt, originalRequest,
       opts.cronExpression ?? null, opts.scheduledAt ?? null,
       opts.nextRunAt, isRecurring,
     );

@@ -71,27 +71,42 @@ describe('Scheduler', () => {
       scheduler.stop();
     });
 
-    it('fires a due one-time schedule', async () => {
+    it('fires a due one-time schedule in the original thread', async () => {
       const project = store.createProject('ch-sched', '/tmp/proj', 'claude', 'slack');
       store.createSchedule(
         project.id, 'ch-sched', 'run the prompt', 'do the thing at 9am',
+        { scheduledAt: '2020-01-01T09:00:00', nextRunAt: '2020-01-01T09:00:00', threadId: 'original-thread-99' },
+      );
+
+      await scheduler.tick();
+
+      // One-time with thread_id should NOT create a new thread
+      expect(mockAdapter.createThread).not.toHaveBeenCalled();
+      expect(mockRouter.send).toHaveBeenCalledWith('ch-sched', 'original-thread-99', 'run the prompt');
+      expect(mockAdapter.sendMessage).toHaveBeenCalledWith(
+        'ch-sched', 'original-thread-99', 'Hello from scheduled session',
+      );
+    });
+
+    it('creates a new thread for one-time schedule without thread_id', async () => {
+      const project = store.createProject('ch-nothid', '/tmp/proj', 'claude', 'slack');
+      store.createSchedule(
+        project.id, 'ch-nothid', 'run the prompt', 'do the thing at 9am',
         { scheduledAt: '2020-01-01T09:00:00', nextRunAt: '2020-01-01T09:00:00' },
       );
 
       await scheduler.tick();
 
-      expect(mockAdapter.createThread).toHaveBeenCalledWith('ch-sched', 'Scheduled: do the thing at 9am');
-      expect(mockRouter.send).toHaveBeenCalledWith('ch-sched', 'thread-123', 'run the prompt');
-      expect(mockAdapter.sendMessage).toHaveBeenCalledWith(
-        'ch-sched', 'thread-123', 'Hello from scheduled session',
-      );
+      // No thread_id stored — falls back to creating a new thread
+      expect(mockAdapter.createThread).toHaveBeenCalledWith('ch-nothid', 'Scheduled: do the thing at 9am');
+      expect(mockRouter.send).toHaveBeenCalledWith('ch-nothid', 'thread-123', 'run the prompt');
     });
 
     it('deactivates a one-time schedule after firing', async () => {
       const project = store.createProject('ch-once', '/tmp/proj', 'claude', 'slack');
       const sched = store.createSchedule(
         project.id, 'ch-once', 'one-time', 'one-time request',
-        { scheduledAt: '2020-01-01T09:00:00', nextRunAt: '2020-01-01T09:00:00' },
+        { scheduledAt: '2020-01-01T09:00:00', nextRunAt: '2020-01-01T09:00:00', threadId: 'thread-once' },
       );
 
       await scheduler.tick();
@@ -100,14 +115,17 @@ describe('Scheduler', () => {
       expect(updated!.is_active).toBe(0);
     });
 
-    it('advances next_run_at for a recurring schedule', async () => {
+    it('advances next_run_at for a recurring schedule and creates new thread', async () => {
       const project = store.createProject('ch-recur', '/tmp/proj', 'claude', 'slack');
       const sched = store.createSchedule(
         project.id, 'ch-recur', 'recurring prompt', 'daily news',
-        { cronExpression: '0 9 * * *', nextRunAt: '2020-01-01T09:00:00' },
+        { cronExpression: '0 9 * * *', nextRunAt: '2020-01-01T09:00:00', threadId: 'original-thread' },
       );
 
       await scheduler.tick();
+
+      // Recurring always creates a new thread, even if thread_id is stored
+      expect(mockAdapter.createThread).toHaveBeenCalledWith('ch-recur', 'Scheduled: daily news');
 
       const updated = store.getScheduleById(sched.id);
       expect(updated!.is_active).toBe(1);

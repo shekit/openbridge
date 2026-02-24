@@ -141,7 +141,7 @@ export function createCallbackHandler(options: CallbackHandlerOptions): IpcHandl
       return resolvedDest;
     },
 
-    async scheduleSession(channelId, prompt, originalRequest, cronExpression, scheduledAt) {
+    async scheduleSession(channelId, threadId, prompt, originalRequest, cronExpression, scheduledAt) {
       if (!store) {
         throw new Error('Store not available for scheduling');
       }
@@ -156,7 +156,7 @@ export function createCallbackHandler(options: CallbackHandlerOptions): IpcHandl
 
       const schedule = store.createSchedule(
         project.id, channelId, prompt, originalRequest,
-        { cronExpression, scheduledAt, nextRunAt },
+        { cronExpression, scheduledAt, nextRunAt, threadId },
       );
       console.log(`[callbacks] created schedule ${schedule.id} for channel ${channelId}`);
       return { scheduleId: schedule.id };

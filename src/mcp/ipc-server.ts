@@ -34,7 +34,7 @@ export interface IpcHandler {
     todos: Array<{ content: string; status: string; activeForm: string }>,
     platform: string): Promise<void>;
   /** Register a scheduled session. Returns the schedule ID. */
-  scheduleSession?(channelId: string, prompt: string, originalRequest: string,
+  scheduleSession?(channelId: string, threadId: string, prompt: string, originalRequest: string,
     cronExpression: string | undefined, scheduledAt: string | undefined): Promise<{ scheduleId: number }>;
 }
 
@@ -416,8 +416,8 @@ export function startIpcServer(handler: IpcHandler): Promise<IpcServer> {
         }
 
         case '/schedule-session': {
-          const { channelId, prompt, originalRequest, cronExpression, scheduledAt } = data as {
-            channelId: string; prompt: string; originalRequest: string;
+          const { channelId, threadId, prompt, originalRequest, cronExpression, scheduledAt } = data as {
+            channelId: string; threadId: string; prompt: string; originalRequest: string;
             cronExpression?: string; scheduledAt?: string;
           };
           if (!handler.scheduleSession) {
@@ -425,7 +425,7 @@ export function startIpcServer(handler: IpcHandler): Promise<IpcServer> {
             res.end(JSON.stringify({ error: 'scheduleSession not implemented' }));
             break;
           }
-          const result = await handler.scheduleSession(channelId, prompt, originalRequest,
+          const result = await handler.scheduleSession(channelId, threadId, prompt, originalRequest,
             cronExpression, scheduledAt);
           console.log(`[ipc] schedule-session created: ${result.scheduleId}`);
           res.writeHead(200, { 'Content-Type': 'application/json' });
