@@ -368,7 +368,9 @@ export class DiscordAdapter {
     }
 
     // If a schedule was created, swap eyes → checkmark and suppress text
-    if (wasScheduleCreated(threadId)) {
+    const scheduleCreated = wasScheduleCreated(threadId);
+    clearScheduleFlag(threadId);  // Always clear after checking to avoid stale flags
+    if (scheduleCreated) {
       await this.reactScheduleConfirm(message);
       await this.cleanupPermissionAcks(threadId);
     } else {
@@ -409,6 +411,7 @@ export class DiscordAdapter {
     message: Message
   ): Promise<void> {
     clearPostMessageFlag(threadId);
+    clearScheduleFlag(threadId);
     let result: RouteResult;
     try {
       result = await this.router.respond(channelId, threadId, text);
@@ -581,6 +584,7 @@ export class DiscordAdapter {
     const responseText = isAllow ? 'yes' : 'no';
     const allowedTools = isAllow && toolName ? [toolName] : undefined;
     clearPostMessageFlag(threadId);
+    clearScheduleFlag(threadId);
     let result: RouteResult;
     try {
       result = await this.router.respond(channelId, threadId, responseText, allowedTools);

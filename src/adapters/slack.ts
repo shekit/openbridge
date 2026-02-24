@@ -395,7 +395,9 @@ export class SlackAdapter {
     }
 
     // If a schedule was created, swap eyes → checkmark and suppress text
-    if (wasScheduleCreated(threadTs)) {
+    const scheduleCreated = wasScheduleCreated(threadTs);
+    clearScheduleFlag(threadTs);  // Always clear after checking to avoid stale flags
+    if (scheduleCreated) {
       await this.reactScheduleConfirm(channelId, message.ts, client);
       await this.cleanupPermissionAcks(threadTs, client);
     } else {
@@ -414,6 +416,7 @@ export class SlackAdapter {
     messageTs?: string,
   ): Promise<void> {
     clearPostMessageFlag(threadTs);
+    clearScheduleFlag(threadTs);
     let result: RouteResult;
     try {
       result = await this.router.respond(channelId, threadTs, text);
@@ -495,6 +498,7 @@ export class SlackAdapter {
     const responseText = isAllow ? 'yes' : 'no';
     const allowedTools = isAllow && toolName ? [toolName] : undefined;
     clearPostMessageFlag(threadTs);
+    clearScheduleFlag(threadTs);
     let result: RouteResult;
     try {
       result = await this.router.respond(channelId, threadTs, responseText, allowedTools);
