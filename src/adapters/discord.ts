@@ -169,22 +169,19 @@ export class DiscordAdapter {
           sub.setName('root')
             .setDescription('Set the projects root folder')
             .addStringOption((opt) => opt.setName('path').setDescription('Absolute path to projects root').setRequired(true))
+        )
+        .addSubcommand((sub) =>
+          sub.setName('schedule-list')
+            .setDescription('List active schedules for this channel')
+        )
+        .addSubcommand((sub) =>
+          sub.setName('schedule-cancel')
+            .setDescription('Cancel a schedule by ID')
+            .addIntegerOption((opt) => opt.setName('id').setDescription('Schedule ID (from /settings schedule-list)').setRequired(true))
         ),
       new SlashCommandBuilder()
         .setName('cancel')
         .setDescription('Cancel the running task in this thread'),
-      new SlashCommandBuilder()
-        .setName('schedule')
-        .setDescription('Manage scheduled sessions')
-        .addSubcommand((sub) =>
-          sub.setName('list')
-            .setDescription('List active schedules for this channel')
-        )
-        .addSubcommand((sub) =>
-          sub.setName('cancel')
-            .setDescription('Cancel a schedule by ID')
-            .addIntegerOption((opt) => opt.setName('id').setDescription('Schedule ID (from /schedule list)').setRequired(true))
-        ),
     ];
 
     const rest = new REST().setToken(this.botToken);
@@ -380,9 +377,7 @@ export class DiscordAdapter {
         case 'cancel':
           await this.handleCancelCommand(interaction);
           break;
-        case 'schedule':
-          await this.handleScheduleCommand(interaction);
-          break;
+        // schedule subcommands are handled under /settings (schedule-list, schedule-cancel)
       }
     } else if (interaction.isButton()) {
       await this.handleButtonInteraction(interaction);
@@ -1171,6 +1166,16 @@ export class DiscordAdapter {
       return;
     }
 
+    if (subcommand === 'schedule-list') {
+      await this.handleScheduleList(interaction);
+      return;
+    }
+
+    if (subcommand === 'schedule-cancel') {
+      await this.handleScheduleCancel(interaction);
+      return;
+    }
+
     // view
     const root = this.store.getSetting('projects_root');
     const project = this.store.getProjectByChannelId(channelId);
@@ -1185,45 +1190,41 @@ export class DiscordAdapter {
     }
     text += '\n\n_Commands:_';
     text += '\n- `/settings root path:/path` — set projects root folder';
+    text += '\n- `/settings schedule-list` — list active schedules';
+    text += '\n- `/settings schedule-cancel id:<id>` — cancel a schedule';
     await interaction.reply(text);
   }
 
-  /** Handle /schedule slash command. */
-  private async handleScheduleCommand(interaction: any): Promise<void> {
+  /** Handle /settings schedule-list subcommand. */
+  private async handleScheduleList(interaction: any): Promise<void> {
     const channelId = interaction.channelId;
-    const subcommand = interaction.options?.getSubcommand?.() ?? '';
-
-    if (subcommand === 'list') {
-      const schedules = this.store.getSchedulesByChannelId(channelId);
-      if (schedules.length === 0) {
-        await interaction.reply('No scheduled sessions for this channel.');
-        return;
-      }
-      const lines = schedules.map((s, i) => {
-        const typeLabel = s.is_recurring ? `cron: \`${s.cron_expression}\`` : `one-time: ${s.scheduled_at}`;
-        return `${i + 1}. "${s.original_request}" — ${typeLabel} (next: ${s.next_run_at}) [ID: ${s.id}]`;
-      });
-      await interaction.reply(`**Scheduled Sessions**\n${lines.join('\n')}`);
+    const schedules = this.store.getSchedulesByChannelId(channelId);
+    if (schedules.length === 0) {
+      await interaction.reply('No scheduled sessions for this channel.');
       return;
     }
+    const lines = schedules.map((s, i) => {
+      const typeLabel = s.is_recurring ? `cron: \`${s.cron_expression}\`` : `one-time: ${s.scheduled_at}`;
+      return `${i + 1}. "${s.original_request}" — ${typeLabel} (next: ${s.next_run_at}) [ID: ${s.id}]`;
+    });
+    await interaction.reply(`**Scheduled Sessions**\n${lines.join('\n')}`);
+  }
 
-    if (subcommand === 'cancel') {
-      const id = interaction.options.getInteger('id');
-      if (!id) {
-        await interaction.reply('Usage: `/schedule cancel id:<schedule ID>`');
-        return;
-      }
-      const schedule = this.store.getScheduleById(id);
-      if (!schedule || schedule.channel_id !== channelId || !schedule.is_active) {
-        await interaction.reply(`No active schedule with ID ${id} found in this channel.`);
-        return;
-      }
-      this.store.deactivateSchedule(id);
-      await interaction.reply(`Cancelled schedule: "${schedule.original_request}"`);
+  /** Handle /settings schedule-cancel subcommand. */
+  private async handleScheduleCancel(interaction: any): Promise<void> {
+    const channelId = interaction.channelId;
+    const id = interaction.options.getInteger('id');
+    if (!id) {
+      await interaction.reply('Usage: `/settings schedule-cancel id:<schedule ID>`');
       return;
     }
-
-    await interaction.reply(`Unknown subcommand. Try \`/schedule list\` or \`/schedule cancel\`.`);
+    const schedule = this.store.getScheduleById(id);
+    if (!schedule || schedule.channel_id !== channelId || !schedule.is_active) {
+      await interaction.reply(`No active schedule with ID ${id} found in this channel.`);
+      return;
+    }
+    this.store.deactivateSchedule(id);
+    await interaction.reply(`Cancelled schedule: "${schedule.original_request}"`);
   }
 
   /** Handle file uploads in messages — downloads all file types for backend passthrough. */

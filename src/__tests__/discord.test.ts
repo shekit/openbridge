@@ -1238,7 +1238,7 @@ describe('DiscordAdapter', () => {
     });
   });
 
-  describe('/schedule list and cancel', () => {
+  describe('/settings schedule-list and schedule-cancel', () => {
     it('lists active schedules for the channel', async () => {
       createAdapter();
       await adapter.start();
@@ -1250,8 +1250,8 @@ describe('DiscordAdapter', () => {
       );
 
       const { interaction, replies } = createMockInteraction({
-        commandName: 'schedule',
-        subcommand: 'list',
+        commandName: 'settings',
+        subcommand: 'schedule-list',
         channelId: 'C_SCHED',
       });
 
@@ -1267,8 +1267,8 @@ describe('DiscordAdapter', () => {
       await adapter.start();
 
       const { interaction, replies } = createMockInteraction({
-        commandName: 'schedule',
-        subcommand: 'list',
+        commandName: 'settings',
+        subcommand: 'schedule-list',
         channelId: 'C_EMPTY',
       });
 
@@ -1289,8 +1289,8 @@ describe('DiscordAdapter', () => {
       );
 
       const { interaction, replies } = createMockInteraction({
-        commandName: 'schedule',
-        subcommand: 'cancel',
+        commandName: 'settings',
+        subcommand: 'schedule-cancel',
         channelId: 'C_CANCEL',
         intOptions: { id: sched.id },
       });
@@ -1310,8 +1310,8 @@ describe('DiscordAdapter', () => {
       await adapter.start();
 
       const { interaction, replies } = createMockInteraction({
-        commandName: 'schedule',
-        subcommand: 'cancel',
+        commandName: 'settings',
+        subcommand: 'schedule-cancel',
         channelId: 'C_NOEXIST',
         intOptions: { id: 99999 },
       });

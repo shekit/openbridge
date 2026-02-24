@@ -1022,7 +1022,7 @@ describe('SlackAdapter', () => {
     });
   });
 
-  describe('/schedule list and cancel', () => {
+  describe('/settings schedule list and cancel', () => {
     it('lists active schedules for the channel', async () => {
       createAdapter();
       await adapter.start();
@@ -1033,9 +1033,9 @@ describe('SlackAdapter', () => {
         { cronExpression: '0 9 * * *', nextRunAt: '2026-02-25T09:00:00' },
       );
 
-      await triggerCommand('/schedule', {
+      await triggerCommand('/settings', {
         channel_id: 'C_SCHED',
-        text: 'list',
+        text: 'schedule list',
       });
 
       const calls = mockApp.client.chat.postMessage.mock.calls;
@@ -1047,9 +1047,9 @@ describe('SlackAdapter', () => {
       createAdapter();
       await adapter.start();
 
-      await triggerCommand('/schedule', {
+      await triggerCommand('/settings', {
         channel_id: 'C_EMPTY',
-        text: 'list',
+        text: 'schedule list',
       });
 
       const calls = mockApp.client.chat.postMessage.mock.calls;
@@ -1066,9 +1066,9 @@ describe('SlackAdapter', () => {
         { scheduledAt: '2026-03-01T09:00:00', nextRunAt: '2026-03-01T09:00:00' },
       );
 
-      await triggerCommand('/schedule', {
+      await triggerCommand('/settings', {
         channel_id: 'C_CANCEL',
-        text: `cancel ${sched.id}`,
+        text: `schedule cancel ${sched.id}`,
       });
 
       const calls = mockApp.client.chat.postMessage.mock.calls;
@@ -1083,9 +1083,9 @@ describe('SlackAdapter', () => {
       createAdapter();
       await adapter.start();
 
-      await triggerCommand('/schedule', {
+      await triggerCommand('/settings', {
         channel_id: 'C_NOEXIST',
-        text: 'cancel 99999',
+        text: 'schedule cancel 99999',
       });
 
       const calls = mockApp.client.chat.postMessage.mock.calls;
