@@ -1441,9 +1441,10 @@ export class SlackAdapter {
           });
           return;
         }
+        const fmt = (iso: string | null) => iso ? new Date(iso).toLocaleString() : '—';
         const lines = schedules.map((s, i) => {
-          const typeLabel = s.is_recurring ? `cron: \`${s.cron_expression}\`` : `one-time: ${s.scheduled_at}`;
-          return `${i + 1}. "${s.original_request}" — ${typeLabel} (next: ${s.next_run_at}) [ID: ${s.id}]`;
+          const typeLabel = s.is_recurring ? `recurring` : `one-time`;
+          return `${i + 1}. "${s.original_request}" — ${typeLabel}, next: ${fmt(s.next_run_at)} [ID: ${s.id}]`;
         });
         await client.chat.postMessage({
           channel: channelId,

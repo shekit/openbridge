@@ -1040,7 +1040,7 @@ describe('SlackAdapter', () => {
 
       const calls = mockApp.client.chat.postMessage.mock.calls;
       expect(calls[0][0].text).toContain('give me daily news');
-      expect(calls[0][0].text).toContain('cron');
+      expect(calls[0][0].text).toContain('recurring');
     });
 
     it('shows empty message when no schedules', async () => {

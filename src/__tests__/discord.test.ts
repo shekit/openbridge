@@ -1259,7 +1259,7 @@ describe('DiscordAdapter', () => {
 
       const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
       expect(text).toContain('give me daily news');
-      expect(text).toContain('cron');
+      expect(text).toContain('recurring');
     });
 
     it('shows empty message when no schedules', async () => {
