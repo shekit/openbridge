@@ -9,7 +9,7 @@ import { CronExpressionParser } from 'cron-parser';
 import type { Store, Schedule } from './store.js';
 import type { Router } from './router.js';
 import type { Adapter } from './types/adapter.js';
-import { clearPostMessageFlag, wasPostMessageCalled } from './mcp/callbacks.js';
+import { clearPostMessageFlag, wasPostMessageCalled, clearScheduleFlag } from './mcp/callbacks.js';
 
 /** Default scheduler tick interval in milliseconds (30 seconds). */
 export const DEFAULT_TICK_INTERVAL_MS = 30_000;
@@ -169,6 +169,7 @@ export class Scheduler {
   /** Run a session in a thread and post the results. Throws on failure. */
   private async runSession(adapter: Adapter, schedule: Schedule, threadId: string): Promise<void> {
     clearPostMessageFlag(threadId);
+    clearScheduleFlag(threadId);
     const result = await this.router.send(schedule.channel_id, threadId, schedule.prompt);
 
     // If Claude already posted via post_message MCP tool, skip assistant_text (avoid duplicates)
