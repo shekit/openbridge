@@ -142,32 +142,57 @@ export async function inputTokens(
   const isInteractive = !io;
 
   if (platforms.includes('slack')) {
-    // Phase 1: Show setup instructions (once, before token entry loop)
-    const slackCreateSteps = [
-      '1. Go to api.slack.com/apps → Create New App → From an app manifest',
-      '2. Pick your workspace, switch to the JSON tab',
-      '3. Paste the manifest from: https://github.com/shekit/openbridge/blob/main/slack-manifest.json',
-      '4. Click Create',
-      '5. Install to Workspace → copy the Bot Token (xoxb-...)',
-      '6. Basic Information → App-Level Tokens → Generate Token',
-      '   Give it the connections:write scope → copy the token (xapp-...)',
-    ].join('\n');
-
     if (isInteractive) {
-      clack.note(slackCreateSteps, 'Slack Setup');
+      // Step-by-step guided flow
+      clack.note(
+        'Go to api.slack.com/apps → Create New App → From an app manifest',
+        'Slack Setup — Step 1 of 4',
+      );
+      await promptConfirm(io, 'Done? Continue to next step', true);
+
+      clack.note(
+        [
+          'Pick your workspace, switch to the JSON tab',
+          'Paste the manifest from:',
+          'https://github.com/shekit/openbridge/blob/main/slack-manifest.json',
+          '',
+          'Click Create',
+        ].join('\n'),
+        'Slack Setup — Step 2 of 4',
+      );
+      await promptConfirm(io, 'Done? Continue to next step', true);
+
+      clack.note(
+        'Install to Workspace → copy the Bot Token (starts with xoxb-)',
+        'Slack Setup — Step 3 of 4',
+      );
     } else {
       console.log('\n[init] --- Slack Setup ---');
-      console.log(slackCreateSteps);
+      console.log('1. Go to api.slack.com/apps → Create New App → From an app manifest');
+      console.log('2. Paste manifest from: https://github.com/shekit/openbridge/blob/main/slack-manifest.json');
+      console.log('3. Install to Workspace → copy the Bot Token (xoxb-)');
+      console.log('4. App-Level Tokens → Generate Token with connections:write scope (xapp-)');
     }
 
     // Token entry + verification (retries on failure in interactive mode)
     while (true) {
       result.slackBotToken = await promptText(io, 'Slack Bot Token (xoxb-...)', validateSlackBotToken);
+
+      if (isInteractive) {
+        clack.note(
+          [
+            'Basic Information → App-Level Tokens → Generate Token',
+            'Give it the connections:write scope → copy the token (starts with xapp-)',
+          ].join('\n'),
+          'Slack Setup — Step 4 of 4',
+        );
+      }
+
       result.slackAppToken = await promptText(io, 'Slack App Token (xapp-...)', validateSlackAppToken);
 
       if (isInteractive) {
         const s = clack.spinner();
-        s.start('Verifying Slack token...');
+        s.start('Verifying Slack tokens...');
         const botName = await verifySlackToken(result.slackBotToken!);
         if (botName) {
           s.stop(`Slack token verified — connected as "${botName}"`);
@@ -188,36 +213,42 @@ export async function inputTokens(
       }
     }
 
-    // Phase 2: Tell user to invite the bot
-    const slackInviteSteps = [
-      'Go to your Slack workspace and invite the bot to a channel:',
-      '',
-      '  /invite @OpenBridge',
-      '',
-      'The bot will appear online once the bridge is running.',
-    ].join('\n');
-
+    // Invite the bot
     if (isInteractive) {
-      clack.note(slackInviteSteps, 'Invite the bot');
+      clack.note(
+        [
+          'Go to your Slack workspace and invite the bot to a channel:',
+          '',
+          '  /invite @OpenBridge',
+          '',
+          'The bot will appear online once the bridge is running.',
+        ].join('\n'),
+        'Invite the bot',
+      );
     } else {
       console.log('\n[init] --- Invite the bot ---');
-      console.log(slackInviteSteps);
+      console.log('Invite the bot: /invite @OpenBridge');
     }
   }
 
   if (platforms.includes('discord')) {
-    // Phase 1: Create the bot and get token
-    const discordCreateSteps = [
-      '1. Go to discord.com/developers/applications → New Application',
-      '2. Bot tab → Reset Token → copy it (you\'ll paste it below)',
-      '3. Bot tab → Privileged Gateway Intents → Enable Message Content Intent',
-    ].join('\n');
-
     if (isInteractive) {
-      clack.note(discordCreateSteps, 'Discord Setup');
+      // Step-by-step guided flow
+      clack.note(
+        'Go to discord.com/developers/applications → New Application',
+        'Discord Setup — Step 1 of 3',
+      );
+      await promptConfirm(io, 'Done? Continue to next step', true);
+
+      clack.note(
+        'Bot tab → Reset Token → copy it (you\'ll paste it below)',
+        'Discord Setup — Step 2 of 3',
+      );
     } else {
       console.log('\n[init] --- Discord Setup ---');
-      console.log(discordCreateSteps);
+      console.log('1. Go to discord.com/developers/applications → New Application');
+      console.log('2. Bot tab → Reset Token → copy it');
+      console.log('3. Bot tab → Privileged Gateway Intents → Enable Message Content Intent');
     }
 
     // Token entry + verification (retries on failure in interactive mode)
@@ -247,23 +278,32 @@ export async function inputTokens(
       }
     }
 
-    // Phase 2: Show the pre-filled invite URL
+    if (isInteractive) {
+      clack.note(
+        'Bot tab → Privileged Gateway Intents → Enable Message Content Intent',
+        'Discord Setup — Step 3 of 3',
+      );
+      await promptConfirm(io, 'Done? Continue to next step', true);
+    }
+
+    // Show the pre-filled invite URL
     const appId = extractDiscordAppId(result.discordBotToken!);
     if (appId) {
       const inviteUrl = `https://discord.com/oauth2/authorize?client_id=${appId}&scope=bot&permissions=${DISCORD_PERMISSIONS}`;
-      const inviteSteps = [
-        'Open this URL in your browser to add the bot to your server:',
-        '',
-        inviteUrl,
-        '',
-        'Pick your server → Authorize, then come back here.',
-      ].join('\n');
-
       if (isInteractive) {
-        clack.note(inviteSteps, 'Add bot to your server');
+        clack.note(
+          [
+            'Open this URL in your browser to add the bot to your server:',
+            '',
+            inviteUrl,
+            '',
+            'Pick your server → Authorize, then come back here.',
+          ].join('\n'),
+          'Add bot to your server',
+        );
       } else {
         console.log('\n[init] --- Add bot to your server ---');
-        console.log(inviteSteps);
+        console.log(inviteUrl);
       }
     } else {
       if (isInteractive) {
