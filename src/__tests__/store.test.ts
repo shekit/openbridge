@@ -144,15 +144,16 @@ describe('Store', () => {
       expect(table).toBeDefined();
 
       const row = db.prepare('SELECT MAX(version) as v FROM schema_version').get() as { v: number };
-      expect(row.v).toBe(2);
+      expect(row.v).toBe(3);
     });
 
     it('migrations run sequentially on startup', () => {
       const db = (store as any).db;
       const versions = db.prepare('SELECT version FROM schema_version ORDER BY version').all() as Array<{ version: number }>;
-      expect(versions.length).toBe(2);
+      expect(versions.length).toBe(3);
       expect(versions[0].version).toBe(1);
       expect(versions[1].version).toBe(2);
+      expect(versions[2].version).toBe(3);
     });
 
     it('re-running init does not duplicate tables (idempotent)', () => {
@@ -161,15 +162,15 @@ describe('Store', () => {
       store = new Store(dbPath);
 
       const db = (store as any).db;
-      // Version should still be 2
+      // Version should still be 3
       const row = db.prepare('SELECT MAX(version) as v FROM schema_version').get() as { v: number };
-      expect(row.v).toBe(2);
+      expect(row.v).toBe(3);
 
       // Tables should exist exactly once
       const tables = db.prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('projects', 'sessions', 'settings', 'allowed_tools') ORDER BY name"
+        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('projects', 'sessions', 'settings', 'allowed_tools', 'schedules') ORDER BY name"
       ).all() as Array<{ name: string }>;
-      expect(tables.length).toBe(4);
+      expect(tables.length).toBe(5);
     });
   });
 
@@ -392,10 +393,10 @@ describe('Store', () => {
   });
 
   describe('P12.1: Schema migration v3 — permission_mode, sandbox_mode, allowed_tools', () => {
-    it('migration v2 runs and schema_version is 2', () => {
+    it('migration v2 runs and schema_version is at least 2', () => {
       const db = (store as any).db;
       const row = db.prepare('SELECT MAX(version) as v FROM schema_version').get() as { v: number };
-      expect(row.v).toBe(2);
+      expect(row.v).toBeGreaterThanOrEqual(2);
     });
 
     it('projects table has permission_mode column with default supervised', () => {
@@ -498,12 +499,130 @@ describe('Store', () => {
       store = new Store(dbPath);
       const db = (store as any).db;
       const row = db.prepare('SELECT MAX(version) as v FROM schema_version').get() as { v: number };
-      expect(row.v).toBe(2);
+      expect(row.v).toBeGreaterThanOrEqual(2);
 
       // New project should still get defaults
       const project = store.createProject('ch_reopen', '/tmp/p', 'claude');
       expect(project.permission_mode).toBe('supervised');
       expect(project.sandbox_mode).toBe('workspace-write');
+    });
+  });
+
+  describe('P23.1: Schedules CRUD', () => {
+    let project: ReturnType<typeof store.createProject>;
+
+    beforeEach(() => {
+      project = store.createProject('ch_sched', '/tmp/sched', 'claude');
+    });
+
+    it('schedules table exists with expected columns', () => {
+      const db = (store as any).db;
+      const columns = db.prepare("PRAGMA table_info('schedules')").all() as Array<{ name: string }>;
+      const colNames = columns.map((c: { name: string }) => c.name);
+      expect(colNames).toContain('project_id');
+      expect(colNames).toContain('channel_id');
+      expect(colNames).toContain('prompt');
+      expect(colNames).toContain('original_request');
+      expect(colNames).toContain('cron_expression');
+      expect(colNames).toContain('scheduled_at');
+      expect(colNames).toContain('next_run_at');
+      expect(colNames).toContain('is_recurring');
+      expect(colNames).toContain('is_active');
+    });
+
+    it('createSchedule inserts a one-time schedule', () => {
+      const sched = store.createSchedule(
+        project.id, 'ch_sched', 'do the thing', 'remind me to do the thing',
+        { scheduledAt: '2026-03-01T09:00:00', nextRunAt: '2026-03-01T09:00:00' },
+      );
+      expect(sched.id).toBeGreaterThan(0);
+      expect(sched.prompt).toBe('do the thing');
+      expect(sched.original_request).toBe('remind me to do the thing');
+      expect(sched.is_recurring).toBe(0);
+      expect(sched.is_active).toBe(1);
+      expect(sched.cron_expression).toBeNull();
+      expect(sched.scheduled_at).toBe('2026-03-01T09:00:00');
+    });
+
+    it('createSchedule inserts a recurring schedule', () => {
+      const sched = store.createSchedule(
+        project.id, 'ch_sched', 'news update', 'give me daily news',
+        { cronExpression: '0 9 * * *', nextRunAt: '2026-02-25T09:00:00' },
+      );
+      expect(sched.is_recurring).toBe(1);
+      expect(sched.cron_expression).toBe('0 9 * * *');
+      expect(sched.scheduled_at).toBeNull();
+    });
+
+    it('getDueSchedules returns only active schedules due before now', () => {
+      store.createSchedule(
+        project.id, 'ch_sched', 'past', 'past request',
+        { scheduledAt: '2020-01-01T00:00:00', nextRunAt: '2020-01-01T00:00:00' },
+      );
+      store.createSchedule(
+        project.id, 'ch_sched', 'future', 'future request',
+        { scheduledAt: '2099-01-01T00:00:00', nextRunAt: '2099-01-01T00:00:00' },
+      );
+      const due = store.getDueSchedules('2025-01-01T00:00:00');
+      expect(due.length).toBe(1);
+      expect(due[0].prompt).toBe('past');
+    });
+
+    it('getDueSchedules excludes inactive schedules', () => {
+      const sched = store.createSchedule(
+        project.id, 'ch_sched', 'cancelled', 'cancelled request',
+        { scheduledAt: '2020-01-01T00:00:00', nextRunAt: '2020-01-01T00:00:00' },
+      );
+      store.deactivateSchedule(sched.id);
+      const due = store.getDueSchedules('2025-01-01T00:00:00');
+      expect(due.length).toBe(0);
+    });
+
+    it('getSchedulesByChannelId returns active schedules for channel', () => {
+      store.createSchedule(
+        project.id, 'ch_sched', 'a', 'request a',
+        { scheduledAt: '2026-03-01T09:00:00', nextRunAt: '2026-03-01T09:00:00' },
+      );
+      store.createSchedule(
+        project.id, 'ch_sched', 'b', 'request b',
+        { cronExpression: '0 9 * * *', nextRunAt: '2026-02-25T09:00:00' },
+      );
+      const schedules = store.getSchedulesByChannelId('ch_sched');
+      expect(schedules.length).toBe(2);
+    });
+
+    it('deactivateSchedule sets is_active to 0', () => {
+      const sched = store.createSchedule(
+        project.id, 'ch_sched', 'to cancel', 'cancel this',
+        { scheduledAt: '2026-03-01T09:00:00', nextRunAt: '2026-03-01T09:00:00' },
+      );
+      expect(store.deactivateSchedule(sched.id)).toBe(true);
+      const updated = store.getScheduleById(sched.id);
+      expect(updated!.is_active).toBe(0);
+    });
+
+    it('deactivateSchedule returns false for nonexistent id', () => {
+      expect(store.deactivateSchedule(99999)).toBe(false);
+    });
+
+    it('updateNextRun advances next_run_at', () => {
+      const sched = store.createSchedule(
+        project.id, 'ch_sched', 'recurring', 'daily thing',
+        { cronExpression: '0 9 * * *', nextRunAt: '2026-02-25T09:00:00' },
+      );
+      store.updateNextRun(sched.id, '2026-02-26T09:00:00');
+      const updated = store.getScheduleById(sched.id);
+      expect(updated!.next_run_at).toBe('2026-02-26T09:00:00');
+    });
+
+    it('schedules are deleted on CASCADE when project is deleted', () => {
+      store.createSchedule(
+        project.id, 'ch_sched', 'orphan', 'orphan request',
+        { scheduledAt: '2026-03-01T09:00:00', nextRunAt: '2026-03-01T09:00:00' },
+      );
+      store.deleteProject(project.id);
+      const schedules = store.getSchedulesByChannelId('ch_sched');
+      expect(schedules.length).toBe(0);
     });
   });
 });

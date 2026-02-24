@@ -41,6 +41,20 @@ export interface Session {
 
 export type SessionState = 'idle' | 'running' | 'waiting_for_input' | 'dead';
 
+export interface Schedule {
+  id: number;
+  project_id: number;
+  channel_id: string;
+  prompt: string;
+  original_request: string;
+  cron_expression: string | null;
+  scheduled_at: string | null;
+  next_run_at: string;
+  is_recurring: number;
+  is_active: number;
+  created_at: string;
+}
+
 export interface Setting {
   key: string;
   value: string;
@@ -107,6 +121,23 @@ const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS idx_allowed_tools_project_id ON allowed_tools(project_id);
+  `,
+  // Version 3: scheduled sessions
+  `
+  CREATE TABLE IF NOT EXISTS schedules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    channel_id TEXT NOT NULL,
+    prompt TEXT NOT NULL,
+    original_request TEXT NOT NULL,
+    cron_expression TEXT,
+    scheduled_at TEXT,
+    next_run_at TEXT NOT NULL,
+    is_recurring INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_schedules_next_run ON schedules(next_run_at);
   `,
 ];
 
@@ -257,6 +288,53 @@ export class Store {
   removeAllowedTool(id: number): boolean {
     const info = this.db.prepare('DELETE FROM allowed_tools WHERE id = ?').run(id);
     return info.changes > 0;
+  }
+
+  // --- Schedules CRUD ---
+
+  createSchedule(
+    projectId: number,
+    channelId: string,
+    prompt: string,
+    originalRequest: string,
+    opts: { cronExpression?: string; scheduledAt?: string; nextRunAt: string },
+  ): Schedule {
+    const isRecurring = opts.cronExpression ? 1 : 0;
+    const stmt = this.db.prepare(
+      `INSERT INTO schedules (project_id, channel_id, prompt, original_request, cron_expression, scheduled_at, next_run_at, is_recurring)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    const info = stmt.run(
+      projectId, channelId, prompt, originalRequest,
+      opts.cronExpression ?? null, opts.scheduledAt ?? null,
+      opts.nextRunAt, isRecurring,
+    );
+    return this.db.prepare('SELECT * FROM schedules WHERE id = ?').get(info.lastInsertRowid as number) as Schedule;
+  }
+
+  getDueSchedules(now: string): Schedule[] {
+    return this.db.prepare(
+      'SELECT * FROM schedules WHERE is_active = 1 AND next_run_at <= ? ORDER BY next_run_at'
+    ).all(now) as Schedule[];
+  }
+
+  getSchedulesByChannelId(channelId: string): Schedule[] {
+    return this.db.prepare(
+      'SELECT * FROM schedules WHERE channel_id = ? AND is_active = 1 ORDER BY next_run_at'
+    ).all(channelId) as Schedule[];
+  }
+
+  getScheduleById(id: number): Schedule | undefined {
+    return this.db.prepare('SELECT * FROM schedules WHERE id = ?').get(id) as Schedule | undefined;
+  }
+
+  deactivateSchedule(id: number): boolean {
+    const info = this.db.prepare('UPDATE schedules SET is_active = 0 WHERE id = ?').run(id);
+    return info.changes > 0;
+  }
+
+  updateNextRun(id: number, nextRunAt: string): void {
+    this.db.prepare('UPDATE schedules SET next_run_at = ? WHERE id = ?').run(nextRunAt, id);
   }
 
   // --- Settings CRUD ---
