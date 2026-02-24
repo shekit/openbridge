@@ -10,8 +10,8 @@ import type { Store, Schedule } from './store.js';
 import type { Router } from './router.js';
 import type { Adapter } from './types/adapter.js';
 
-/** Default scheduler tick interval in milliseconds (60 seconds). */
-export const DEFAULT_TICK_INTERVAL_MS = 60_000;
+/** Default scheduler tick interval in milliseconds (30 seconds). */
+export const DEFAULT_TICK_INTERVAL_MS = 30_000;
 
 /**
  * Compute the next run time from a cron expression.
