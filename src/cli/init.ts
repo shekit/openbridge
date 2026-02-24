@@ -149,7 +149,7 @@ export async function inputTokens(
         pc.cyan('Go to api.slack.com/apps → Create New App → From an app manifest'),
         'Slack Setup — Step 1 of 4',
       );
-      await promptConfirm(io, 'Done? Continue to next step', true);
+      await promptConfirm(io, 'Have you created the app?', true);
 
       clack.note(
         [
@@ -160,7 +160,7 @@ export async function inputTokens(
         ].join('\n'),
         'Slack Setup — Step 2 of 4',
       );
-      await promptConfirm(io, 'Done? Continue to next step', true);
+      await promptConfirm(io, 'Have you pasted the manifest and clicked Create?', true);
 
       clack.note(
         pc.cyan('Install to Workspace → copy the Bot Token (starts with xoxb-)'),
@@ -238,7 +238,7 @@ export async function inputTokens(
         pc.cyan('Go to discord.com/developers/applications → New Application'),
         'Discord Setup — Step 1 of 3',
       );
-      await promptConfirm(io, 'Done? Continue to next step', true);
+      await promptConfirm(io, 'Have you created the application?', true);
 
       clack.note(
         pc.cyan('Bot tab → Reset Token → copy it (you\'ll paste it below)'),
@@ -283,7 +283,8 @@ export async function inputTokens(
         pc.cyan('Bot tab → Privileged Gateway Intents → Enable Message Content Intent'),
         'Discord Setup — Step 3 of 3',
       );
-      await promptConfirm(io, 'Done? Continue to next step', true);
+      clack.log.warn('The bot cannot read messages without this — don\'t skip it.');
+      await promptConfirm(io, 'Have you enabled Message Content Intent?', true);
     }
 
     // Show the pre-filled invite URL
