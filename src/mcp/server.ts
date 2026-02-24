@@ -267,7 +267,10 @@ export function createMcpServer(
       description:
         'Schedule a future session with the bridge. ' +
         'Use this when the user asks you to do something at a specific time or on a recurring schedule — ' +
-        'e.g. "remind me every morning at 9am", "check deploys on Friday at 5pm", "send me a news update daily". ' +
+        'e.g. "remind me every morning at 9am", "check deploys on Friday at 5pm", "remind me in 5 minutes". ' +
+        `The current local time is: ${new Date().toISOString()}. ` +
+        'Use this to calculate scheduled_at for relative or calendar-based requests ' +
+        '(e.g. "in 5 minutes" = current time + 5 minutes, "tomorrow at 5pm", "next Friday at 3pm"). ' +
         'The prompt field is what a fresh instance of yourself will receive in a new thread when the schedule fires. ' +
         'Write it as clear instructions for that future AI to execute the user\'s request. ' +
         'Do NOT include any scheduling, timing, or recurrence details in the prompt — the bridge handles all timing. ' +
