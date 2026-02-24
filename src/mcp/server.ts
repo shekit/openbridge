@@ -31,6 +31,9 @@ export interface BridgeCallbacks {
   postMessage(channelId: string, threadId: string, text: string): Promise<void>;
   /** Copy a staged uploaded file to a destination in the project directory. */
   saveUploadedFile(uploadId: string, destination: string, projectDir: string): Promise<string>;
+  /** Register a scheduled session with the bridge. */
+  scheduleSession(channelId: string, threadId: string, prompt: string, originalRequest: string,
+    cronExpression: string | undefined, scheduledAt: string | undefined): Promise<{ scheduleId: number }>;
 }
 
 /**
@@ -257,7 +260,62 @@ export function createMcpServer(
     },
   );
 
-  console.error('[mcp] server created with tools: upload_file, serve_file_browser, preview_server, save_uploaded_file, post_message');
+  // --- schedule_session tool ---
+  server.registerTool(
+    'schedule_session',
+    {
+      description:
+        'Schedule a future session with the bridge. ' +
+        'Use this when the user asks you to do something at a specific time or on a recurring schedule — ' +
+        'e.g. "remind me every morning at 9am", "check deploys on Friday at 5pm", "send me a news update daily". ' +
+        'Provide both the prompt (what the AI should execute) and the original_request (what the user asked, in their words). ' +
+        'For one-time: provide scheduled_at as an ISO 8601 datetime string. ' +
+        'For recurring: provide cron_expression (standard 5-field cron, e.g. "0 9 * * *" for daily at 9am, "0 17 * * 5" for Fridays at 5pm). ' +
+        'Exactly one of cron_expression or scheduled_at must be provided.',
+      inputSchema: {
+        prompt: z.string().describe('The prompt to send to the AI backend when the schedule fires'),
+        original_request: z.string().describe("The user's original request in their own words (shown when listing schedules)"),
+        cron_expression: z.string().optional().describe('5-field cron expression for recurring schedules (e.g. "0 9 * * *" for daily at 9am)'),
+        scheduled_at: z.string().optional().describe('ISO 8601 datetime for one-time schedules (e.g. "2026-02-25T09:00:00")'),
+      },
+    },
+    async ({ prompt, original_request, cron_expression, scheduled_at }) => {
+      try {
+        // Validate: exactly one of cron_expression or scheduled_at
+        if (cron_expression && scheduled_at) {
+          return {
+            content: [{ type: 'text', text: 'Error: Provide either cron_expression (recurring) or scheduled_at (one-time), not both.' }],
+            isError: true,
+          };
+        }
+        if (!cron_expression && !scheduled_at) {
+          return {
+            content: [{ type: 'text', text: 'Error: Provide either cron_expression (recurring) or scheduled_at (one-time).' }],
+            isError: true,
+          };
+        }
+
+        const result = await callbacks.scheduleSession(
+          context.channelId, context.threadId,
+          prompt, original_request,
+          cron_expression ?? undefined, scheduled_at ?? undefined,
+        );
+
+        const typeLabel = cron_expression ? 'Recurring' : 'One-time';
+        return {
+          content: [{ type: 'text', text: `${typeLabel} schedule created (ID: ${result.scheduleId}). The bridge will fire this session automatically.` }],
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: 'text', text: `Error scheduling session: ${message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  console.error('[mcp] server created with tools: upload_file, serve_file_browser, preview_server, save_uploaded_file, post_message, schedule_session');
   return server;
 }
 

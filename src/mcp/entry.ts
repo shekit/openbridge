@@ -114,6 +114,19 @@ async function main(): Promise<void> {
       });
       return result.path as string;
     },
+
+    async scheduleSession(chId, thId, prompt, originalRequest, cronExpression, scheduledAt) {
+      const result = await ipcPost(ipcPort, ipcSecret, '/schedule-session', {
+        channelId: chId,
+        threadId: thId,
+        prompt,
+        originalRequest,
+        cronExpression,
+        scheduledAt,
+        platform,
+      });
+      return { scheduleId: result.scheduleId as number };
+    },
   };
 
   console.error('[mcp-entry] starting MCP server for', { channelId, threadId, projectDir, platform });

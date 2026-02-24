@@ -33,6 +33,9 @@ export interface IpcHandler {
   renderTodos?(channelId: string, threadId: string,
     todos: Array<{ content: string; status: string; activeForm: string }>,
     platform: string): Promise<void>;
+  /** Register a scheduled session. Returns the schedule ID. */
+  scheduleSession?(channelId: string, prompt: string, originalRequest: string,
+    cronExpression: string | undefined, scheduledAt: string | undefined): Promise<{ scheduleId: number }>;
 }
 
 /** Pending permission request — waiting for user to click Allow/Deny. */
@@ -409,6 +412,24 @@ export function startIpcServer(handler: IpcHandler): Promise<IpcServer> {
           }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true }));
+          break;
+        }
+
+        case '/schedule-session': {
+          const { channelId, prompt, originalRequest, cronExpression, scheduledAt } = data as {
+            channelId: string; prompt: string; originalRequest: string;
+            cronExpression?: string; scheduledAt?: string;
+          };
+          if (!handler.scheduleSession) {
+            res.writeHead(501, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'scheduleSession not implemented' }));
+            break;
+          }
+          const result = await handler.scheduleSession(channelId, prompt, originalRequest,
+            cronExpression, scheduledAt);
+          console.log(`[ipc] schedule-session created: ${result.scheduleId}`);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, scheduleId: result.scheduleId }));
           break;
         }
 

@@ -9,13 +9,16 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { IpcHandler } from './ipc-server.js';
 import type { Adapter } from '../types/adapter.js';
+import type { Store } from '../store.js';
 import { openTunnel } from './tunnel.js';
 import { startFileBrowser, type FileBrowser } from './file-browser.js';
 import { startPreviewServer } from './preview-server.js';
 import { getUploadsDir } from '../utils.js';
+import { computeNextRun } from '../scheduler.js';
 
 export interface CallbackHandlerOptions {
   adapters: Map<string, Adapter>;
+  store?: Store;
 }
 
 /** Tracks active file browsers for cleanup. */
@@ -48,7 +51,7 @@ export function markPostMessageCalled(threadId: string): void {
  * adapter, tunnel manager, or file browser.
  */
 export function createCallbackHandler(options: CallbackHandlerOptions): IpcHandler {
-  const { adapters } = options;
+  const { adapters, store } = options;
 
   function getAdapter(platform: string): Adapter {
     const adapter = adapters.get(platform);
@@ -136,6 +139,27 @@ export function createCallbackHandler(options: CallbackHandlerOptions): IpcHandl
       console.log(`[callbacks] saved uploaded file ${uploadId} to ${resolvedDest}`);
 
       return resolvedDest;
+    },
+
+    async scheduleSession(channelId, prompt, originalRequest, cronExpression, scheduledAt) {
+      if (!store) {
+        throw new Error('Store not available for scheduling');
+      }
+      const project = store.getProjectByChannelId(channelId);
+      if (!project) {
+        throw new Error(`No project connected to channel ${channelId}`);
+      }
+
+      const nextRunAt = cronExpression
+        ? computeNextRun(cronExpression)
+        : scheduledAt!;
+
+      const schedule = store.createSchedule(
+        project.id, channelId, prompt, originalRequest,
+        { cronExpression, scheduledAt, nextRunAt },
+      );
+      console.log(`[callbacks] created schedule ${schedule.id} for channel ${channelId}`);
+      return { scheduleId: schedule.id };
     },
   };
 }
