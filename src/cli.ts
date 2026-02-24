@@ -6,7 +6,11 @@
  * Usage: openbridge-ai start
  */
 
+import { createRequire } from 'node:module';
 import { runStart, runConfigure } from './cli/start.js';
+
+const require = createRequire(import.meta.url);
+const pkg = require('../package.json') as { version: string };
 
 const USAGE = `
 openbridge-ai — Remote control for coding agents via Slack/Discord
@@ -48,7 +52,7 @@ export async function cli(argv: string[]): Promise<void> {
       break;
 
     case 'version':
-      console.log('openbridge-ai 0.1.0');
+      console.log(`openbridge-ai ${pkg.version}`);
       break;
 
     case 'start':

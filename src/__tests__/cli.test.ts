@@ -75,7 +75,7 @@ describe('CLI entry point (P6.1)', () => {
     it('shows version for --version', async () => {
       const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
       await cli(['node', 'cli.js', '--version']);
-      expect(spy).toHaveBeenCalledWith(expect.stringContaining('0.1.0'));
+      expect(spy).toHaveBeenCalledWith(expect.stringMatching(/openbridge-ai \d+\.\d+\.\d+/));
     });
 
     it('exits with error for unknown command', async () => {
