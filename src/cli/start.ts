@@ -546,5 +546,16 @@ export async function runConfigure(): Promise<void> {
     return;
   }
 
+  // Check if setup has been completed — if not, run the wizard instead
+  const store = new Store(dbPath);
+  const hasBackend = store.getSetting('default_backend');
+  store.close();
+
+  if (!hasBackend) {
+    console.log('[configure] setup not complete — running setup wizard first...\n');
+    await runInit();
+    return;
+  }
+
   await handleConfigMenu(dbPath, envPath);
 }
