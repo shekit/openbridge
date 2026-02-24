@@ -30,6 +30,7 @@ import { closeAllTunnels } from '../mcp/tunnel.js';
 import { closeAllPreviews } from '../mcp/preview-server.js';
 import { getMcpConfig } from '../mcp/server.js';
 import type { Adapter } from '../types/adapter.js';
+import { Scheduler } from '../scheduler.js';
 
 /** Get a required setting or throw if not configured. */
 function requireSetting(store: Store, key: string): string {
@@ -389,7 +390,7 @@ export async function runStart(deps?: StartDeps): Promise<void> {
 
   // --- Start IPC server for MCP callbacks ---
   const adapterMap = new Map<string, Adapter>();
-  const ipcHandler = createCallbackHandler({ adapters: adapterMap });
+  const ipcHandler = createCallbackHandler({ adapters: adapterMap, store });
   const ipcServer = await startIpcServer(ipcHandler);
   console.log(`[start] IPC server listening on port ${ipcServer.port}`);
 
@@ -493,6 +494,14 @@ export async function runStart(deps?: StartDeps): Promise<void> {
     }
   }
 
+  // --- Start scheduler for scheduled sessions ---
+  const tickIntervalSetting = store.getSetting('scheduler_tick_interval_ms');
+  const tickIntervalMs = tickIntervalSetting ? parseInt(tickIntervalSetting, 10) : undefined;
+  const scheduler = new Scheduler(store, router, adapterMap,
+    tickIntervalMs ? { tickIntervalMs } : undefined,
+  );
+  scheduler.start();
+
   console.log(`[start] bridge is running — listening on ${adapterList.map((a) => a.name).join(', ')}`);
 
   // Show next-steps guidance
@@ -515,6 +524,8 @@ export async function runStart(deps?: StartDeps): Promise<void> {
   // Handle graceful shutdown
   const shutdown = async () => {
     console.log('[start] shutting down...');
+    // Stop scheduler
+    scheduler.stop();
     // Stop all active backend sessions
     await router.shutdown();
     // Close tunnels, file browsers, and preview servers
