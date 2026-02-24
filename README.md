@@ -10,7 +10,7 @@ Set it up on a your laptop or a VPS and then chat with your projects from anywhe
 
 ## Demo
 
-[![Watch the demo](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](https://www.youtube.com/watch?v=VIDEO_ID)
+[![Watch the demo](https://img.youtube.com/vi/HTGZughMCdU/maxresdefault.jpg)](https://www.youtube.com/watch?v=HTGZughMCdU)
 
 ## Quick Start
 
@@ -30,6 +30,16 @@ To change settings later:
 ```bash
 openbridge-ai configure
 ```
+
+## Requirements
+
+- Node.js >= 18
+- At least one coding backend:
+  - **Claude Code**: `npm install -g @anthropic-ai/claude-code`
+  - **Codex CLI**: `npm install -g @openai/codex`
+- Optional (for preview links and file browsing):
+  - **Cloudflared** (recommended): `brew install cloudflared` or [download](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
+  - **ngrok**: `brew install ngrok` or [download](https://ngrok.com/download)
 
 ## Chat Commands
 
@@ -51,7 +61,3 @@ On Discord, the same commands are available as slash commands, plus `/new` and `
 
 The setup wizard walks you through creating your Slack or Discord bot and entering tokens. For detailed manual instructions, see [PLATFORM-SETUP.md](https://github.com/shekit/openbridge/blob/main/PLATFORM-SETUP.md).
 
-## Requirements
-
-- Node.js >= 18
-- Claude Code (`claude`) and/or Codex CLI (`codex`) installed and available on PATH

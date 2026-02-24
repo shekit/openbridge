@@ -1,6 +1,6 @@
 {
   "name": "openbridge-ai",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Remote control for coding agents via Slack/Discord",
   "type": "module",
   "main": "dist/index.js",
@@ -16,13 +16,23 @@
   "engines": {
     "node": ">=18"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/shekit/openbridge"
   },
-  "keywords": ["slack", "discord", "claude", "codex", "ai", "coding-agent", "openbridge"],
+  "keywords": [
+    "slack",
+    "discord",
+    "claude",
+    "codex",
+    "ai",
+    "coding-agent",
+    "openbridge"
+  ],
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.3.0",
