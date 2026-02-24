@@ -203,25 +203,29 @@ describe('CLI start (P6.7)', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
-    it('exits with error if no platforms configured', async () => {
+    it('runs setup wizard if no platforms configured', async () => {
       const tmpDir = createTempDir('openbridge-start-');
       const dbPath = path.join(tmpDir, '.openbridge', 'bridge.db');
       const envPath = path.join(tmpDir, '.env.local');
       fs.writeFileSync(envPath, '');
 
-      // Create store but don't set platforms
-      const store = new Store(dbPath);
-      store.close();
+      // Create store but don't set platforms (simulates cancelled configure)
+      const dbStore = new Store(dbPath);
+      dbStore.close();
 
+      // Mock runInit to simulate completing setup
+      const initSpy = vi.spyOn(initModule, 'runInit').mockImplementation(async () => {
+        const s = new Store(dbPath);
+        s.setSetting('platforms', JSON.stringify(['slack']));
+        s.setSetting('default_backend', 'claude');
+        s.close();
+      });
+      // Still need to mock exit since start will proceed and try to connect
       const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
-      const errorSpy = vi.spyOn(console, 'error');
 
-      await runStart({ dbPath, envPath });
+      await runStart({ dbPath, envPath, dryRun: true });
 
-      expect(errorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('no platforms configured'),
-      );
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(initSpy).toHaveBeenCalled();
 
       fs.rmSync(tmpDir, { recursive: true, force: true });
     });

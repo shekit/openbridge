@@ -350,10 +350,19 @@ export async function runStart(deps?: StartDeps): Promise<void> {
   const envPath = deps?.envPath ?? getEnvPath();
   const dryRun = deps?.dryRun ?? false;
 
-  // Auto-run init if ~/.openbridge-ai/ doesn't exist yet (first run)
+  // Auto-run init if not set up yet (first run or incomplete setup)
   if (!fs.existsSync(path.dirname(dbPath))) {
     console.log('[start] first run detected — running setup wizard...\n');
     await runInit();
+  } else {
+    // Directory exists but setup may be incomplete (e.g. user cancelled configure)
+    const checkStore = new Store(dbPath);
+    const hasConfig = checkStore.getSetting('platforms');
+    checkStore.close();
+    if (!hasConfig) {
+      console.log('[start] setup not complete — running setup wizard...\n');
+      await runInit();
+    }
   }
 
   // Load environment variables
