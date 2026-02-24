@@ -28,5 +28,7 @@ Thumbs.db
 # Test coverage
 coverage/
 
-# Prototype logs
-prototype/io-harness/logs/
+# Internal dev files (keep locally, don't publish)
+claude-progress.md
+feature-list.json
+CLAUDE.md

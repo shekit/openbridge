@@ -59,5 +59,5 @@ On Discord, the same commands are available as slash commands, plus `/new` and `
 
 ## Platform Setup
 
-The setup wizard walks you through creating your Slack or Discord bot and entering tokens. For detailed manual instructions, see [PLATFORM-SETUP.md](https://github.com/shekit/openbridge/blob/main/PLATFORM-SETUP.md).
+The setup wizard walks you through creating your Slack or Discord bot and entering tokens. For detailed manual instructions, see [PLATFORM-SETUP.md](https://github.com/shekit/openbridge/blob/main/docs/PLATFORM-SETUP.md).
 

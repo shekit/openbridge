@@ -2,11 +2,9 @@
 
 ## Architecture
 
-For system design, components, and scope, see: `ARCHITECTURE.md`
+For system design, components, and scope, see: `docs/ARCHITECTURE.md`
 
 This document is the source of truth for what we're building. The feature list (`feature-list.json`) is derived from it.
-
-Prototype findings that informed the architecture: `prototype/FINDINGS.md`
 
 ## Documentation Lookup
 
