@@ -52,6 +52,10 @@ export interface Adapter {
   /** Post a plain text message to a thread. Called by MCP callbacks (no context object needed). */
   sendMessage(channelId: string, threadId: string, text: string): Promise<void>;
 
+  /** Create a new thread/conversation in a channel. Returns the thread ID.
+   *  Used by the scheduler to start bridge-initiated sessions. */
+  createThread(channelId: string, title: string): Promise<string>;
+
   /** Render a todo checklist in a thread (post new or update existing). */
   renderTodoList(
     channelId: string,

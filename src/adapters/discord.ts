@@ -1346,6 +1346,18 @@ export class DiscordAdapter {
     await (channel as TextChannel).send({ content: truncated });
   }
 
+  async createThread(channelId: string, title: string): Promise<string> {
+    const channel = await this.client.channels.fetch(channelId);
+    if (!channel || channel.type !== ChannelType.GuildText) {
+      throw new Error(`[discord] createThread: channel ${channelId} is not a text channel`);
+    }
+    const thread = await (channel as TextChannel).threads.create({
+      name: title.substring(0, 100),
+      autoArchiveDuration: 60,
+    });
+    return thread.id;
+  }
+
   /** Format todos as Discord markdown checklist. */
   private formatTodosDiscord(
     todos: Array<{ content: string; status: string; activeForm: string }>,

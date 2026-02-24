@@ -1514,6 +1514,17 @@ export class SlackAdapter {
     });
   }
 
+  async createThread(channelId: string, title: string): Promise<string> {
+    const result = await this.app.client.chat.postMessage({
+      channel: channelId,
+      text: title,
+    });
+    if (!result.ts) {
+      throw new Error('Failed to create thread — no message timestamp returned');
+    }
+    return result.ts;
+  }
+
   /** Format todos as Slack mrkdwn checklist. */
   private formatTodosSlack(
     todos: Array<{ content: string; status: string; activeForm: string }>,
