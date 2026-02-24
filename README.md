@@ -52,8 +52,14 @@ openbridge-ai configure
 | `/project disconnect` | Disconnect this channel |
 | `/project backend claude\|codex` | Switch backend for this project |
 | `/settings root /path` | Set the projects root folder |
+| `/settings schedule list` | Show all scheduled sessions for this channel |
+| `/settings schedule cancel <id>` | Cancel a scheduled session |
 
 In Slack threads: type `cancel` to stop a running task, `new` to reset the session.
+
+## Scheduled Sessions
+
+Ask your AI to do things on a schedule — "remind me every morning at 9am" or "check deploy status every Friday at 5pm". The AI registers the schedule with the bridge, which handles the timing. One-time reminders reply in the original thread; recurring schedules create new threads each time they fire.
 
 On Discord, the same commands are available as slash commands, plus `/new` and `/cancel`.
 
