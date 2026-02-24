@@ -141,9 +141,12 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX IF NOT EXISTS idx_schedules_next_run ON schedules(next_run_at);
   `,
-  // Version 4: add thread_id and title to schedules
+  // Version 4: add thread_id to schedules for replying in original thread
   `
   ALTER TABLE schedules ADD COLUMN thread_id TEXT;
+  `,
+  // Version 5: add title to schedules for recurring thread names
+  `
   ALTER TABLE schedules ADD COLUMN title TEXT;
   `,
 ];
