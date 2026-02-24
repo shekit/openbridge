@@ -62,6 +62,7 @@ In Slack threads: type `cancel` to stop a running task, `new` to reset the sessi
 Ask your AI to do things on a schedule. OpenBridge handles it all.
 
 - "Give me a news summary every morning at 9am"
+- "Review open PRs every morning"
 - "Remind me to do squats every hour"
 - "Remind me to text mom in two hours"
 
