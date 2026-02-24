@@ -1846,7 +1846,7 @@ describe('SlackAdapter', () => {
       clearPostMessageFlag('T_A');
     });
 
-    it('truncates long fallback assistant_text to last 500 chars', async () => {
+    it('posts full assistant_text without truncation', async () => {
       const longText = 'A'.repeat(300) + 'B'.repeat(300) + 'THE_END';
       const longBackend = vi.fn(() => ({
         start: vi.fn(async () => {}),
@@ -1875,10 +1875,9 @@ describe('SlackAdapter', () => {
       });
 
       expect(capturedTexts).toHaveLength(1);
-      // Should be truncated: starts with "..." and ends with the original ending
-      expect(capturedTexts[0]).toMatch(/^\.\.\./);
+      // Full text should be posted, not truncated
       expect(capturedTexts[0]).toContain('THE_END');
-      expect(capturedTexts[0].length).toBeLessThanOrEqual(503); // 500 + "..."
+      expect(capturedTexts[0]).toContain('A'.repeat(300));
     });
 
     it('always renders error events regardless of assistant_text suppression', async () => {

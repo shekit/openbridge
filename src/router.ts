@@ -129,7 +129,7 @@ export class Router {
       minute: '2-digit',
       hour12: true,
     });
-    return `[Current time: ${now}]\n\n${text}`;
+    return `[Current time: ${now}]\n[You are responding in a chat thread. Keep your final text responses succinct and scannable.]\n\n${text}`;
   }
 
   /** Augment prompt text with upload info for files that have staging metadata. */

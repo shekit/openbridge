@@ -1753,7 +1753,7 @@ describe('DiscordAdapter', () => {
       expect(sendCalls).toHaveLength(0);
     });
 
-    it('truncates long fallback assistant_text to last 500 chars', async () => {
+    it('posts full assistant_text without truncation', async () => {
       const longText = 'A'.repeat(300) + 'B'.repeat(300) + 'THE_END';
       const longBackend = vi.fn(() => ({
         start: vi.fn(async () => {}),
@@ -1785,10 +1785,9 @@ describe('DiscordAdapter', () => {
       const sendCalls = (message.channel.send as any).mock.calls
         .filter((c: any) => c[0] !== 'Processing...' && c[0]?.content !== 'Processing...');
       expect(sendCalls).toHaveLength(1);
-      // Should be truncated: starts with "..." and ends with the original ending
-      expect(sendCalls[0][0].content).toMatch(/^\.\.\./);
+      // Full text should be posted, not truncated
       expect(sendCalls[0][0].content).toContain('THE_END');
-      expect(sendCalls[0][0].content.length).toBeLessThanOrEqual(503); // 500 + "..."
+      expect(sendCalls[0][0].content).toContain('A'.repeat(300));
     });
 
     it('always renders error events regardless of assistant_text suppression', async () => {
