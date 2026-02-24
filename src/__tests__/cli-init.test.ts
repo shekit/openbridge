@@ -73,11 +73,11 @@ describe('CLI init — platform selection (P6.2)', () => {
 describe('CLI init — token validation (P6.3)', () => {
   describe('validateSlackBotToken', () => {
     it('accepts valid xoxb- token', () => {
-      expect(validateSlackBotToken('xoxb-1234567890-abcdefghijklmnop')).toBeNull();
+      expect(validateSlackBotToken('xoxb-fake-test-token-not-real')).toBeNull();
     });
 
     it('rejects non-xoxb prefix', () => {
-      expect(validateSlackBotToken('xoxp-1234567890-abcdefghijklmnop')).toContain('xoxb-');
+      expect(validateSlackBotToken('xoxp-fake-test-token-not-real')).toContain('xoxb-');
     });
 
     it('rejects short token', () => {
@@ -87,11 +87,11 @@ describe('CLI init — token validation (P6.3)', () => {
 
   describe('validateSlackAppToken', () => {
     it('accepts valid xapp- token', () => {
-      expect(validateSlackAppToken('xapp-1-A1234567890-1234567890123-abcdef')).toBeNull();
+      expect(validateSlackAppToken('xapp-1-FAKE-0000000000000-faketoken')).toBeNull();
     });
 
     it('rejects non-xapp prefix', () => {
-      expect(validateSlackAppToken('xoxb-1234567890-abcdefghijklmnop')).toContain('xapp-');
+      expect(validateSlackAppToken('xoxb-fake-test-token-not-real')).toContain('xapp-');
     });
 
     it('rejects short token', () => {
@@ -101,7 +101,7 @@ describe('CLI init — token validation (P6.3)', () => {
 
   describe('validateDiscordToken', () => {
     it('accepts valid Discord token', () => {
-      expect(validateDiscordToken('MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.AAAAAA.abcdefghijklmnopqrstuvwx')).toBeNull();
+      expect(validateDiscordToken('FAKE-DISCORD-TOKEN.AAAAAA.not-a-real-token-for-testing')).toBeNull();
     });
 
     it('rejects short token', () => {
@@ -116,27 +116,27 @@ describe('CLI init — token validation (P6.3)', () => {
 
     it('prompts for Slack tokens when Slack selected', async () => {
       const io = mockIO([
-        'xoxb-1234567890-abcdefghijklmnop',
-        'xapp-1-A1234567890-1234567890123-abcdef',
+        'xoxb-fake-test-token-not-real',
+        'xapp-1-FAKE-0000000000000-faketoken',
       ]);
       const result = await inputTokens(io, ['slack']);
-      expect(result.slackBotToken).toBe('xoxb-1234567890-abcdefghijklmnop');
-      expect(result.slackAppToken).toBe('xapp-1-A1234567890-1234567890123-abcdef');
+      expect(result.slackBotToken).toBe('xoxb-fake-test-token-not-real');
+      expect(result.slackAppToken).toBe('xapp-1-FAKE-0000000000000-faketoken');
       expect(result.discordBotToken).toBeUndefined();
     });
 
     it('prompts for Discord token when Discord selected', async () => {
-      const io = mockIO(['MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.AAAAAA.abcdefghijklmnopqrstuvwx']);
+      const io = mockIO(['FAKE-DISCORD-TOKEN.AAAAAA.not-a-real-token-for-testing']);
       const result = await inputTokens(io, ['discord']);
-      expect(result.discordBotToken).toBe('MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.AAAAAA.abcdefghijklmnopqrstuvwx');
+      expect(result.discordBotToken).toBe('FAKE-DISCORD-TOKEN.AAAAAA.not-a-real-token-for-testing');
       expect(result.slackBotToken).toBeUndefined();
     });
 
     it('prompts for all tokens when both selected', async () => {
       const io = mockIO([
-        'xoxb-1234567890-abcdefghijklmnop',
-        'xapp-1-A1234567890-1234567890123-abcdef',
-        'MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.AAAAAA.abcdefghijklmnopqrstuvwx',
+        'xoxb-fake-test-token-not-real',
+        'xapp-1-FAKE-0000000000000-faketoken',
+        'FAKE-DISCORD-TOKEN.AAAAAA.not-a-real-token-for-testing',
       ]);
       const result = await inputTokens(io, ['slack', 'discord']);
       expect(result.slackBotToken).toBeDefined();
