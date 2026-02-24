@@ -124,22 +124,28 @@ export class Scheduler {
       threadId = await adapter.createThread(schedule.channel_id, threadTitle);
     }
 
-    // Run the session through the router (same path as user messages)
+    // Run the session and post results. If the original thread is gone, fall back to a new thread.
     try {
-      const result = await this.router.send(schedule.channel_id, threadId, schedule.prompt);
-
-      // Post any assistant_text events that weren't already posted via post_message MCP tool
-      for (const event of result.events) {
-        if (event.type === 'assistant_text' && event.text) {
-          await adapter.sendMessage(schedule.channel_id, threadId, event.text);
-        } else if (event.type === 'error') {
-          await adapter.sendMessage(schedule.channel_id, threadId, `Error: ${event.message}`);
-        }
-      }
+      await this.runSession(adapter, schedule, threadId);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[scheduler] session failed for schedule ${schedule.id}: ${msg}`);
-      await adapter.sendMessage(schedule.channel_id, threadId, `Scheduled session failed: ${msg}`);
+      if (!schedule.is_recurring && schedule.thread_id) {
+        // Original thread may have been deleted — fall back to a new thread
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[scheduler] schedule ${schedule.id}: original thread failed (${msg}), creating new thread`);
+        const fallbackLabel = schedule.title ?? schedule.original_request;
+        const fallbackId = await adapter.createThread(schedule.channel_id, `Scheduled: ${fallbackLabel}`);
+        try {
+          await this.runSession(adapter, schedule, fallbackId);
+        } catch (innerErr) {
+          const innerMsg = innerErr instanceof Error ? innerErr.message : String(innerErr);
+          console.error(`[scheduler] session failed for schedule ${schedule.id} (fallback): ${innerMsg}`);
+          await adapter.sendMessage(schedule.channel_id, fallbackId, `Scheduled session failed: ${innerMsg}`);
+        }
+      } else {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[scheduler] session failed for schedule ${schedule.id}: ${msg}`);
+        await adapter.sendMessage(schedule.channel_id, threadId, `Scheduled session failed: ${msg}`);
+      }
     }
 
     // Update schedule: advance next_run_at for recurring, deactivate one-time
@@ -156,6 +162,18 @@ export class Scheduler {
     } else {
       this.store.deactivateSchedule(schedule.id);
       console.log(`[scheduler] schedule ${schedule.id}: one-time schedule completed`);
+    }
+  }
+
+  /** Run a session in a thread and post the results. Throws on failure. */
+  private async runSession(adapter: Adapter, schedule: Schedule, threadId: string): Promise<void> {
+    const result = await this.router.send(schedule.channel_id, threadId, schedule.prompt);
+    for (const event of result.events) {
+      if (event.type === 'assistant_text' && event.text) {
+        await adapter.sendMessage(schedule.channel_id, threadId, event.text);
+      } else if (event.type === 'error') {
+        await adapter.sendMessage(schedule.channel_id, threadId, `Error: ${event.message}`);
+      }
     }
   }
 }
