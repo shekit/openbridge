@@ -59,7 +59,11 @@ In Slack threads: type `cancel` to stop a running task, `new` to reset the sessi
 
 ## Scheduled Sessions
 
-Ask your AI to do things on a schedule — "remind me every morning at 9am" or "check deploy status every Friday at 5pm". The AI registers the schedule with the bridge, which handles the timing. One-time reminders reply in the original thread; recurring schedules create new threads each time they fire.
+Ask your AI to do things on a schedule. The bridge handles all the timing — backends are only spun up when needed.
+
+- "Remind me to check deploys every Friday at 5pm"
+- "Give me a news summary every morning at 9am"
+- "Remind me in 30 minutes to review the PR"
 
 On Discord, the same commands are available as slash commands, plus `/new` and `/cancel`.
 
