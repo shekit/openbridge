@@ -109,6 +109,12 @@ export function createCallbackHandler(options: CallbackHandlerOptions): IpcHandl
     },
 
     async postMessage(channelId, threadId, text, platform) {
+      // If a schedule was just created for this thread, suppress the confirmation text
+      // (Claude may still call post_message despite being told not to)
+      if (threadsWithScheduleCreated.has(threadId)) {
+        console.log(`[callbacks] suppressed post_message for thread ${threadId} (schedule created)`);
+        return;
+      }
       threadsWithPostMessage.add(threadId);
       const adapter = getAdapter(platform);
       await adapter.sendMessage(channelId, threadId, text);
