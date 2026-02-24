@@ -165,6 +165,7 @@ function createMockInteraction(overrides: {
   isThread?: boolean;
   parentId?: string;
   options?: Record<string, string | null>;
+  intOptions?: Record<string, number | null>;
   subcommand?: string;
   guildChannels?: any;
 } = {}) {
@@ -200,6 +201,7 @@ function createMockInteraction(overrides: {
     guild: mockGuild,
     options: {
       getString: vi.fn((name: string) => overrides.options?.[name] ?? null),
+      getInteger: vi.fn((name: string) => overrides.intOptions?.[name] ?? null),
       getSubcommand: vi.fn(() => overrides.subcommand ?? null),
     },
     reply: vi.fn(async (content: any) => {
@@ -1233,6 +1235,91 @@ describe('DiscordAdapter', () => {
 
       const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
       expect(text).toContain('No project connected');
+    });
+  });
+
+  describe('/schedule list and cancel', () => {
+    it('lists active schedules for the channel', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const project = store.createProject('C_SCHED', '/test/sched', 'claude');
+      store.createSchedule(
+        project.id, 'C_SCHED', 'news prompt', 'give me daily news',
+        { cronExpression: '0 9 * * *', nextRunAt: '2026-02-25T09:00:00' },
+      );
+
+      const { interaction, replies } = createMockInteraction({
+        commandName: 'schedule',
+        subcommand: 'list',
+        channelId: 'C_SCHED',
+      });
+
+      await triggerInteraction(interaction);
+
+      const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
+      expect(text).toContain('give me daily news');
+      expect(text).toContain('cron');
+    });
+
+    it('shows empty message when no schedules', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const { interaction, replies } = createMockInteraction({
+        commandName: 'schedule',
+        subcommand: 'list',
+        channelId: 'C_EMPTY',
+      });
+
+      await triggerInteraction(interaction);
+
+      const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
+      expect(text).toContain('No scheduled sessions');
+    });
+
+    it('cancels a schedule by ID', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const project = store.createProject('C_CANCEL', '/test/cancel', 'claude');
+      const sched = store.createSchedule(
+        project.id, 'C_CANCEL', 'to cancel', 'cancel this task',
+        { scheduledAt: '2026-03-01T09:00:00', nextRunAt: '2026-03-01T09:00:00' },
+      );
+
+      const { interaction, replies } = createMockInteraction({
+        commandName: 'schedule',
+        subcommand: 'cancel',
+        channelId: 'C_CANCEL',
+        intOptions: { id: sched.id },
+      });
+
+      await triggerInteraction(interaction);
+
+      const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
+      expect(text).toContain('Cancelled');
+      expect(text).toContain('cancel this task');
+
+      const updated = store.getScheduleById(sched.id);
+      expect(updated!.is_active).toBe(0);
+    });
+
+    it('rejects cancel for nonexistent schedule', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const { interaction, replies } = createMockInteraction({
+        commandName: 'schedule',
+        subcommand: 'cancel',
+        channelId: 'C_NOEXIST',
+        intOptions: { id: 99999 },
+      });
+
+      await triggerInteraction(interaction);
+
+      const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
+      expect(text).toContain('No active schedule');
     });
   });
 

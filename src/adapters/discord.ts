@@ -173,6 +173,18 @@ export class DiscordAdapter {
       new SlashCommandBuilder()
         .setName('cancel')
         .setDescription('Cancel the running task in this thread'),
+      new SlashCommandBuilder()
+        .setName('schedule')
+        .setDescription('Manage scheduled sessions')
+        .addSubcommand((sub) =>
+          sub.setName('list')
+            .setDescription('List active schedules for this channel')
+        )
+        .addSubcommand((sub) =>
+          sub.setName('cancel')
+            .setDescription('Cancel a schedule by ID')
+            .addIntegerOption((opt) => opt.setName('id').setDescription('Schedule ID (from /schedule list)').setRequired(true))
+        ),
     ];
 
     const rest = new REST().setToken(this.botToken);
@@ -367,6 +379,9 @@ export class DiscordAdapter {
           break;
         case 'cancel':
           await this.handleCancelCommand(interaction);
+          break;
+        case 'schedule':
+          await this.handleScheduleCommand(interaction);
           break;
       }
     } else if (interaction.isButton()) {
@@ -1171,6 +1186,44 @@ export class DiscordAdapter {
     text += '\n\n_Commands:_';
     text += '\n- `/settings root path:/path` — set projects root folder';
     await interaction.reply(text);
+  }
+
+  /** Handle /schedule slash command. */
+  private async handleScheduleCommand(interaction: any): Promise<void> {
+    const channelId = interaction.channelId;
+    const subcommand = interaction.options?.getSubcommand?.() ?? '';
+
+    if (subcommand === 'list') {
+      const schedules = this.store.getSchedulesByChannelId(channelId);
+      if (schedules.length === 0) {
+        await interaction.reply('No scheduled sessions for this channel.');
+        return;
+      }
+      const lines = schedules.map((s, i) => {
+        const typeLabel = s.is_recurring ? `cron: \`${s.cron_expression}\`` : `one-time: ${s.scheduled_at}`;
+        return `${i + 1}. "${s.original_request}" — ${typeLabel} (next: ${s.next_run_at}) [ID: ${s.id}]`;
+      });
+      await interaction.reply(`**Scheduled Sessions**\n${lines.join('\n')}`);
+      return;
+    }
+
+    if (subcommand === 'cancel') {
+      const id = interaction.options.getInteger('id');
+      if (!id) {
+        await interaction.reply('Usage: `/schedule cancel id:<schedule ID>`');
+        return;
+      }
+      const schedule = this.store.getScheduleById(id);
+      if (!schedule || schedule.channel_id !== channelId || !schedule.is_active) {
+        await interaction.reply(`No active schedule with ID ${id} found in this channel.`);
+        return;
+      }
+      this.store.deactivateSchedule(id);
+      await interaction.reply(`Cancelled schedule: "${schedule.original_request}"`);
+      return;
+    }
+
+    await interaction.reply(`Unknown subcommand. Try \`/schedule list\` or \`/schedule cancel\`.`);
   }
 
   /** Handle file uploads in messages — downloads all file types for backend passthrough. */

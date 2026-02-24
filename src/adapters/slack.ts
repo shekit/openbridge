@@ -186,6 +186,12 @@ export class SlackAdapter {
       if (!(await this.ensureInChannel(command.channel_id, client))) return;
       await this.handleSettingsCommand(command, client);
     });
+
+    this.app.command('/schedule', async ({ command, ack, client }) => {
+      await ack();
+      if (!(await this.ensureInChannel(command.channel_id, client))) return;
+      await this.handleScheduleCommand(command, client);
+    });
   }
 
   /**
@@ -1418,6 +1424,83 @@ export class SlackAdapter {
         text: '*Usage:*\n• `/settings root /path` — set projects root folder',
       });
     }
+  }
+
+  private async handleScheduleCommand(command: any, client: any): Promise<void> {
+    const channelId = command.channel_id;
+    const rawArgs = (command.text || '').trim();
+    const parts = rawArgs.split(/\s+/);
+    const subcommand = parts[0] || '';
+
+    if (!subcommand || subcommand === 'help') {
+      await client.chat.postMessage({
+        channel: channelId,
+        text: [
+          '*Schedule commands:*',
+          '• `/schedule list` — list active schedules for this channel',
+          '• `/schedule cancel <id>` — cancel a schedule by ID',
+        ].join('\n'),
+      });
+      return;
+    }
+
+    if (subcommand === 'list') {
+      const schedules = this.store.getSchedulesByChannelId(channelId);
+      if (schedules.length === 0) {
+        await client.chat.postMessage({
+          channel: channelId,
+          text: 'No scheduled sessions for this channel.',
+        });
+        return;
+      }
+      const lines = schedules.map((s, i) => {
+        const typeLabel = s.is_recurring ? `cron: \`${s.cron_expression}\`` : `one-time: ${s.scheduled_at}`;
+        return `${i + 1}. "${s.original_request}" — ${typeLabel} (next: ${s.next_run_at}) [ID: ${s.id}]`;
+      });
+      await client.chat.postMessage({
+        channel: channelId,
+        text: `*Scheduled Sessions*\n${lines.join('\n')}`,
+      });
+      return;
+    }
+
+    if (subcommand === 'cancel') {
+      const idStr = parts[1];
+      if (!idStr) {
+        await client.chat.postMessage({
+          channel: channelId,
+          text: 'Usage: `/schedule cancel <id>` — get IDs from `/schedule list`',
+        });
+        return;
+      }
+      const id = parseInt(idStr, 10);
+      if (isNaN(id)) {
+        await client.chat.postMessage({
+          channel: channelId,
+          text: `Invalid schedule ID: \`${idStr}\``,
+        });
+        return;
+      }
+      const schedule = this.store.getScheduleById(id);
+      if (!schedule || schedule.channel_id !== channelId || !schedule.is_active) {
+        await client.chat.postMessage({
+          channel: channelId,
+          text: `No active schedule with ID ${id} found in this channel.`,
+        });
+        return;
+      }
+      this.store.deactivateSchedule(id);
+      await client.chat.postMessage({
+        channel: channelId,
+        text: `Cancelled schedule: "${schedule.original_request}"`,
+      });
+      return;
+    }
+
+    await client.chat.postMessage({
+      channel: channelId,
+      text: `Unknown subcommand: \`${subcommand}\`. Try \`/schedule help\`.`,
+    });
   }
 
   /** Handle file uploads in messages — downloads all file types for backend passthrough. */

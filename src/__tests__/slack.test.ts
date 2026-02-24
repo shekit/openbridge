@@ -1022,6 +1022,77 @@ describe('SlackAdapter', () => {
     });
   });
 
+  describe('/schedule list and cancel', () => {
+    it('lists active schedules for the channel', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const project = store.createProject('C_SCHED', '/test/sched', 'claude');
+      store.createSchedule(
+        project.id, 'C_SCHED', 'news prompt', 'give me daily news',
+        { cronExpression: '0 9 * * *', nextRunAt: '2026-02-25T09:00:00' },
+      );
+
+      await triggerCommand('/schedule', {
+        channel_id: 'C_SCHED',
+        text: 'list',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      expect(calls[0][0].text).toContain('give me daily news');
+      expect(calls[0][0].text).toContain('cron');
+    });
+
+    it('shows empty message when no schedules', async () => {
+      createAdapter();
+      await adapter.start();
+
+      await triggerCommand('/schedule', {
+        channel_id: 'C_EMPTY',
+        text: 'list',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      expect(calls[0][0].text).toContain('No scheduled sessions');
+    });
+
+    it('cancels a schedule by ID', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const project = store.createProject('C_CANCEL', '/test/cancel', 'claude');
+      const sched = store.createSchedule(
+        project.id, 'C_CANCEL', 'to cancel', 'cancel this task',
+        { scheduledAt: '2026-03-01T09:00:00', nextRunAt: '2026-03-01T09:00:00' },
+      );
+
+      await triggerCommand('/schedule', {
+        channel_id: 'C_CANCEL',
+        text: `cancel ${sched.id}`,
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      expect(calls[0][0].text).toContain('Cancelled');
+      expect(calls[0][0].text).toContain('cancel this task');
+
+      const updated = store.getScheduleById(sched.id);
+      expect(updated!.is_active).toBe(0);
+    });
+
+    it('rejects cancel for nonexistent schedule', async () => {
+      createAdapter();
+      await adapter.start();
+
+      await triggerCommand('/schedule', {
+        channel_id: 'C_NOEXIST',
+        text: 'cancel 99999',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      expect(calls[0][0].text).toContain('No active schedule');
+    });
+  });
+
   describe('P3.18: File upload handling', () => {
     it('includes file descriptions in the message sent to backend', async () => {
       createAdapter();
