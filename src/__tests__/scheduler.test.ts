@@ -119,13 +119,14 @@ describe('Scheduler', () => {
       const project = store.createProject('ch-recur', '/tmp/proj', 'claude', 'slack');
       const sched = store.createSchedule(
         project.id, 'ch-recur', 'recurring prompt', 'daily news',
-        { cronExpression: '0 9 * * *', nextRunAt: '2020-01-01T09:00:00', threadId: 'original-thread' },
+        { cronExpression: '0 9 * * *', nextRunAt: '2020-01-01T09:00:00', threadId: 'original-thread', title: 'News update' },
       );
 
       await scheduler.tick();
 
-      // Recurring always creates a new thread, even if thread_id is stored
-      expect(mockAdapter.createThread).toHaveBeenCalledWith('ch-recur', 'Scheduled: daily news');
+      // Recurring always creates a new thread with title + date
+      const expectedTitle = `News update — ${new Date().toLocaleDateString()}`;
+      expect(mockAdapter.createThread).toHaveBeenCalledWith('ch-recur', expectedTitle);
 
       const updated = store.getScheduleById(sched.id);
       expect(updated!.is_active).toBe(1);

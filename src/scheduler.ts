@@ -117,10 +117,11 @@ export class Scheduler {
       threadId = schedule.thread_id;
       console.log(`[scheduler] schedule ${schedule.id}: replying in original thread ${threadId}`);
     } else {
-      threadId = await adapter.createThread(
-        schedule.channel_id,
-        `Scheduled: ${schedule.original_request}`,
-      );
+      const label = schedule.title ?? schedule.original_request;
+      const threadTitle = schedule.is_recurring
+        ? `${label} — ${new Date().toLocaleDateString()}`
+        : `Scheduled: ${label}`;
+      threadId = await adapter.createThread(schedule.channel_id, threadTitle);
     }
 
     // Run the session through the router (same path as user messages)

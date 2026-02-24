@@ -115,7 +115,7 @@ async function main(): Promise<void> {
       return result.path as string;
     },
 
-    async scheduleSession(chId, thId, prompt, originalRequest, cronExpression, scheduledAt) {
+    async scheduleSession(chId, thId, prompt, originalRequest, cronExpression, scheduledAt, title) {
       const result = await ipcPost(ipcPort, ipcSecret, '/schedule-session', {
         channelId: chId,
         threadId: thId,
@@ -123,6 +123,7 @@ async function main(): Promise<void> {
         originalRequest,
         cronExpression,
         scheduledAt,
+        title,
         platform,
       });
       return { scheduleId: result.scheduleId as number };

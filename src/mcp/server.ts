@@ -33,7 +33,7 @@ export interface BridgeCallbacks {
   saveUploadedFile(uploadId: string, destination: string, projectDir: string): Promise<string>;
   /** Register a scheduled session with the bridge. */
   scheduleSession(channelId: string, threadId: string, prompt: string, originalRequest: string,
-    cronExpression: string | undefined, scheduledAt: string | undefined): Promise<{ scheduleId: number }>;
+    cronExpression: string | undefined, scheduledAt: string | undefined, title: string | undefined): Promise<{ scheduleId: number }>;
 }
 
 /**
@@ -285,11 +285,12 @@ export function createMcpServer(
           'Do NOT include scheduling or timing details (e.g. "every morning", "at 9am") — only include WHAT to do, not WHEN.',
         ),
         original_request: z.string().describe("The user's original request in their own words, including timing (shown when listing schedules)"),
+        title: z.string().optional().describe('Short label for this schedule (e.g. "News update", "Deploy check"). Used as the thread title for recurring schedules. If omitted, falls back to original_request.'),
         cron_expression: z.string().optional().describe('5-field cron expression for recurring schedules (e.g. "0 9 * * *" for daily at 9am)'),
         scheduled_at: z.string().optional().describe('ISO 8601 datetime for one-time schedules (e.g. "2026-02-25T09:00:00")'),
       },
     },
-    async ({ prompt, original_request, cron_expression, scheduled_at }) => {
+    async ({ prompt, original_request, title, cron_expression, scheduled_at }) => {
       try {
         // Validate: exactly one of cron_expression or scheduled_at
         if (cron_expression && scheduled_at) {
@@ -308,7 +309,7 @@ export function createMcpServer(
         const result = await callbacks.scheduleSession(
           context.channelId, context.threadId,
           prompt, original_request,
-          cron_expression ?? undefined, scheduled_at ?? undefined,
+          cron_expression ?? undefined, scheduled_at ?? undefined, title ?? undefined,
         );
 
         const typeLabel = cron_expression ? 'Recurring' : 'One-time';
