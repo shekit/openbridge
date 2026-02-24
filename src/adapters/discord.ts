@@ -150,6 +150,10 @@ export class DiscordAdapter {
               opt.setName('name').setDescription('Backend name').setRequired(true)
                 .addChoices({ name: 'claude', value: 'claude' }, { name: 'codex', value: 'codex' })
             )
+        )
+        .addSubcommand((sub) =>
+          sub.setName('info')
+            .setDescription('Show project info for this channel')
         ),
       new SlashCommandBuilder()
         .setName('new')
@@ -842,6 +846,23 @@ export class DiscordAdapter {
     }
 
     // /project backend <claude|codex>
+    if (subcommand === 'info') {
+      const project = this.store.getProjectByChannelId(channelId);
+      if (!project) {
+        await interaction.reply('No project connected to this channel. Use `/project connect` to set one up.');
+        return;
+      }
+      const backendLabel = project.backend_name === 'claude' ? 'Claude Code' : 'Codex';
+      const text = [
+        '**Project Info**',
+        `- Path: \`${project.project_dir}\``,
+        `- Backend: ${backendLabel}`,
+        `- Permissions: ${project.permission_mode}`,
+      ].join('\n');
+      await interaction.reply(text);
+      return;
+    }
+
     if (subcommand === 'backend') {
       const project = this.store.getProjectByChannelId(channelId);
       if (!project) {

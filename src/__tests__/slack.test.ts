@@ -990,6 +990,38 @@ describe('SlackAdapter', () => {
     });
   });
 
+  describe('/project info shows project details', () => {
+    it('shows path, backend, and permission mode', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      await triggerCommand('/project', {
+        channel_id: 'C_BOUND',
+        text: 'info',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      expect(calls[0][0].text).toContain('/test/project');
+      expect(calls[0][0].text).toContain('Claude Code');
+      expect(calls[0][0].text).toContain('supervised');
+    });
+
+    it('shows message when no project connected', async () => {
+      createAdapter();
+      await adapter.start();
+
+      await triggerCommand('/project', {
+        channel_id: 'C_UNBOUND',
+        text: 'info',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      expect(calls[0][0].text).toContain('No project connected');
+    });
+  });
+
   describe('P3.18: File upload handling', () => {
     it('includes file descriptions in the message sent to backend', async () => {
       createAdapter();

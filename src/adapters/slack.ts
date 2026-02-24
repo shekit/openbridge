@@ -953,6 +953,27 @@ export class SlackAdapter {
       return;
     }
 
+    // /project info
+    if (subcommand === 'info') {
+      const project = this.store.getProjectByChannelId(channelId);
+      if (!project) {
+        await client.chat.postMessage({
+          channel: channelId,
+          text: 'No project connected to this channel. Use `/project connect` to set one up.',
+        });
+        return;
+      }
+      const backendLabel = project.backend_name === 'claude' ? 'Claude Code' : 'Codex';
+      const text = [
+        '*Project Info*',
+        `• Path: \`${project.project_dir}\``,
+        `• Backend: ${backendLabel}`,
+        `• Permissions: ${project.permission_mode}`,
+      ].join('\n');
+      await client.chat.postMessage({ channel: channelId, text });
+      return;
+    }
+
     // Backwards compat: /project /absolute/path still works
     if (path.isAbsolute(subcommand + (subArg ? ' ' + subArg : ''))) {
       const projectDir = rawArgs;

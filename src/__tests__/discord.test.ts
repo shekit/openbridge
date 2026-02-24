@@ -1198,6 +1198,44 @@ describe('DiscordAdapter', () => {
     });
   });
 
+  describe('/project info shows project details', () => {
+    it('shows path, backend, and permission mode', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_BOUND', '/test/project', 'claude');
+
+      const { interaction, replies } = createMockInteraction({
+        commandName: 'project',
+        subcommand: 'info',
+        channelId: 'C_BOUND',
+      });
+
+      await triggerInteraction(interaction);
+
+      const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
+      expect(text).toContain('/test/project');
+      expect(text).toContain('Claude Code');
+      expect(text).toContain('supervised');
+    });
+
+    it('shows message when no project connected', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const { interaction, replies } = createMockInteraction({
+        commandName: 'project',
+        subcommand: 'info',
+        channelId: 'C_UNBOUND',
+      });
+
+      await triggerInteraction(interaction);
+
+      const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
+      expect(text).toContain('No project connected');
+    });
+  });
+
   describe('P4.14: Discord — file upload handling', () => {
     it('includes file descriptions in the message sent to backend', async () => {
       createAdapter();
