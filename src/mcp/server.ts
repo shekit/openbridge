@@ -268,13 +268,20 @@ export function createMcpServer(
         'Schedule a future session with the bridge. ' +
         'Use this when the user asks you to do something at a specific time or on a recurring schedule — ' +
         'e.g. "remind me every morning at 9am", "check deploys on Friday at 5pm", "send me a news update daily". ' +
-        'Provide both the prompt (what the AI should execute) and the original_request (what the user asked, in their words). ' +
+        'The prompt field is what a fresh instance of yourself will receive in a new thread when the schedule fires. ' +
+        'Write it as clear instructions for that future AI to execute the user\'s request. ' +
+        'Do NOT include any scheduling, timing, or recurrence details in the prompt — the bridge handles all timing. ' +
+        'The prompt should only contain what to do, not when to do it. ' +
         'For one-time: provide scheduled_at as an ISO 8601 datetime string. ' +
         'For recurring: provide cron_expression (standard 5-field cron, e.g. "0 9 * * *" for daily at 9am, "0 17 * * 5" for Fridays at 5pm). ' +
         'Exactly one of cron_expression or scheduled_at must be provided.',
       inputSchema: {
-        prompt: z.string().describe('The prompt to send to the AI backend when the schedule fires'),
-        original_request: z.string().describe("The user's original request in their own words (shown when listing schedules)"),
+        prompt: z.string().describe(
+          'Instructions for the AI that will run when this schedule fires. ' +
+          'This is a prompt for a fresh instance of yourself in a new thread — write clear instructions to fulfill the user\'s request. ' +
+          'Do NOT include scheduling or timing details (e.g. "every morning", "at 9am") — only include WHAT to do, not WHEN.',
+        ),
+        original_request: z.string().describe("The user's original request in their own words, including timing (shown when listing schedules)"),
         cron_expression: z.string().optional().describe('5-field cron expression for recurring schedules (e.g. "0 9 * * *" for daily at 9am)'),
         scheduled_at: z.string().optional().describe('ISO 8601 datetime for one-time schedules (e.g. "2026-02-25T09:00:00")'),
       },
