@@ -206,7 +206,7 @@ describe('P7.1: End-to-end Slack → Claude Code → response posted in thread',
     // Verify backend was called correctly
     expect(mockBackend.calls).toEqual([
       { method: 'start', args: [expect.objectContaining({ projectDir: '/home/user/my-project' })] },
-      { method: 'send', args: ['Create a new file called hello.ts'] },
+      { method: 'send', args: [expect.stringContaining('Create a new file called hello.ts')] },
     ]);
 
     // Session ID should be stored in SQLite for resume

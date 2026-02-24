@@ -118,6 +118,20 @@ export class Router {
     return { project, session };
   }
 
+  /** Prepend the current local date/time to the message so the backend can reason about relative dates. */
+  private prependCurrentTime(text: string): string {
+    const now = new Date().toLocaleString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+    return `[Current time: ${now}]\n\n${text}`;
+  }
+
   /** Augment prompt text with upload info for files that have staging metadata. */
   private augmentTextWithUploadInfo(text: string, files?: FileAttachment[]): string {
     if (!files || files.length === 0) return text;
@@ -206,8 +220,11 @@ export class Router {
       backend.setSessionId(storedSession.backend_session_id);
     }
 
+    // Prepend current time so backend can reason about relative dates ("tomorrow", "next Friday")
+    const timedText = this.prependCurrentTime(text);
+
     // Augment prompt with upload info so backend knows about staged files
-    const augmentedText = this.augmentTextWithUploadInfo(text, files);
+    const augmentedText = this.augmentTextWithUploadInfo(timedText, files);
 
     let result: SendResult;
     try {
@@ -321,9 +338,12 @@ export class Router {
       backend.setAllowedTools(mergedTools);
     }
 
+    // Prepend current time so backend can reason about relative dates
+    const timedText = this.prependCurrentTime(text);
+
     let result: SendResult;
     try {
-      result = await this.sendWithTimeout(backend, text);
+      result = await this.sendWithTimeout(backend, timedText);
     } catch (err) {
       try { await backend.stop(); } catch { /* ignore stop errors */ }
       this.activeBackends.delete(session.thread_id);

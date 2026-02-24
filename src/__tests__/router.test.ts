@@ -573,7 +573,8 @@ describe('Router', () => {
         { base64: 'abc123', mediaType: 'image/png', kind: 'image' as const },
       ]);
 
-      expect(capturedText).toBe('what is this?');
+      expect(capturedText).toContain('what is this?');
+      expect(capturedText).toMatch(/^\[Current time: /);  // Time is prepended
     });
 
     it.skip('cleans up staging files after successful send', async () => {
