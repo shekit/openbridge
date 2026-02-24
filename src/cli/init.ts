@@ -152,13 +152,12 @@ export async function inputTokens(
       await promptConfirm(io, 'Done? Continue to next step', true);
 
       clack.note(
-        pc.cyan([
-          'Pick your workspace, switch to the JSON tab',
-          'Paste the manifest from:',
-          'https://github.com/shekit/openbridge/blob/main/slack-manifest.json',
-          '',
-          'Click Create',
-        ].join('\n')),
+        [
+          pc.cyan('2a. Pick your workspace, switch to the JSON tab'),
+          pc.cyan('2b. Paste the manifest from:'),
+          pc.cyan('    https://github.com/shekit/openbridge/blob/main/slack-manifest.json'),
+          pc.cyan('2c. Click Create'),
+        ].join('\n'),
         'Slack Setup — Step 2 of 4',
       );
       await promptConfirm(io, 'Done? Continue to next step', true);
@@ -181,10 +180,10 @@ export async function inputTokens(
 
       if (isInteractive) {
         clack.note(
-          pc.cyan([
-            'Basic Information → App-Level Tokens → Generate Token',
-            'Give it the connections:write scope → copy the token (starts with xapp-)',
-          ].join('\n')),
+          [
+            pc.cyan('4a. Basic Information → App-Level Tokens → Generate Token'),
+            pc.cyan('4b. Give it the connections:write scope → copy the token (starts with xapp-)'),
+          ].join('\n'),
           'Slack Setup — Step 4 of 4',
         );
       }
@@ -217,13 +216,13 @@ export async function inputTokens(
     // Invite the bot
     if (isInteractive) {
       clack.note(
-        pc.cyan([
-          'Go to your Slack workspace and invite the bot to a channel:',
+        [
+          pc.cyan('Go to your Slack workspace and invite the bot to a channel:'),
           '',
-          '  /invite @OpenBridge',
+          pc.cyan('  /invite @OpenBridge'),
           '',
-          'The bot will appear online once the bridge is running.',
-        ].join('\n')),
+          pc.cyan('The bot will appear online once the bridge is running.'),
+        ].join('\n'),
         'Invite the bot',
       );
     } else {
@@ -293,13 +292,13 @@ export async function inputTokens(
       const inviteUrl = `https://discord.com/oauth2/authorize?client_id=${appId}&scope=bot&permissions=${DISCORD_PERMISSIONS}`;
       if (isInteractive) {
         clack.note(
-          pc.cyan([
-            'Open this URL in your browser to add the bot to your server:',
+          [
+            pc.cyan('Open this URL in your browser to add the bot to your server:'),
             '',
-            inviteUrl,
+            pc.cyan(inviteUrl),
             '',
-            'Pick your server → Authorize, then come back here.',
-          ].join('\n')),
+            pc.cyan('Pick your server → Authorize, then come back here.'),
+          ].join('\n'),
           'Add bot to your server',
         );
       } else {
@@ -469,17 +468,17 @@ export async function setupFilePreviews(io: PromptIO | null): Promise<void> {
     }
   } else {
     const installSteps = [
-      'No tunnel tool found. Install one to enable previews:',
+      pc.cyan('No tunnel tool found. Install one to enable previews:'),
       '',
-      '  cloudflared (recommended — free, no account needed):',
-      '    brew install cloudflared',
+      pc.cyan('  cloudflared (recommended — free, no account needed):'),
+      pc.cyan('    brew install cloudflared'),
       '',
-      '  ngrok:',
-      '    brew install ngrok',
+      pc.cyan('  ngrok:'),
+      pc.cyan('    brew install ngrok'),
     ].join('\n');
 
     if (!io) {
-      clack.note(pc.cyan(installSteps), 'Install a tunnel tool');
+      clack.note(installSteps, 'Install a tunnel tool');
       clack.log.info('Install one of these before starting the bridge, and previews will work automatically.');
     } else {
       console.log(`[init] ${installSteps}`);
