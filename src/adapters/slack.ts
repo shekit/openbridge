@@ -15,7 +15,7 @@ import type { Store } from '../store.js';
 import { splitText, downloadAndStageFile, markdownToSlackMrkdwn } from '../utils.js';
 import type { FileAttachment } from '../types/backend.js';
 import { resolvePermission, resolveUserQuestion, hasPendingQuestion, resolveQuestionByThread } from '../mcp/ipc-server.js';
-import { clearPostMessageFlag, wasPostMessageCalled } from '../mcp/callbacks.js';
+import { clearPostMessageFlag, wasPostMessageCalled, clearScheduleFlag, wasScheduleCreated } from '../mcp/callbacks.js';
 
 const SLACK_MESSAGE_LIMIT = 4000;
 
@@ -244,6 +244,16 @@ export class SlackAdapter {
     }
   }
 
+  /** Swap 👀 to ✅ to confirm a schedule was created (no text reply needed). */
+  private async reactScheduleConfirm(channelId: string, messageTs: string, client: any): Promise<void> {
+    await this.removeReactSeen(channelId, messageTs, client);
+    try {
+      await client.reactions.add({ channel: channelId, timestamp: messageTs, name: 'white_check_mark' });
+    } catch (err: any) {
+      console.error(`[slack] failed to add checkmark reaction in ${channelId}: ${err.message}`);
+    }
+  }
+
   /** Track a permission/question ack message for later 👀 cleanup. */
   private trackPermissionAck(threadTs: string, channelId: string, messageTs: string): void {
     const list = this.permissionAckMessages.get(threadTs) ?? [];
@@ -375,6 +385,7 @@ export class SlackAdapter {
 
     // Route through the router
     clearPostMessageFlag(threadTs);
+    clearScheduleFlag(threadTs);
     let result: RouteResult;
     try {
       result = await this.router.send(channelId, threadTs, text);
@@ -383,9 +394,15 @@ export class SlackAdapter {
       return;
     }
 
-    await this.renderEvents(channelId, threadTs, result.events, client);
-    await this.removeReactSeen(channelId, message.ts, client);
-    await this.cleanupPermissionAcks(threadTs, client);
+    // If a schedule was created, swap eyes → checkmark and suppress text
+    if (wasScheduleCreated(threadTs)) {
+      await this.reactScheduleConfirm(channelId, message.ts, client);
+      await this.cleanupPermissionAcks(threadTs, client);
+    } else {
+      await this.renderEvents(channelId, threadTs, result.events, client);
+      await this.removeReactSeen(channelId, message.ts, client);
+      await this.cleanupPermissionAcks(threadTs, client);
+    }
   }
 
   /** Handle freeform text when session is waiting_for_input. */

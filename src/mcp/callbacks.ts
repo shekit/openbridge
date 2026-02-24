@@ -47,6 +47,28 @@ export function markPostMessageCalled(threadId: string): void {
 }
 
 /**
+ * Tracks which threads had schedule_session called during the current turn.
+ * The adapter checks this after the backend completes to suppress assistant_text
+ * and swap the eyes emoji to a checkmark instead.
+ */
+const threadsWithScheduleCreated = new Set<string>();
+
+/** Clear the schedule-created flag for a thread. Call before starting a turn. */
+export function clearScheduleFlag(threadId: string): void {
+  threadsWithScheduleCreated.delete(threadId);
+}
+
+/** Check if schedule_session was called for a thread during the current turn. */
+export function wasScheduleCreated(threadId: string): boolean {
+  return threadsWithScheduleCreated.has(threadId);
+}
+
+/** Mark that schedule_session was called for a thread. */
+export function markScheduleCreated(threadId: string): void {
+  threadsWithScheduleCreated.add(threadId);
+}
+
+/**
  * Create an IPC handler that routes MCP tool calls to the appropriate
  * adapter, tunnel manager, or file browser.
  */
@@ -159,6 +181,12 @@ export function createCallbackHandler(options: CallbackHandlerOptions): IpcHandl
         { cronExpression, scheduledAt, nextRunAt, threadId, title },
       );
       console.log(`[callbacks] created schedule ${schedule.id} for channel ${channelId}`);
+
+      // Mark the thread so the adapter can suppress assistant_text and swap emoji
+      if (threadId) {
+        threadsWithScheduleCreated.add(threadId);
+      }
+
       return { scheduleId: schedule.id };
     },
   };

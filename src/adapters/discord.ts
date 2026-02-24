@@ -32,7 +32,7 @@ import type { Store } from '../store.js';
 import { splitText, downloadAndStageFile, markdownToDiscord } from '../utils.js';
 import type { FileAttachment } from '../types/backend.js';
 import { resolvePermission, resolveUserQuestion, hasPendingQuestion, resolveQuestionByThread } from '../mcp/ipc-server.js';
-import { clearPostMessageFlag, wasPostMessageCalled } from '../mcp/callbacks.js';
+import { clearPostMessageFlag, wasPostMessageCalled, clearScheduleFlag, wasScheduleCreated } from '../mcp/callbacks.js';
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 
@@ -237,6 +237,16 @@ export class DiscordAdapter {
     }
   }
 
+  /** Swap 👀 to ✅ to confirm a schedule was created (no text reply needed). */
+  private async reactScheduleConfirm(message: Message): Promise<void> {
+    await this.removeReactSeen(message);
+    try {
+      await message.react('✅');
+    } catch (err: any) {
+      console.error(`[discord] failed to add checkmark reaction: ${err.message}`);
+    }
+  }
+
   /** Remove the 👀 reaction after the backend has responded. */
   private async removeReactSeen(message: Message): Promise<void> {
     try {
@@ -348,6 +358,7 @@ export class DiscordAdapter {
 
     // Route through the router
     clearPostMessageFlag(threadId);
+    clearScheduleFlag(threadId);
     let result: RouteResult;
     try {
       result = await this.router.send(channelId, threadId, text);
@@ -356,9 +367,15 @@ export class DiscordAdapter {
       return;
     }
 
-    await this.renderEvents(channelId, threadId, result.events, message);
-    await this.removeReactSeen(message);
-    await this.cleanupPermissionAcks(threadId);
+    // If a schedule was created, swap eyes → checkmark and suppress text
+    if (wasScheduleCreated(threadId)) {
+      await this.reactScheduleConfirm(message);
+      await this.cleanupPermissionAcks(threadId);
+    } else {
+      await this.renderEvents(channelId, threadId, result.events, message);
+      await this.removeReactSeen(message);
+      await this.cleanupPermissionAcks(threadId);
+    }
   }
 
   /** Handle an interaction (slash command or button click). */

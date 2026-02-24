@@ -277,7 +277,10 @@ export function createMcpServer(
         'The prompt should only contain what to do, not when to do it. ' +
         'For one-time: provide scheduled_at as an ISO 8601 datetime string. ' +
         'For recurring: provide cron_expression (standard 5-field cron, e.g. "0 9 * * *" for daily at 9am, "0 17 * * 5" for Fridays at 5pm). ' +
-        'Exactly one of cron_expression or scheduled_at must be provided.',
+        'Exactly one of cron_expression or scheduled_at must be provided. ' +
+        'IMPORTANT: After calling this tool, do NOT post any confirmation message or use post_message. ' +
+        'The bridge will acknowledge the schedule to the user automatically (via emoji reaction). ' +
+        'Simply call this tool and end your turn.',
       inputSchema: {
         prompt: z.string().describe(
           'Instructions for the AI that will run when this schedule fires. ' +
