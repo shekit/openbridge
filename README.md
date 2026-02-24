@@ -59,11 +59,11 @@ In Slack threads: type `cancel` to stop a running task, `new` to reset the sessi
 
 ## Scheduled Sessions
 
-Ask your AI to do things on a schedule. The bridge handles all the timing — backends are only spun up when needed.
+Ask your AI to do things on a schedule. OpenBridge handles it all.
 
-- "Remind me to check deploys every Friday at 5pm"
 - "Give me a news summary every morning at 9am"
-- "Remind me in 30 minutes to review the PR"
+- "Remind me to do squats every hour"
+- "Remind me to text mom in two hours"
 
 On Discord, the same commands are available as slash commands, plus `/new` and `/cancel`.
 
