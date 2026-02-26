@@ -56,6 +56,8 @@ export class Router {
   private mcpConfigFactory?: McpConfigFactory;
   private ipc?: { port: number; secret: string };
   private hookScriptDir?: string;
+  /** Per-thread lock to serialize concurrent sends/responds to the same thread. */
+  private threadLocks: Map<string, Promise<void>> = new Map();
 
   constructor(store: Store, backendFactory: BackendFactory, options?: RouterOptions) {
     this.store = store;
@@ -64,6 +66,35 @@ export class Router {
     this.mcpConfigFactory = options?.mcpConfigFactory;
     this.ipc = options?.ipc;
     this.hookScriptDir = options?.hookScriptDir;
+  }
+
+  /**
+   * Acquire a per-thread lock. If another operation is in progress for this
+   * thread, the returned promise won't resolve until it finishes.
+   * Returns a release function to call when the operation completes.
+   */
+  private acquireThreadLock(threadId: string): Promise<() => void> {
+    const existing = this.threadLocks.get(threadId);
+    let release: () => void;
+    const newLock = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.threadLocks.set(threadId, newLock);
+
+    const acquire = async (): Promise<() => void> => {
+      if (existing) {
+        console.log(`[router] thread ${threadId} is busy — queuing message`);
+        await existing;
+      }
+      return () => {
+        // Only clear if this is still the active lock (another may have queued)
+        if (this.threadLocks.get(threadId) === newLock) {
+          this.threadLocks.delete(threadId);
+        }
+        release!();
+      };
+    };
+    return acquire();
   }
 
   /** Send with timeout — races backend.send() against a timeout. */
@@ -166,6 +197,15 @@ export class Router {
    * Manages session state transitions and persists backend session ID.
    */
   async send(channelId: string, threadId: string, text: string, files?: FileAttachment[]): Promise<RouteResult> {
+    const release = await this.acquireThreadLock(threadId);
+    try {
+      return await this._send(channelId, threadId, text, files);
+    } finally {
+      release();
+    }
+  }
+
+  private async _send(channelId: string, threadId: string, text: string, files?: FileAttachment[]): Promise<RouteResult> {
     const resolved = this.resolve(channelId, threadId);
     if (!resolved) {
       throw new Error(`Channel ${channelId} is not connected to a project`);
@@ -290,6 +330,15 @@ export class Router {
    * When allowedTools is provided, the backend will auto-approve those tools.
    */
   async respond(channelId: string, threadId: string, text: string, allowedTools?: string[]): Promise<RouteResult> {
+    const release = await this.acquireThreadLock(threadId);
+    try {
+      return await this._respond(channelId, threadId, text, allowedTools);
+    } finally {
+      release();
+    }
+  }
+
+  private async _respond(channelId: string, threadId: string, text: string, allowedTools?: string[]): Promise<RouteResult> {
     const resolved = this.resolve(channelId, threadId);
     if (!resolved) {
       throw new Error(`Channel ${channelId} is not connected to a project`);

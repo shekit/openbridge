@@ -443,6 +443,83 @@ describe('Router', () => {
     });
   });
 
+  describe('per-thread message queue', () => {
+    it('serializes concurrent sends to the same thread', async () => {
+      const order: number[] = [];
+      let callCount = 0;
+      const slowBackend = (): Backend => {
+        const idx = ++callCount;
+        return {
+          async start() {},
+          async send(): Promise<SendResult> {
+            order.push(idx);
+            // Simulate work — second send should not start until first finishes
+            await new Promise((r) => setTimeout(r, 50));
+            order.push(idx * 10);
+            return {
+              events: [{ type: 'assistant_text' as const, text: `resp-${idx}` }, { type: 'turn_completed' as const }],
+              sessionId: `sess-${idx}`,
+            };
+          },
+          getSessionId() { return null; },
+          setSessionId() {},
+          setAllowedTools() {},
+          async stop() {},
+        };
+      };
+      const factory: BackendFactory = () => slowBackend();
+      const r = new Router(store, factory);
+      store.createProject('CH_Q', '/tmp/queue', 'claude');
+
+      // Fire two sends concurrently for the same thread
+      const [r1, r2] = await Promise.all([
+        r.send('CH_Q', 'T_Q', 'first'),
+        r.send('CH_Q', 'T_Q', 'second'),
+      ]);
+
+      // First send should fully complete (1, 10) before second starts (2, 20)
+      expect(order).toEqual([1, 10, 2, 20]);
+      expect(r1.events[0]).toEqual({ type: 'assistant_text', text: 'resp-1' });
+      expect(r2.events[0]).toEqual({ type: 'assistant_text', text: 'resp-2' });
+    });
+
+    it('allows concurrent sends to different threads', async () => {
+      const startTimes: Record<string, number> = {};
+      const slowBackend = (threadLabel: string): Backend => ({
+        async start() {},
+        async send(): Promise<SendResult> {
+          startTimes[threadLabel] = Date.now();
+          await new Promise((r) => setTimeout(r, 50));
+          return {
+            events: [{ type: 'turn_completed' as const }],
+            sessionId: 'sess',
+          };
+        },
+        getSessionId() { return null; },
+        setSessionId() {},
+        setAllowedTools() {},
+        async stop() {},
+      });
+
+      let callIdx = 0;
+      const factory: BackendFactory = () => {
+        callIdx++;
+        return slowBackend(callIdx === 1 ? 'A' : 'B');
+      };
+      const r = new Router(store, factory);
+      store.createProject('CH_P', '/tmp/par', 'claude');
+
+      await Promise.all([
+        r.send('CH_P', 'T_A', 'first'),
+        r.send('CH_P', 'T_B', 'second'),
+      ]);
+
+      // Both should have started at roughly the same time (within 30ms)
+      const diff = Math.abs(startTimes['A'] - startTimes['B']);
+      expect(diff).toBeLessThan(30);
+    });
+  });
+
   describe('P10.8: mcpConfigFactory', () => {
     it('passes mcpConfig to backend.start when factory is set', async () => {
       const startSpy = vi.fn(async () => {});
