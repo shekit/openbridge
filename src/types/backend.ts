@@ -73,6 +73,12 @@ export interface Backend {
   /** Set tools to auto-approve on the next send (for permission Allow flow). */
   setAllowedTools(tools: string[]): void;
 
+  /** Clean interruption — cancel the current operation but keep the backend alive. */
+  interrupt(): Promise<void>;
+
+  /** Check if the backend subprocess is still alive and can accept messages. */
+  isAlive(): boolean;
+
   /** Clean shutdown — kill any running process. */
   stop(): Promise<void>;
 }

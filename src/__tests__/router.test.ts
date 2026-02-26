@@ -25,6 +25,9 @@ function createMockBackend(events: NormalizedEvent[] = [], sessionId: string | n
       return sessionId;
     },
     setSessionId() {},
+    setAllowedTools() {},
+    async interrupt() {},
+    isAlive() { return false; },
     async stop() {},
   } as any;
 }

@@ -371,6 +371,15 @@ export class CodexBackend implements Backend {
     // Codex uses OS-level sandbox — tool-level approval is not supported
   }
 
+  async interrupt(): Promise<void> {
+    // CLI backend has no clean interrupt — fall back to stop
+    await this.stop();
+  }
+
+  isAlive(): boolean {
+    return this.activeHandle !== null;
+  }
+
   async stop(): Promise<void> {
     console.log('[codex] stopping');
     if (this.activeHandle) {

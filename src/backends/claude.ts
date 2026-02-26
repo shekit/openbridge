@@ -528,6 +528,15 @@ export class ClaudeBackend implements Backend {
     this.allowedTools = tools;
   }
 
+  async interrupt(): Promise<void> {
+    // CLI backend has no clean interrupt — fall back to stop
+    await this.stop();
+  }
+
+  isAlive(): boolean {
+    return this.activeHandle !== null;
+  }
+
   async stop(): Promise<void> {
     console.log('[claude] stopping');
     if (this.activeHandle) {
