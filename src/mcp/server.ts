@@ -268,9 +268,10 @@ export function createMcpServer(
         'Schedule a future session with the bridge. ' +
         'Use this when the user asks you to do something at a specific time or on a recurring schedule — ' +
         'e.g. "remind me every morning at 9am", "check deploys on Friday at 5pm", "remind me in 5 minutes". ' +
-        `The current local time is: ${new Date().toISOString()}. ` +
+        `The current local time is: ${new Date().toLocaleString('sv-SE')} (${Intl.DateTimeFormat().resolvedOptions().timeZone}). ` +
         'Use this to calculate scheduled_at for relative or calendar-based requests ' +
         '(e.g. "in 5 minutes" = current time + 5 minutes, "tomorrow at 5pm", "next Friday at 3pm"). ' +
+        'All times are in the local timezone shown above. ' +
         'The prompt field is what a fresh instance of yourself will receive in a new thread when the schedule fires. ' +
         'Write it as clear instructions for that future AI to execute the user\'s request. ' +
         'Do NOT include any scheduling, timing, or recurrence details in the prompt — the bridge handles all timing. ' +
@@ -290,7 +291,7 @@ export function createMcpServer(
         original_request: z.string().describe("The user's original request in their own words, including timing (shown when listing schedules)"),
         title: z.string().optional().describe('Short label for this schedule (e.g. "News update", "Deploy check"). Used as the thread title for recurring schedules. If omitted, falls back to original_request.'),
         cron_expression: z.string().optional().describe('5-field cron expression for recurring schedules (e.g. "0 9 * * *" for daily at 9am)'),
-        scheduled_at: z.string().optional().describe('ISO 8601 datetime for one-time schedules (e.g. "2026-02-25T09:00:00")'),
+        scheduled_at: z.string().optional().describe('ISO 8601 datetime in local time for one-time schedules, without Z suffix (e.g. "2026-02-25T09:00:00")'),
       },
     },
     async ({ prompt, original_request, title, cron_expression, scheduled_at }) => {

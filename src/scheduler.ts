@@ -14,13 +14,16 @@ import { clearPostMessageFlag, wasPostMessageCalled, clearScheduleFlag } from '.
 /** Default scheduler tick interval in milliseconds (30 seconds). */
 export const DEFAULT_TICK_INTERVAL_MS = 30_000;
 
+/** System timezone detected at startup, e.g. "America/New_York". */
+export const SYSTEM_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 /**
- * Compute the next run time from a cron expression.
- * Returns an ISO 8601 datetime string.
+ * Compute the next run time from a cron expression in the system timezone.
+ * Returns an ISO 8601 datetime string (UTC).
  * Throws if the cron expression is invalid.
  */
 export function computeNextRun(cronExpression: string): string {
-  const interval = CronExpressionParser.parse(cronExpression);
+  const interval = CronExpressionParser.parse(cronExpression, { tz: SYSTEM_TIMEZONE });
   const next = interval.next();
   return next.toISOString()!;
 }

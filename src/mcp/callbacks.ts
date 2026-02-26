@@ -178,9 +178,20 @@ export function createCallbackHandler(options: CallbackHandlerOptions): IpcHandl
         throw new Error(`No project connected to channel ${channelId}`);
       }
 
-      const nextRunAt = cronExpression
-        ? computeNextRun(cronExpression)
-        : scheduledAt!;
+      // computeNextRun already returns UTC (cron-parser with tz option).
+      // For one-time scheduled_at: Claude provides local time without Z suffix.
+      // new Date() interprets strings without timezone indicator as local time,
+      // and toISOString() converts to UTC — exactly what the scheduler needs.
+      let nextRunAt: string;
+      if (cronExpression) {
+        nextRunAt = computeNextRun(cronExpression);
+      } else {
+        const parsed = new Date(scheduledAt!);
+        if (isNaN(parsed.getTime())) {
+          throw new Error(`Invalid scheduled_at value: ${scheduledAt}`);
+        }
+        nextRunAt = parsed.toISOString();
+      }
 
       const schedule = store.createSchedule(
         project.id, channelId, prompt, originalRequest,
