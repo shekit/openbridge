@@ -126,6 +126,14 @@ export class Router {
 
     // Create and initialize a new backend
     const backend = this.backendFactory(project.backend_name);
+
+    // Set session ID before start() so SDK backends can resume the conversation
+    const storedSession = this.store.getSessionByThreadId(threadId);
+    if (storedSession?.backend_session_id) {
+      backend.setSessionId(storedSession.backend_session_id);
+      console.log(`[router] restoring session ${storedSession.backend_session_id} for thread ${threadId}`);
+    }
+
     const mcpConfig = this.mcpConfigFactory?.({
       channelId,
       threadId,
@@ -312,13 +320,6 @@ export class Router {
       backend.setAllowedTools(accumulatedTools);
     }
 
-    // If there's a stored backend session ID, set it on the backend for resume
-    // (will be null if session was auto-recovered from dead)
-    const storedSession = this.store.getSessionByThreadId(session.thread_id);
-    if (storedSession?.backend_session_id) {
-      backend.setSessionId(storedSession.backend_session_id);
-    }
-
     // Prepend context (time + source platform) so backend can reason about dates and message origin
     const timedText = this.prependContext(text, project.platform);
 
@@ -425,11 +426,6 @@ export class Router {
 
     // Get or create a backend for this thread (persistent pool)
     const backend = await this.getOrCreateBackend(threadId, project, channelId);
-
-    // Must have a backend session ID for resume
-    if (session.backend_session_id) {
-      backend.setSessionId(session.backend_session_id);
-    }
 
     // Merge one-shot allowed tools with accumulated tools from the store (P12.6)
     const accumulatedTools = this.store.getAllowedTools(project.id).map(t => t.tool_pattern);
