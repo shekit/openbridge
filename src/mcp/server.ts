@@ -236,10 +236,9 @@ export function createMcpServer(
     'post_message',
     {
       description:
-        'Send a message to the user. Your internal thinking is NOT visible — only messages sent through this tool reach the user. ' +
-        'Use this whenever you need to communicate anything to the user: results, answers, URLs, or status updates. ' +
-        'Provide a clear, concise, and succinct summary of what you did or found. Keep it focused on what matters to the user. ' +
-        'Do NOT dump internal reasoning or verbose logs. Always call this at least once per turn.',
+        'Post a message to the chat thread. ' +
+        'Always call this at least once per turn ONLY IF the message source is Slack or Discord. ' +
+        'Keep messages clear, concise, and focused on what matters to the user.',
       inputSchema: {
         text: z.string().describe('The message text to post to the user'),
       },

@@ -229,8 +229,8 @@ export class Router {
     return { project, session };
   }
 
-  /** Prepend the current local date/time to the message so the backend can reason about relative dates. */
-  private prependCurrentTime(text: string): string {
+  /** Prepend context metadata (time, source platform) so the backend can reason about relative dates and message origin. */
+  private prependContext(text: string, platform: string): string {
     const now = new Date().toLocaleString('en-US', {
       weekday: 'long',
       year: 'numeric',
@@ -240,7 +240,7 @@ export class Router {
       minute: '2-digit',
       hour12: true,
     });
-    return `[Current time: ${now}]\n[You are responding in a chat thread. Keep your final text responses succinct and scannable.]\n\n${text}`;
+    return `[Current time: ${now}]\n[Source: ${platform}]\n[You are responding in a chat thread. Keep your final text responses succinct and scannable.]\n\n${text}`;
   }
 
   /** Augment prompt text with upload info for files that have staging metadata. */
@@ -319,8 +319,8 @@ export class Router {
       backend.setSessionId(storedSession.backend_session_id);
     }
 
-    // Prepend current time so backend can reason about relative dates ("tomorrow", "next Friday")
-    const timedText = this.prependCurrentTime(text);
+    // Prepend context (time + source platform) so backend can reason about dates and message origin
+    const timedText = this.prependContext(text, project.platform);
 
     // Augment prompt with upload info so backend knows about staged files
     const augmentedText = this.augmentTextWithUploadInfo(timedText, files);
@@ -438,8 +438,8 @@ export class Router {
       backend.setAllowedTools(mergedTools);
     }
 
-    // Prepend current time so backend can reason about relative dates
-    const timedText = this.prependCurrentTime(text);
+    // Prepend context (time + source platform) so backend can reason about dates and message origin
+    const timedText = this.prependContext(text, project.platform);
 
     // Track activity for idle timeout
     this.lastActivity.set(threadId, Date.now());
