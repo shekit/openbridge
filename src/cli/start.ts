@@ -12,6 +12,7 @@ import * as clack from '@clack/prompts';
 import { Store } from '../store.js';
 import { Router, type BackendFactory } from '../router.js';
 import { ClaudeBackend } from '../backends/claude.js';
+import { ClaudeSdkBackend } from '../backends/claude-sdk.js';
 import { CodexBackend } from '../backends/codex.js';
 import { SlackAdapter } from '../adapters/slack.js';
 import { DiscordAdapter } from '../adapters/discord.js';
@@ -82,10 +83,15 @@ export function loadEnvFile(envPath: string): Record<string, string> {
 
 /** Create a backend factory that produces the right backend based on name. */
 export function createBackendFactory(): BackendFactory {
+  const useLegacy = process.env.OPENBRIDGE_LEGACY_BACKEND === '1';
   return (backendName: string) => {
     switch (backendName) {
       case 'claude':
-        return new ClaudeBackend();
+        if (useLegacy) {
+          console.log('[start] using legacy CLI backend (OPENBRIDGE_LEGACY_BACKEND=1)');
+          return new ClaudeBackend();
+        }
+        return new ClaudeSdkBackend();
       case 'codex':
         return new CodexBackend();
       default:
