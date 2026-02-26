@@ -328,6 +328,8 @@ describe('Router', () => {
         getSessionId: vi.fn(() => null),
         setSessionId: vi.fn(),
         setAllowedTools: setAllowedToolsSpy,
+        interrupt: vi.fn(async () => {}),
+        isAlive: vi.fn(() => false),
         stop: vi.fn(async () => {}),
       };
       const factory: BackendFactory = () => backend;
@@ -353,6 +355,8 @@ describe('Router', () => {
         getSessionId: vi.fn(() => null),
         setSessionId: vi.fn(),
         setAllowedTools: setAllowedToolsSpy,
+        interrupt: vi.fn(async () => {}),
+        isAlive: vi.fn(() => false),
         stop: vi.fn(async () => {}),
       };
       const factory: BackendFactory = () => backend;
@@ -376,6 +380,8 @@ describe('Router', () => {
         getSessionId: vi.fn(() => null),
         setSessionId: vi.fn(),
         setAllowedTools: setAllowedToolsSpy,
+        interrupt: vi.fn(async () => {}),
+        isAlive: vi.fn(() => false),
         stop: vi.fn(async () => {}),
       };
       const factory: BackendFactory = () => backend;
@@ -467,6 +473,8 @@ describe('Router', () => {
           getSessionId() { return null; },
           setSessionId() {},
           setAllowedTools() {},
+          async interrupt() {},
+          isAlive() { return false; },
           async stop() {},
         };
       };
@@ -501,6 +509,8 @@ describe('Router', () => {
         getSessionId() { return null; },
         setSessionId() {},
         setAllowedTools() {},
+        async interrupt() {},
+        isAlive() { return false; },
         async stop() {},
       });
 
@@ -531,6 +541,9 @@ describe('Router', () => {
         async send() { return { events: [{ type: 'assistant_text' as const, text: 'ok' }], sessionId: null }; },
         getSessionId() { return null; },
         setSessionId() {},
+        setAllowedTools() {},
+        async interrupt() {},
+        isAlive() { return false; },
         async stop() {},
       };
       const factory: BackendFactory = () => backend;
@@ -573,6 +586,9 @@ describe('Router', () => {
         async send() { return { events: [{ type: 'assistant_text' as const, text: 'ok' }], sessionId: null }; },
         getSessionId() { return null; },
         setSessionId() {},
+        setAllowedTools() {},
+        async interrupt() {},
+        isAlive() { return false; },
         async stop() {},
       };
       const factory: BackendFactory = () => backend;
@@ -604,6 +620,8 @@ describe('Router', () => {
         getSessionId() { return 'sess-1'; },
         setSessionId() {},
         setAllowedTools() {},
+        async interrupt() {},
+        isAlive() { return false; },
         async stop() {},
       };
 
@@ -642,6 +660,8 @@ describe('Router', () => {
         getSessionId() { return 'sess-2'; },
         setSessionId() {},
         setAllowedTools() {},
+        async interrupt() {},
+        isAlive() { return false; },
         async stop() {},
       };
 
@@ -673,6 +693,8 @@ describe('Router', () => {
         getSessionId() { return 'sess-3'; },
         setSessionId() {},
         setAllowedTools() {},
+        async interrupt() {},
+        isAlive() { return false; },
         async stop() {},
       };
 
@@ -701,6 +723,8 @@ describe('Router', () => {
         getSessionId() { return null; },
         setSessionId() {},
         setAllowedTools() {},
+        async interrupt() {},
+        isAlive() { return false; },
         async stop() {},
       };
 

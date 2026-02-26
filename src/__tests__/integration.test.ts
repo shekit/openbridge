@@ -52,6 +52,8 @@ function createMockBackend(
     },
     setSessionId() {},
     setAllowedTools() {},
+    async interrupt() {},
+    isAlive() { return false; },
     async stop() {
       calls.push({ method: 'stop', args: [] });
     },
@@ -335,6 +337,8 @@ describe('P7.2: End-to-end Slack permission denial → Allow button → resume',
       getSessionId() { return 'session-perm-1'; },
       setSessionId() {},
       setAllowedTools() {},
+      async interrupt() {},
+      isAlive() { return false; },
       async stop() {},
     };
 
@@ -456,6 +460,8 @@ describe('P7.3: End-to-end Slack permission denial → freeform text → resume'
       getSessionId() { return 'session-freeform-1'; },
       setSessionId() {},
       setAllowedTools() {},
+      async interrupt() {},
+      isAlive() { return false; },
       async stop() {},
     };
 
@@ -699,6 +705,8 @@ describe('P7.5: Session persistence across bridge restart', () => {
       getSessionId() { return 'claude-session-persist-123'; },
       setSessionId() {},
       setAllowedTools() {},
+      async interrupt() {},
+      isAlive() { return false; },
       async stop() {},
     } as any;
 
@@ -747,6 +755,8 @@ describe('P7.5: Session persistence across bridge restart', () => {
       getSessionId() { return 'claude-session-persist-123'; },
       setSessionId(id: string | null) { (this as any)._sessionId = id; },
       setAllowedTools() {},
+      async interrupt() {},
+      isAlive() { return false; },
       async stop() {},
     } as any;
 
@@ -827,6 +837,8 @@ describe('P7.6: Graceful shutdown', () => {
       getSessionId() { return 'session-shutdown-1'; },
       setSessionId() {},
       setAllowedTools() {},
+      async interrupt() {},
+      isAlive() { return false; },
       async stop() {
         stopCalls.push('stopped');
       },
@@ -867,6 +879,8 @@ describe('P7.6: Graceful shutdown', () => {
       getSessionId() { return 'session-shutdown-err'; },
       setSessionId() {},
       setAllowedTools() {},
+      async interrupt() {},
+      isAlive() { return false; },
       async stop() {
         throw new Error('connection already closed');
       },
@@ -890,6 +904,8 @@ describe('P7.6: Graceful shutdown', () => {
       getSessionId() { return null; },
       setSessionId() {},
       setAllowedTools() {},
+      async interrupt() {},
+      isAlive() { return false; },
       async stop() {},
     }));
 
@@ -941,6 +957,8 @@ describe('P7.7: Error handling — missing CLI tool reported to user', () => {
       getSessionId() { return null; },
       setSessionId() {},
       setAllowedTools() {},
+      async interrupt() {},
+      isAlive() { return false; },
       async stop() {},
     };
 
@@ -994,6 +1012,8 @@ describe('P7.7: Error handling — missing CLI tool reported to user', () => {
       getSessionId() { return null; },
       setSessionId() {},
       setAllowedTools() {},
+      async interrupt() {},
+      isAlive() { return false; },
       async stop() {},
     };
 
@@ -1087,6 +1107,8 @@ describe('P7.8: Error handling — backend timeout reported to user', () => {
       getSessionId() { return null; },
       setSessionId() {},
       setAllowedTools() {},
+      async interrupt() {},
+      isAlive() { return false; },
       async stop() {},
     };
 
@@ -1137,6 +1159,8 @@ describe('P7.8: Error handling — backend timeout reported to user', () => {
       getSessionId() { return null; },
       setSessionId() {},
       setAllowedTools() {},
+      async interrupt() {},
+      isAlive() { return false; },
       async stop() {},
     };
 
@@ -1170,6 +1194,8 @@ describe('P7.8: Error handling — backend timeout reported to user', () => {
       getSessionId() { return 'session-no-to'; },
       setSessionId() {},
       setAllowedTools() {},
+      async interrupt() {},
+      isAlive() { return false; },
       async stop() {},
     };
 
@@ -1207,6 +1233,8 @@ describe('P7.9: Error handling — backend crash reported to user', () => {
       getSessionId() { return null; },
       setSessionId() {},
       setAllowedTools() {},
+      async interrupt() {},
+      isAlive() { return false; },
       async stop() {},
     };
 
@@ -1266,6 +1294,8 @@ describe('P7.9: Error handling — backend crash reported to user', () => {
       getSessionId() { return callCount > 1 ? 'new-session-after-crash' : null; },
       setSessionId() {},
       setAllowedTools() {},
+      async interrupt() {},
+      isAlive() { return false; },
       async stop() {},
     };
 
@@ -1339,6 +1369,8 @@ describe('P7.9: Error handling — backend crash reported to user', () => {
       getSessionId() { return 'session-exit-1'; },
       setSessionId() {},
       setAllowedTools() {},
+      async interrupt() {},
+      isAlive() { return false; },
       async stop() {},
     };
 
@@ -1419,6 +1451,8 @@ describe('P7.10: Logging — consistent prefixes for all bridge components', () 
       getSessionId() { return 'session-log'; },
       setSessionId() {},
       setAllowedTools() {},
+      async interrupt() {},
+      isAlive() { return false; },
       async stop() {},
     };
 
@@ -1443,6 +1477,8 @@ describe('P7.10: Logging — consistent prefixes for all bridge components', () 
       getSessionId() { return null; },
       setSessionId() {},
       setAllowedTools() {},
+      async interrupt() {},
+      isAlive() { return false; },
       async stop() {},
     }));
 
@@ -1477,6 +1513,8 @@ describe('P7.10: Logging — consistent prefixes for all bridge components', () 
       getSessionId() { return null; },
       setSessionId() {},
       setAllowedTools() {},
+      async interrupt() {},
+      isAlive() { return false; },
       async stop() {},
     }));
 

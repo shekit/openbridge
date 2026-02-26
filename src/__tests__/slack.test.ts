@@ -92,6 +92,8 @@ function createMockBackendFactory() {
     getSessionId: vi.fn(() => 'session-123'),
     setSessionId: vi.fn(),
     setAllowedTools: vi.fn(),
+    interrupt: vi.fn(async () => {}),
+    isAlive: vi.fn(() => false),
     stop: vi.fn(async () => {}),
   }));
 }
@@ -454,6 +456,8 @@ describe('SlackAdapter', () => {
         getSessionId: vi.fn(() => 'session-123'),
         setSessionId: vi.fn(),
         setAllowedTools: vi.fn(),
+        interrupt: vi.fn(async () => {}),
+        isAlive: vi.fn(() => false),
         stop: vi.fn(async () => {}),
       }));
 
@@ -639,6 +643,8 @@ describe('SlackAdapter', () => {
         getSessionId: vi.fn(() => null),
         setSessionId: vi.fn(),
         setAllowedTools: vi.fn(),
+        interrupt: vi.fn(async () => {}),
+        isAlive: vi.fn(() => false),
         stop: vi.fn(async () => {}),
       }));
 
@@ -673,6 +679,8 @@ describe('SlackAdapter', () => {
         getSessionId: vi.fn(() => null),
         setSessionId: vi.fn(),
         setAllowedTools: vi.fn(),
+        interrupt: vi.fn(async () => {}),
+        isAlive: vi.fn(() => false),
         stop: vi.fn(async () => {}),
       }));
 
@@ -1145,6 +1153,9 @@ describe('SlackAdapter', () => {
         }),
         getSessionId: vi.fn(() => 'session-123'),
         setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
+        interrupt: vi.fn(async () => {}),
+        isAlive: vi.fn(() => false),
         stop: vi.fn(async () => {}),
       });
 
@@ -1293,6 +1304,8 @@ describe('SlackAdapter', () => {
         getSessionId: vi.fn(() => 'session-123'),
         setSessionId: vi.fn(),
         setAllowedTools: vi.fn(),
+        interrupt: vi.fn(async () => {}),
+        isAlive: vi.fn(() => false),
         stop: vi.fn(async () => {}),
       }));
 
@@ -1334,6 +1347,8 @@ describe('SlackAdapter', () => {
         getSessionId: vi.fn(() => 'session-trunc'),
         setSessionId: vi.fn(),
         setAllowedTools: vi.fn(),
+        interrupt: vi.fn(async () => {}),
+        isAlive: vi.fn(() => false),
         stop: vi.fn(async () => {}),
       }));
 
@@ -1378,6 +1393,8 @@ describe('SlackAdapter', () => {
         getSessionId: vi.fn(() => 'session-123'),
         setSessionId: vi.fn(),
         setAllowedTools: vi.fn(),
+        interrupt: vi.fn(async () => {}),
+        isAlive: vi.fn(() => false),
         stop: vi.fn(async () => {}),
       }));
 
@@ -1551,6 +1568,8 @@ describe('SlackAdapter', () => {
           getSessionId: vi.fn(() => 'session-img'),
           setSessionId: vi.fn(),
           setAllowedTools: vi.fn(),
+          interrupt: vi.fn(async () => {}),
+          isAlive: vi.fn(() => false),
           stop: vi.fn(async () => {}),
         }));
 
@@ -1609,6 +1628,8 @@ describe('SlackAdapter', () => {
           getSessionId: vi.fn(() => 'session-pdf'),
           setSessionId: vi.fn(),
           setAllowedTools: vi.fn(),
+          interrupt: vi.fn(async () => {}),
+          isAlive: vi.fn(() => false),
           stop: vi.fn(async () => {}),
         }));
 
@@ -1667,6 +1688,8 @@ describe('SlackAdapter', () => {
           getSessionId: vi.fn(() => 'session-csv'),
           setSessionId: vi.fn(),
           setAllowedTools: vi.fn(),
+          interrupt: vi.fn(async () => {}),
+          isAlive: vi.fn(() => false),
           stop: vi.fn(async () => {}),
         }));
 
@@ -1714,6 +1737,8 @@ describe('SlackAdapter', () => {
         getSessionId: vi.fn(() => 'session-fail'),
         setSessionId: vi.fn(),
         setAllowedTools: vi.fn(),
+        interrupt: vi.fn(async () => {}),
+        isAlive: vi.fn(() => false),
         stop: vi.fn(async () => {}),
       }));
 
@@ -1764,6 +1789,8 @@ describe('SlackAdapter', () => {
         getSessionId: vi.fn(() => 'session-multi'),
         setSessionId: vi.fn(),
         setAllowedTools: vi.fn(),
+        interrupt: vi.fn(async () => {}),
+        isAlive: vi.fn(() => false),
         stop: vi.fn(async () => {}),
       }));
 
@@ -1805,6 +1832,8 @@ describe('SlackAdapter', () => {
         getSessionId: vi.fn(() => 'session-pm'),
         setSessionId: vi.fn(),
         setAllowedTools: vi.fn(),
+        interrupt: vi.fn(async () => {}),
+        isAlive: vi.fn(() => false),
         stop: vi.fn(async () => {}),
       }));
 
@@ -1859,6 +1888,8 @@ describe('SlackAdapter', () => {
         getSessionId: vi.fn(() => 'session-long'),
         setSessionId: vi.fn(),
         setAllowedTools: vi.fn(),
+        interrupt: vi.fn(async () => {}),
+        isAlive: vi.fn(() => false),
         stop: vi.fn(async () => {}),
       }));
 
@@ -1893,6 +1924,8 @@ describe('SlackAdapter', () => {
         getSessionId: vi.fn(() => 'session-err'),
         setSessionId: vi.fn(),
         setAllowedTools: vi.fn(),
+        interrupt: vi.fn(async () => {}),
+        isAlive: vi.fn(() => false),
         stop: vi.fn(async () => {}),
       }));
 

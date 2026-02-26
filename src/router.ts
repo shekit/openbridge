@@ -48,6 +48,12 @@ export interface RouterOptions {
   hookScriptDir?: string;
 }
 
+/** Default idle timeout for persistent backends in ms (5 minutes). */
+const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+
+/** How often to check for idle backends (60 seconds). */
+const IDLE_CHECK_INTERVAL_MS = 60 * 1000;
+
 export class Router {
   private store: Store;
   private backendFactory: BackendFactory;
@@ -58,6 +64,10 @@ export class Router {
   private hookScriptDir?: string;
   /** Per-thread lock to serialize concurrent sends/responds to the same thread. */
   private threadLocks: Map<string, Promise<void>> = new Map();
+  /** Last activity timestamp per thread for idle timeout cleanup. */
+  private lastActivity: Map<string, number> = new Map();
+  /** Idle cleanup interval handle. */
+  private idleCleanupInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(store: Store, backendFactory: BackendFactory, options?: RouterOptions) {
     this.store = store;
@@ -66,6 +76,76 @@ export class Router {
     this.mcpConfigFactory = options?.mcpConfigFactory;
     this.ipc = options?.ipc;
     this.hookScriptDir = options?.hookScriptDir;
+
+    // Start periodic idle cleanup
+    this.idleCleanupInterval = setInterval(() => this.cleanupIdleBackends(), IDLE_CHECK_INTERVAL_MS);
+    // Don't prevent process exit
+    if (this.idleCleanupInterval.unref) {
+      this.idleCleanupInterval.unref();
+    }
+  }
+
+  /**
+   * Clean up backends that have been idle for longer than the timeout.
+   */
+  private cleanupIdleBackends(): void {
+    const now = Date.now();
+    for (const [threadId, lastTime] of this.lastActivity) {
+      if (now - lastTime > DEFAULT_IDLE_TIMEOUT_MS) {
+        const backend = this.activeBackends.get(threadId);
+        if (backend) {
+          console.log(`[router] cleaning up idle backend for thread ${threadId}`);
+          backend.stop().catch(() => {});
+          this.activeBackends.delete(threadId);
+        }
+        this.lastActivity.delete(threadId);
+      }
+    }
+  }
+
+  /**
+   * Get an existing alive backend for a thread, or create and start a new one.
+   * Returns the backend ready for send().
+   */
+  private async getOrCreateBackend(
+    threadId: string,
+    project: Project,
+    channelId: string,
+  ): Promise<Backend> {
+    // Check for existing alive backend
+    const existing = this.activeBackends.get(threadId);
+    if (existing && existing.isAlive()) {
+      console.log(`[router] reusing persistent backend for thread ${threadId}`);
+      return existing;
+    }
+
+    // Clean up dead backend if present
+    if (existing) {
+      this.activeBackends.delete(threadId);
+    }
+
+    // Create and initialize a new backend
+    const backend = this.backendFactory(project.backend_name);
+    const mcpConfig = this.mcpConfigFactory?.({
+      channelId,
+      threadId,
+      projectDir: project.project_dir,
+      platform: project.platform,
+    });
+    await backend.start({
+      projectDir: project.project_dir,
+      mcpConfig,
+      ipc: this.ipc,
+      channelId,
+      threadId,
+      platform: project.platform,
+      hookScriptDir: this.hookScriptDir,
+      permissionMode: project.permission_mode,
+      sandboxMode: project.sandbox_mode,
+    });
+
+    this.activeBackends.set(threadId, backend);
+    return backend;
   }
 
   /**
@@ -223,29 +303,8 @@ export class Router {
     // Transition to running
     this.store.updateSessionState(session.id, 'running');
 
-    const backend = this.backendFactory(project.backend_name);
-
-    // Initialize the backend with the project dir and optional MCP config
-    const mcpConfig = this.mcpConfigFactory?.({
-      channelId,
-      threadId,
-      projectDir: project.project_dir,
-      platform: project.platform,
-    });
-    await backend.start({
-      projectDir: project.project_dir,
-      mcpConfig,
-      ipc: this.ipc,
-      channelId,
-      threadId,
-      platform: project.platform,
-      hookScriptDir: this.hookScriptDir,
-      permissionMode: project.permission_mode,
-      sandboxMode: project.sandbox_mode,
-    });
-
-    // Track as active for graceful shutdown
-    this.activeBackends.set(session.thread_id, backend);
+    // Get or create a backend for this thread (persistent pool)
+    const backend = await this.getOrCreateBackend(threadId, project, channelId);
 
     // Load accumulated allowed tools from the store (P12.6)
     const accumulatedTools = this.store.getAllowedTools(project.id).map(t => t.tool_pattern);
@@ -266,6 +325,9 @@ export class Router {
     // Augment prompt with upload info so backend knows about staged files
     const augmentedText = this.augmentTextWithUploadInfo(timedText, files);
 
+    // Track activity for idle timeout
+    this.lastActivity.set(threadId, Date.now());
+
     let result: SendResult;
     try {
       result = await this.sendWithTimeout(backend, augmentedText, files);
@@ -274,6 +336,7 @@ export class Router {
       // But if cancelBackend already cleaned up, skip state transition
       try { await backend.stop(); } catch { /* ignore stop errors */ }
       this.activeBackends.delete(session.thread_id);
+      this.lastActivity.delete(session.thread_id);
       // TODO: Re-enable staging cleanup once per-session TTL is implemented
       // this.cleanupFileStaging(files);
       const currentState = this.store.getSessionById(session.id)?.state;
@@ -284,8 +347,15 @@ export class Router {
       throw err;
     }
 
-    // Clean up active backend tracking (oneshot — process already exited)
-    this.activeBackends.delete(session.thread_id);
+    // Update activity timestamp
+    this.lastActivity.set(threadId, Date.now());
+
+    // If the backend died after send (CLI backends exit after each call),
+    // clean up so the next send creates a fresh one.
+    if (!backend.isAlive()) {
+      this.activeBackends.delete(session.thread_id);
+      this.lastActivity.delete(session.thread_id);
+    }
 
     // If cancelBackend already intervened, the session is no longer running.
     // Skip state transitions and just return the partial events.
@@ -353,27 +423,8 @@ export class Router {
     // Transition to running
     this.store.updateSessionState(session.id, 'running');
 
-    const backend = this.backendFactory(project.backend_name);
-    const mcpConfig = this.mcpConfigFactory?.({
-      channelId,
-      threadId,
-      projectDir: project.project_dir,
-      platform: project.platform,
-    });
-    await backend.start({
-      projectDir: project.project_dir,
-      mcpConfig,
-      ipc: this.ipc,
-      channelId,
-      threadId,
-      platform: project.platform,
-      hookScriptDir: this.hookScriptDir,
-      permissionMode: project.permission_mode,
-      sandboxMode: project.sandbox_mode,
-    });
-
-    // Track as active for graceful shutdown
-    this.activeBackends.set(session.thread_id, backend);
+    // Get or create a backend for this thread (persistent pool)
+    const backend = await this.getOrCreateBackend(threadId, project, channelId);
 
     // Must have a backend session ID for resume
     if (session.backend_session_id) {
@@ -390,12 +441,16 @@ export class Router {
     // Prepend current time so backend can reason about relative dates
     const timedText = this.prependCurrentTime(text);
 
+    // Track activity for idle timeout
+    this.lastActivity.set(threadId, Date.now());
+
     let result: SendResult;
     try {
       result = await this.sendWithTimeout(backend, timedText);
     } catch (err) {
       try { await backend.stop(); } catch { /* ignore stop errors */ }
       this.activeBackends.delete(session.thread_id);
+      this.lastActivity.delete(session.thread_id);
       const currentState = this.store.getSessionById(session.id)?.state;
       if (currentState === 'running') {
         this.store.updateSessionState(session.id, 'dead');
@@ -403,8 +458,14 @@ export class Router {
       throw err;
     }
 
-    // Clean up active backend tracking (oneshot — process already exited)
-    this.activeBackends.delete(session.thread_id);
+    // Update activity timestamp
+    this.lastActivity.set(threadId, Date.now());
+
+    // If the backend died after send, clean up
+    if (!backend.isAlive()) {
+      this.activeBackends.delete(session.thread_id);
+      this.lastActivity.delete(session.thread_id);
+    }
 
     // If cancelBackend already intervened, skip state transitions
     const postRespondSession = this.store.getSessionById(session.id);
@@ -446,6 +507,14 @@ export class Router {
 
     const { session } = resolved;
 
+    // Stop any persistent backend for this thread
+    const backend = this.activeBackends.get(threadId);
+    if (backend) {
+      backend.stop().catch(() => {});
+      this.activeBackends.delete(threadId);
+      this.lastActivity.delete(threadId);
+    }
+
     // If session is in a non-idle state, transition to idle
     if (session.state === 'running' || session.state === 'waiting_for_input') {
       // Force to dead first, then idle
@@ -472,8 +541,8 @@ export class Router {
   }
 
   /**
-   * Cancel a running backend for a thread. Kills the process (and all its
-   * children via process group) and transitions the session back to idle.
+   * Cancel a running backend for a thread. Uses interrupt() for clean
+   * cancellation, then stop() to terminate. Transitions the session back to idle.
    * Returns true if a backend was cancelled, false if nothing was running.
    */
   async cancelBackend(channelId: string, threadId: string): Promise<boolean> {
@@ -484,11 +553,18 @@ export class Router {
 
     console.log(`[router] cancelling backend for thread ${threadId}`);
     try {
+      // Try clean interrupt first
+      await backend.interrupt();
+    } catch {
+      // Fall through to stop
+    }
+    try {
       await backend.stop();
     } catch {
       // Ignore stop errors during cancel
     }
     this.activeBackends.delete(threadId);
+    this.lastActivity.delete(threadId);
 
     // Transition session back to idle
     const resolved = this.resolve(channelId, threadId);
@@ -505,9 +581,15 @@ export class Router {
   }
 
   /**
-   * Graceful shutdown — stop all active backend sessions.
+   * Graceful shutdown — stop all active backend sessions and clean up.
    */
   async shutdown(): Promise<void> {
+    // Stop idle cleanup
+    if (this.idleCleanupInterval) {
+      clearInterval(this.idleCleanupInterval);
+      this.idleCleanupInterval = null;
+    }
+
     console.log(`[router] shutting down ${this.activeBackends.size} active backend(s)`);
     for (const [threadId, backend] of this.activeBackends) {
       try {
@@ -518,5 +600,6 @@ export class Router {
       }
     }
     this.activeBackends.clear();
+    this.lastActivity.clear();
   }
 }

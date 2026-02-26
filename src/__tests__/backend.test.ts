@@ -35,6 +35,10 @@ describe('Backend interface', () => {
       getSessionId() {
         return 'sess_abc';
       },
+      setSessionId() {},
+      setAllowedTools() {},
+      async interrupt() {},
+      isAlive() { return false; },
       async stop() {},
     };
 
@@ -50,12 +54,18 @@ describe('Backend interface', () => {
       start: async () => {},
       send: async () => ({ events: [], sessionId: null }),
       getSessionId: () => null,
+      setSessionId: () => {},
+      setAllowedTools: () => {},
+      interrupt: async () => {},
+      isAlive: () => false,
       stop: async () => {},
     };
 
     expect(typeof mockBackend.start).toBe('function');
     expect(typeof mockBackend.send).toBe('function');
     expect(typeof mockBackend.getSessionId).toBe('function');
+    expect(typeof mockBackend.interrupt).toBe('function');
+    expect(typeof mockBackend.isAlive).toBe('function');
     expect(typeof mockBackend.stop).toBe('function');
   });
 });
