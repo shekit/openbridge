@@ -16,7 +16,7 @@ import { splitText, downloadAndStageFile, markdownToSlackMrkdwn, formatToolInput
 import type { FileAttachment } from '../types/backend.js';
 import { resolvePermission, resolveUserQuestion, hasPendingQuestion, resolveQuestionByThread } from '../mcp/ipc-server.js';
 import { clearPostMessageFlag, wasPostMessageCalled, clearScheduleFlag, wasScheduleCreated } from '../mcp/callbacks.js';
-import { getSessionPage, RESUME_PAGE_SIZE, type SessionInfo } from '../session-scanner.js';
+import { getSessionPage, RESUME_PAGE_SIZE, ensureLocalSessionFile, type SessionInfo } from '../session-scanner.js';
 
 const SLACK_MESSAGE_LIMIT = 4000;
 
@@ -1242,16 +1242,24 @@ export class SlackAdapter {
     const project = this.store.getProjectByChannelId(channelId);
     if (!project) return;
 
-    // Post confirmation in the channel — the user's next message in a thread will use this session
+    // Ensure the session JSONL is accessible in the local project's Claude dir.
+    // Laptop sessions live in a different dir (e.g. -Users-abhishek-...) but Claude
+    // Code's -r flag only looks in the local dir (e.g. -home-openbridge-...).
+    try {
+      ensureLocalSessionFile(sessionId, project.project_dir);
+    } catch (err: any) {
+      console.error(`[slack] failed to symlink session ${sessionId}: ${err.message}`);
+    }
+
+    // Post confirmation as a top-level message — user replies to it to start the resumed thread
     await client.chat.postMessage({
       channel: channelId,
-      text: `:arrows_counterclockwise: Session \`${sessionId.slice(0, 8)}…\` loaded. Send a message in a thread to continue the conversation.`,
+      text: `:arrows_counterclockwise: Session \`${sessionId.slice(0, 8)}…\` loaded. *Reply to this message* to continue the conversation.`,
     });
 
     console.log(`[slack] resume session ${sessionId} queued for project ${project.id} in channel ${channelId}`);
 
-    // We store the session ID when the user sends their first message in a thread.
-    // For now, we stash it so the next thread message picks it up.
+    // Stash the session ID so the next thread message in this channel picks it up.
     this.pendingResumeSessions.set(channelId, sessionId);
   }
 

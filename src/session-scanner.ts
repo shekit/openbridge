@@ -88,6 +88,53 @@ export function isRemoteSession(filePath: string, localProjectDir: string): bool
 }
 
 /**
+ * Ensure a remote session file is accessible in the local project's Claude dir.
+ *
+ * Claude Code's `-r <session-id>` only looks in the project dir that matches the
+ * current working directory. When resuming a laptop session, the JSONL lives in the
+ * laptop's dir (e.g. -Users-abhishek-...) but Claude Code looks in the VPS dir
+ * (e.g. -home-openbridge-...). We symlink the JSONL (and companion dir if present)
+ * into the local dir so Claude Code can find it.
+ */
+export function ensureLocalSessionFile(
+  sessionId: string,
+  projectDir: string,
+  opts?: { claudeProjectsDir?: string },
+): void {
+  const claudeDir = opts?.claudeProjectsDir ?? path.join(os.homedir(), '.claude', 'projects');
+  const localDirName = projectDirToClaudeDir(projectDir);
+  const localDir = path.join(claudeDir, localDirName);
+  const localJsonl = path.join(localDir, `${sessionId}.jsonl`);
+
+  // Already exists in local dir — nothing to do
+  if (fs.existsSync(localJsonl)) return;
+
+  // Find the session in any matching remote dir
+  const matchingDirs = findMatchingProjectDirs(claudeDir, projectDir);
+  for (const dir of matchingDirs) {
+    if (path.basename(dir) === localDirName) continue; // skip local dir
+    const remoteJsonl = path.join(dir, `${sessionId}.jsonl`);
+    if (fs.existsSync(remoteJsonl)) {
+      // Ensure local dir exists
+      fs.mkdirSync(localDir, { recursive: true });
+      // Symlink the JSONL file
+      fs.symlinkSync(remoteJsonl, localJsonl);
+      console.log(`[session-scanner] symlinked ${remoteJsonl} → ${localJsonl}`);
+
+      // Also symlink companion directory if present (Claude Code may use it)
+      const remoteCompanion = path.join(dir, sessionId);
+      const localCompanion = path.join(localDir, sessionId);
+      if (fs.existsSync(remoteCompanion) && !fs.existsSync(localCompanion)) {
+        fs.symlinkSync(remoteCompanion, localCompanion);
+        console.log(`[session-scanner] symlinked companion dir ${remoteCompanion} → ${localCompanion}`);
+      }
+      return;
+    }
+  }
+  console.log(`[session-scanner] could not find session ${sessionId} in any matching project dir`);
+}
+
+/**
  * Extract the last user message from a session JSONL file.
  * Reads the file from the end to find the most recent user message.
  */

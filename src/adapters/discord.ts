@@ -33,7 +33,7 @@ import { splitText, downloadAndStageFile, markdownToDiscord, formatToolInput } f
 import type { FileAttachment } from '../types/backend.js';
 import { resolvePermission, resolveUserQuestion, hasPendingQuestion, resolveQuestionByThread } from '../mcp/ipc-server.js';
 import { clearPostMessageFlag, wasPostMessageCalled, clearScheduleFlag, wasScheduleCreated } from '../mcp/callbacks.js';
-import { getSessionPage, RESUME_PAGE_SIZE, type SessionInfo } from '../session-scanner.js';
+import { getSessionPage, RESUME_PAGE_SIZE, ensureLocalSessionFile, type SessionInfo } from '../session-scanner.js';
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 
@@ -1124,6 +1124,13 @@ export class DiscordAdapter {
   private async handleResumeSession(interaction: any, channelId: string, sessionId: string): Promise<void> {
     const project = this.store.getProjectByChannelId(channelId);
     if (!project) return;
+
+    // Ensure the session JSONL is accessible in the local project's Claude dir.
+    try {
+      ensureLocalSessionFile(sessionId, project.project_dir);
+    } catch (err: any) {
+      console.error(`[discord] failed to symlink session ${sessionId}: ${err.message}`);
+    }
 
     await interaction.update({
       content: `:arrows_counterclockwise: Session \`${sessionId.slice(0, 8)}…\` loaded. Send a message in a thread to continue the conversation.`,
