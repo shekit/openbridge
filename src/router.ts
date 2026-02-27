@@ -92,6 +92,12 @@ export class Router {
     const now = Date.now();
     for (const [threadId, lastTime] of this.lastActivity) {
       if (now - lastTime > DEFAULT_IDLE_TIMEOUT_MS) {
+        // Don't kill backends with active sessions (running or waiting_for_input)
+        const session = this.store.getSessionByThreadId(threadId);
+        if (session && (session.state === 'running' || session.state === 'waiting_for_input')) {
+          continue;
+        }
+
         const backend = this.activeBackends.get(threadId);
         if (backend) {
           console.log(`[router] cleaning up idle backend for thread ${threadId}`);
@@ -306,6 +312,14 @@ export class Router {
       this.store.updateSessionState(session.id, 'idle');
       this.store.updateBackendSessionId(session.id, null);
       console.log(`[router] auto-recovered dead session ${session.id} — starting fresh`);
+    }
+
+    // If session is stuck in running (e.g. backend was killed without state cleanup),
+    // force-recover: running → dead → idle
+    if (session.state === 'running') {
+      this.store.updateSessionState(session.id, 'dead');
+      this.store.updateSessionState(session.id, 'idle');
+      console.log(`[router] force-recovered stuck running session ${session.id}`);
     }
 
     // Transition to running
