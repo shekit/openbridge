@@ -278,6 +278,9 @@ export class ClaudeSdkBackend implements Backend {
       extraArgs,
       settingSources: ['project'], // Load CLAUDE.md files
       abortController: this.abortController ?? undefined,
+      stderr: (data: string) => {
+        console.error(`[claude-sdk:stderr] ${data.trimEnd()}`);
+      },
     };
 
     // Session resume
