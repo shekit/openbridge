@@ -255,6 +255,37 @@ export function wrapTablesInCodeBlocks(text: string): string {
 }
 
 /**
+ * Format tool input for human-readable display in permission prompts.
+ * Extracts the most meaningful field for common tools instead of dumping raw JSON.
+ */
+export function formatToolInput(toolName: string, toolInput: Record<string, unknown>): string {
+  // For Bash, show the command
+  if (toolName === 'Bash' && typeof toolInput.command === 'string') {
+    return toolInput.command;
+  }
+
+  // For file tools, show the path and a preview of the content
+  if ((toolName === 'Edit' || toolName === 'Write') && typeof toolInput.file_path === 'string') {
+    let summary = toolInput.file_path;
+    if (toolName === 'Edit' && typeof toolInput.old_string === 'string') {
+      summary += `\n- ${toolInput.old_string.slice(0, 100)}`;
+      if (typeof toolInput.new_string === 'string') {
+        summary += `\n+ ${toolInput.new_string.slice(0, 100)}`;
+      }
+    }
+    return summary;
+  }
+
+  if (toolName === 'Read' && typeof toolInput.file_path === 'string') {
+    return toolInput.file_path;
+  }
+
+  // Fallback: JSON dump
+  const json = JSON.stringify(toolInput, null, 2);
+  return json === '{}' ? '(no input)' : json;
+}
+
+/**
  * Convert standard Markdown to Slack mrkdwn format.
  *
  * Handles: bold, italic, strikethrough, links, headers, tables (wrapped in code blocks).
