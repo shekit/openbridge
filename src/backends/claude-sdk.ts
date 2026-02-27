@@ -288,10 +288,17 @@ export class ClaudeSdkBackend implements Backend {
       opts.resume = this.sessionId;
     }
 
-    // Permission mode
+    // Permission mode — bypass permissions for trusted mode, but Claude Code
+    // refuses --dangerously-skip-permissions when running as root/sudo.
+    // In that case fall back to allowedTools only (already populated above).
     if (trusted) {
-      opts.permissionMode = 'bypassPermissions';
-      opts.allowDangerouslySkipPermissions = true;
+      const isRoot = process.getuid?.() === 0;
+      if (isRoot) {
+        console.log('[claude-sdk] running as root — skipping --dangerously-skip-permissions, using allowedTools only');
+      } else {
+        opts.permissionMode = 'bypassPermissions';
+        opts.allowDangerouslySkipPermissions = true;
+      }
     }
 
     return opts;

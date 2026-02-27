@@ -324,9 +324,15 @@ export function buildClaudeArgs(
     '--input-format', useStreamJsonInput ? 'stream-json' : 'text',
   ];
 
-  // Trusted mode — skip all permission prompts (no hooks needed)
+  // Trusted mode — skip all permission prompts (no hooks needed).
+  // Claude Code refuses this flag when running as root/sudo.
   if (dangerouslySkipPermissions) {
-    args.push('--dangerously-skip-permissions');
+    const isRoot = process.getuid?.() === 0;
+    if (isRoot) {
+      console.log('[claude] running as root — skipping --dangerously-skip-permissions, using allowedTools only');
+    } else {
+      args.push('--dangerously-skip-permissions');
+    }
   }
 
   if (sessionId) {

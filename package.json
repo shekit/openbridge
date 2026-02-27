@@ -1,6 +1,6 @@
 {
   "name": "openbridge-ai",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "description": "Remote control your Claude Code or Codex from Slack or Discord. Each channel is a project, each thread is a conversation.",
   "type": "module",
   "main": "dist/index.js",
