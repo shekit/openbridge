@@ -12,10 +12,11 @@ import { App, type LogLevel } from '@slack/bolt';
 import type { Router, RouteResult } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
-import { splitText, downloadAndStageFile, markdownToSlackMrkdwn } from '../utils.js';
+import { splitText, downloadAndStageFile, markdownToSlackMrkdwn, formatToolInput } from '../utils.js';
 import type { FileAttachment } from '../types/backend.js';
 import { resolvePermission, resolveUserQuestion, hasPendingQuestion, resolveQuestionByThread } from '../mcp/ipc-server.js';
 import { clearPostMessageFlag, wasPostMessageCalled, clearScheduleFlag, wasScheduleCreated } from '../mcp/callbacks.js';
+import { getSessionPage, RESUME_PAGE_SIZE, type SessionInfo } from '../session-scanner.js';
 
 const SLACK_MESSAGE_LIMIT = 4000;
 
@@ -53,6 +54,8 @@ export class SlackAdapter {
   private todoMessages = new Map<string, { channel: string; ts: string }>();
   /** Tracked permission/question ack messages per thread, for 👀 cleanup after backend responds. */
   private permissionAckMessages = new Map<string, Array<{ channel: string; ts: string }>>();
+  /** Pending resume session IDs per channel (set by /resume, consumed by next thread message). */
+  private pendingResumeSessions = new Map<string, string>();
 
   constructor(options: SlackAdapterOptions) {
     this.router = options.router;
@@ -174,6 +177,24 @@ export class SlackAdapter {
       await this.postProjectPicker(channelId, offset, client as any);
     });
 
+    // Session resume picker buttons
+    this.app.action(/^resume_session_/, async ({ body, ack, client }) => {
+      await ack();
+      const action = (body as any).actions?.[0];
+      const channelId = (body as any).channel?.id;
+      const sessionId = action?.value;
+      if (!sessionId || !channelId) return;
+      await this.handleResumeSession(channelId, sessionId, client as any);
+    });
+
+    this.app.action('resume_picker_more', async ({ body, ack, client }) => {
+      await ack();
+      const channelId = (body as any).channel?.id;
+      const offset = parseInt((body as any).actions?.[0]?.value ?? '0', 10);
+      if (!channelId) return;
+      await this.postResumePicker(channelId, offset, client as any);
+    });
+
     // Slash commands
     this.app.command('/project', async ({ command, ack, client }) => {
       await ack();
@@ -185,6 +206,12 @@ export class SlackAdapter {
       await ack();
       if (!(await this.ensureInChannel(command.channel_id, client))) return;
       await this.handleSettingsCommand(command, client);
+    });
+
+    this.app.command('/resume', async ({ command, ack, client }) => {
+      await ack();
+      if (!(await this.ensureInChannel(command.channel_id, client))) return;
+      await this.handleResumeCommand(command, client);
     });
 
     // /schedule subcommands are handled under /settings (schedule list, schedule cancel)
@@ -381,6 +408,18 @@ export class SlackAdapter {
     if (session && session.state === 'waiting_for_input') {
       await this.handleFreeformResponse(channelId, threadTs, text, client, message.ts);
       return;
+    }
+
+    // If there's a pending resume session for this channel, apply it to this thread
+    const pendingResumeId = this.pendingResumeSessions.get(channelId);
+    if (pendingResumeId) {
+      this.pendingResumeSessions.delete(channelId);
+      // Ensure a session row exists, then set the backend_session_id
+      const resolved = this.router.resolve(channelId, threadTs);
+      if (resolved) {
+        this.store.updateBackendSessionId(resolved.session.id, pendingResumeId);
+        console.log(`[slack] applied pending resume session ${pendingResumeId} to thread ${threadTs}`);
+      }
     }
 
     // Route through the router
@@ -599,8 +638,8 @@ export class SlackAdapter {
     event: { toolName: string; toolInput: Record<string, unknown>; context?: string; requestId?: string },
     client: any
   ): Promise<void> {
-    let inputStr = JSON.stringify(event.toolInput, null, 2);
-    // Truncate tool input to avoid exceeding Slack's 3000-char block text limit
+    let inputStr = formatToolInput(event.toolName, event.toolInput);
+    // Truncate to avoid exceeding Slack's 3000-char block text limit
     const MAX_INPUT_DISPLAY = 500;
     if (inputStr.length > MAX_INPUT_DISPLAY) {
       inputStr = inputStr.slice(0, MAX_INPUT_DISPLAY) + '\n... (truncated)';
@@ -1122,6 +1161,97 @@ export class SlackAdapter {
         },
       ],
     });
+  }
+
+  /** Handle /resume slash command — show laptop sessions to resume. */
+  private async handleResumeCommand(command: any, client: any): Promise<void> {
+    const channelId = command.channel_id;
+    const project = this.store.getProjectByChannelId(channelId);
+    if (!project) {
+      await client.chat.postMessage({
+        channel: channelId,
+        text: ':warning: This channel is not connected to a project. Use `/project connect` first.',
+      });
+      return;
+    }
+
+    await this.postResumePicker(channelId, 0, client);
+  }
+
+  /** Post a session resume picker with pagination support (page size 3). */
+  private async postResumePicker(channelId: string, offset: number, client: any): Promise<void> {
+    const project = this.store.getProjectByChannelId(channelId);
+    if (!project) return;
+
+    const { sessions, total, hasMore } = await getSessionPage(project.project_dir, offset);
+
+    if (total === 0) {
+      await client.chat.postMessage({
+        channel: channelId,
+        text: ':mag: No laptop sessions found for this project. Make sure `~/.claude/projects` is synced via Mutagen.',
+      });
+      return;
+    }
+
+    const buttons = sessions.map((s: SessionInfo) => ({
+      type: 'button' as const,
+      text: { type: 'plain_text' as const, text: `${s.relativeTime}: "${s.lastMessage}"` },
+      action_id: `resume_session_${s.sessionId}`,
+      value: s.sessionId,
+    }));
+
+    // One button per row for readability (session labels can be long)
+    const actionBlocks = buttons.map((btn: any) => ({
+      type: 'actions' as const,
+      elements: [btn],
+    }));
+
+    // Add "Show more" button if there are more sessions
+    if (hasMore) {
+      actionBlocks.push({
+        type: 'actions' as const,
+        elements: [{
+          type: 'button' as const,
+          text: { type: 'plain_text' as const, text: `Show more (${total - offset - RESUME_PAGE_SIZE} remaining)` },
+          action_id: 'resume_picker_more',
+          value: String(offset + RESUME_PAGE_SIZE),
+        }],
+      });
+    }
+
+    const rangeLabel = offset > 0
+      ? `*Resume a laptop session* *(${offset + 1}–${offset + sessions.length} of ${total}):*`
+      : '*Resume a laptop session:*';
+
+    await client.chat.postMessage({
+      channel: channelId,
+      text: 'Resume a laptop session:',
+      blocks: [
+        {
+          type: 'section',
+          text: { type: 'mrkdwn', text: rangeLabel },
+        },
+        ...actionBlocks,
+      ],
+    });
+  }
+
+  /** Handle a session resume button click — set backend_session_id for the thread. */
+  private async handleResumeSession(channelId: string, sessionId: string, client: any): Promise<void> {
+    const project = this.store.getProjectByChannelId(channelId);
+    if (!project) return;
+
+    // Post confirmation in the channel — the user's next message in a thread will use this session
+    await client.chat.postMessage({
+      channel: channelId,
+      text: `:arrows_counterclockwise: Session \`${sessionId.slice(0, 8)}…\` loaded. Send a message in a thread to continue the conversation.`,
+    });
+
+    console.log(`[slack] resume session ${sessionId} queued for project ${project.id} in channel ${channelId}`);
+
+    // We store the session ID when the user sends their first message in a thread.
+    // For now, we stash it so the next thread message picks it up.
+    this.pendingResumeSessions.set(channelId, sessionId);
   }
 
   /** Get the default backend, or throw if not configured. */

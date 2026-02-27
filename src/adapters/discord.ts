@@ -29,10 +29,11 @@ import * as fs from 'node:fs';
 import type { Router, RouteResult } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
-import { splitText, downloadAndStageFile, markdownToDiscord } from '../utils.js';
+import { splitText, downloadAndStageFile, markdownToDiscord, formatToolInput } from '../utils.js';
 import type { FileAttachment } from '../types/backend.js';
 import { resolvePermission, resolveUserQuestion, hasPendingQuestion, resolveQuestionByThread } from '../mcp/ipc-server.js';
 import { clearPostMessageFlag, wasPostMessageCalled, clearScheduleFlag, wasScheduleCreated } from '../mcp/callbacks.js';
+import { getSessionPage, RESUME_PAGE_SIZE, type SessionInfo } from '../session-scanner.js';
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 
@@ -77,6 +78,8 @@ export class DiscordAdapter {
   private todoMessages = new Map<string, Message>();
   /** Tracked permission/question ack messages per thread, for 👀 cleanup after backend responds. */
   private permissionAckMessages = new Map<string, Message[]>();
+  /** Pending resume session IDs per channel (set by /resume, consumed by next thread message). */
+  private pendingResumeSessions = new Map<string, string>();
 
   constructor(options: DiscordAdapterOptions) {
     this.router = options.router;
@@ -182,6 +185,9 @@ export class DiscordAdapter {
       new SlashCommandBuilder()
         .setName('cancel')
         .setDescription('Cancel the running task in this thread'),
+      new SlashCommandBuilder()
+        .setName('resume')
+        .setDescription('Resume a laptop Claude Code session'),
     ];
 
     const rest = new REST().setToken(this.botToken);
@@ -356,6 +362,17 @@ export class DiscordAdapter {
       return;
     }
 
+    // If there's a pending resume session for this channel, apply it to this thread
+    const pendingResumeId = this.pendingResumeSessions.get(channelId);
+    if (pendingResumeId) {
+      this.pendingResumeSessions.delete(channelId);
+      const resolved = this.router.resolve(channelId, threadId);
+      if (resolved) {
+        this.store.updateBackendSessionId(resolved.session.id, pendingResumeId);
+        console.log(`[discord] applied pending resume session ${pendingResumeId} to thread ${threadId}`);
+      }
+    }
+
     // Route through the router
     clearPostMessageFlag(threadId);
     clearScheduleFlag(threadId);
@@ -395,6 +412,9 @@ export class DiscordAdapter {
           break;
         case 'cancel':
           await this.handleCancelCommand(interaction);
+          break;
+        case 'resume':
+          await this.handleResumeCommand(interaction);
           break;
         // schedule subcommands are handled under /settings (schedule-list, schedule-cancel)
       }
@@ -447,6 +467,19 @@ export class DiscordAdapter {
     if (customId.startsWith('project_picker_more:')) {
       const offset = parseInt(customId.slice('project_picker_more:'.length), 10);
       await this.postProjectPicker(interaction, offset);
+      return;
+    }
+    if (customId.startsWith('resume_session:')) {
+      const sessionId = customId.slice('resume_session:'.length);
+      const channelId = this.getInteractionChannelId(interaction);
+      if (channelId) {
+        await this.handleResumeSession(interaction, channelId, sessionId);
+      }
+      return;
+    }
+    if (customId.startsWith('resume_picker_more:')) {
+      const offset = parseInt(customId.slice('resume_picker_more:'.length), 10);
+      await this.postResumePicker(interaction, offset);
       return;
     }
     if (customId === 'sandbox_upgrade') {
@@ -693,8 +726,8 @@ export class DiscordAdapter {
     event: { toolName: string; toolInput: Record<string, unknown>; context?: string; requestId?: string },
     context: any
   ): Promise<void> {
-    let inputStr = JSON.stringify(event.toolInput, null, 2);
-    // Truncate tool input to avoid exceeding Discord's 2000-char message limit
+    let inputStr = formatToolInput(event.toolName, event.toolInput);
+    // Truncate to avoid exceeding Discord's 2000-char message limit
     const MAX_INPUT_DISPLAY = 500;
     if (inputStr.length > MAX_INPUT_DISPLAY) {
       inputStr = inputStr.slice(0, MAX_INPUT_DISPLAY) + '\n... (truncated)';
@@ -1011,6 +1044,89 @@ export class DiscordAdapter {
       // For "Show more", update the original message
       await interaction.update(content);
     }
+  }
+
+  /** Handle /resume slash command — show laptop sessions to resume. */
+  private async handleResumeCommand(interaction: any): Promise<void> {
+    const channelId = this.getInteractionChannelId(interaction);
+    if (!channelId) return;
+
+    const project = this.store.getProjectByChannelId(channelId);
+    if (!project) {
+      await interaction.reply(':warning: This channel is not connected to a project. Use `/project connect` first.');
+      return;
+    }
+
+    await this.postResumePicker(interaction, 0);
+  }
+
+  /** Post a session resume picker with pagination support (page size 3). */
+  private async postResumePicker(interaction: any, offset: number): Promise<void> {
+    const channelId = this.getInteractionChannelId(interaction);
+    if (!channelId) return;
+
+    const project = this.store.getProjectByChannelId(channelId);
+    if (!project) return;
+
+    const { sessions, total, hasMore } = await getSessionPage(project.project_dir, offset);
+
+    if (total === 0) {
+      const msg = ':mag: No laptop sessions found for this project. Make sure `~/.claude/projects` is synced via Mutagen.';
+      if (offset === 0) {
+        await interaction.reply(msg);
+      } else {
+        await interaction.update({ content: msg, components: [] });
+      }
+      return;
+    }
+
+    // One button per row for readability (session labels can be long)
+    const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+    for (const s of sessions) {
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`resume_session:${s.sessionId}`)
+          .setLabel(`${s.relativeTime}: "${s.lastMessage}"`)
+          .setStyle(ButtonStyle.Secondary)
+      );
+      rows.push(row);
+    }
+
+    // Add "Show more" button if there are more sessions (Discord max 5 ActionRows)
+    if (hasMore && rows.length < 5) {
+      const moreRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`resume_picker_more:${offset + RESUME_PAGE_SIZE}`)
+          .setLabel(`Show more (${total - offset - RESUME_PAGE_SIZE} remaining)`)
+          .setStyle(ButtonStyle.Primary)
+      );
+      rows.push(moreRow);
+    }
+
+    const rangeLabel = offset > 0
+      ? `**Resume a laptop session** **(${offset + 1}–${offset + sessions.length} of ${total}):**`
+      : '**Resume a laptop session:**';
+
+    const content = { content: rangeLabel, components: rows };
+    if (offset === 0) {
+      await interaction.reply(content);
+    } else {
+      await interaction.update(content);
+    }
+  }
+
+  /** Handle a session resume button click — set backend_session_id for the next thread. */
+  private async handleResumeSession(interaction: any, channelId: string, sessionId: string): Promise<void> {
+    const project = this.store.getProjectByChannelId(channelId);
+    if (!project) return;
+
+    await interaction.update({
+      content: `:arrows_counterclockwise: Session \`${sessionId.slice(0, 8)}…\` loaded. Send a message in a thread to continue the conversation.`,
+      components: [],
+    });
+
+    console.log(`[discord] resume session ${sessionId} queued for project ${project.id} in channel ${channelId}`);
+    this.pendingResumeSessions.set(channelId, sessionId);
   }
 
   /** Get the default backend, or throw if not configured. */

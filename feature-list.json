@@ -2354,7 +2354,7 @@
             "No sessions found shows a helpful message mentioning Mutagen sync",
             "Build passes, all tests pass"
           ],
-          "status": "pending"
+          "status": "passing"
         },
         {
           "id": "P24.3",
@@ -2370,7 +2370,7 @@
             "No sessions found shows a helpful message mentioning Mutagen sync",
             "Build passes, all tests pass"
           ],
-          "status": "pending"
+          "status": "passing"
         },
         {
           "id": "P24.4",
