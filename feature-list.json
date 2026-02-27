@@ -2382,7 +2382,7 @@
             "A follow-up message in the thread resumes the laptop conversation",
             "Build passes, all tests pass"
           ],
-          "status": "pending"
+          "status": "passing"
         }
       ]
     }
