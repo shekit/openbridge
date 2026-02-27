@@ -1,0 +1,2390 @@
+{
+  "project": "OpenBridge",
+  "description": "Remote control for coding agents via Slack/Discord",
+  "phases": [
+    {
+      "id": "P0",
+      "name": "Project Setup",
+      "outcome": "TypeScript project builds, tests run, init script passes",
+      "features": [
+        {
+          "id": "P0.1",
+          "description": "Initialize npm project with package.json (name, version, bin, scripts, engines)",
+          "verification": [
+            "package.json exists with name 'openbridge'",
+            "bin field points to CLI entry point",
+            "engines field requires node >= 18"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P0.2",
+          "description": "Configure TypeScript (tsconfig.json with strict mode, ES2022 target, Node module resolution)",
+          "verification": [
+            "tsconfig.json exists with strict: true",
+            "npx tsc --noEmit succeeds with zero errors",
+            "Output directory is dist/"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P0.3",
+          "description": "Create src/ directory structure with placeholder entry point",
+          "verification": [
+            "src/index.ts exists and exports a main function",
+            "npx tsc compiles successfully to dist/",
+            "node dist/index.js runs without error"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P0.4",
+          "description": "Set up test framework (vitest)",
+          "verification": [
+            "vitest is in devDependencies",
+            "npm test runs vitest",
+            "A placeholder test in src/__tests__/ passes"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P0.5",
+          "description": "scripts/init.sh check subcommand verifies environment",
+          "verification": [
+            "./scripts/init.sh check reports Node.js version",
+            "./scripts/init.sh check reports whether claude CLI is available",
+            "./scripts/init.sh check reports whether codex CLI is available",
+            "./scripts/init.sh check verifies .env.local exists (or warns)"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P0.6",
+          "description": "scripts/build.sh compiles TypeScript to dist/",
+          "verification": [
+            "./scripts/build.sh runs tsc and exits 0",
+            "dist/ directory contains compiled JS files"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P0.7",
+          "description": "scripts/test.sh runs the test suite",
+          "verification": [
+            "./scripts/test.sh runs vitest and exits 0",
+            "Placeholder test passes"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P0.8",
+          "description": ".gitignore covers node_modules, dist, .env.local, .openbridge/, OS files",
+          "verification": [
+            "git status does not show node_modules or dist",
+            ".env.local is ignored",
+            ".openbridge/ is ignored"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P0.9",
+          "description": ".env.example documents all required environment variables",
+          "verification": [
+            ".env.example exists with placeholder values for SLACK_BOT_TOKEN, SLACK_APP_TOKEN, DISCORD_BOT_TOKEN",
+            "Comments explain what each variable is for"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P1",
+      "name": "Normalized Event Types and Backend Interface",
+      "outcome": "Shared types and backend contract defined, both backends parse real CLI output",
+      "features": [
+        {
+          "id": "P1.1",
+          "description": "Define normalized event types as TypeScript interfaces (AssistantText, ToolUse, ToolResult, CommandExecution, PermissionDenied, SessionStarted, TurnCompleted, Error)",
+          "verification": [
+            "src/types/events.ts exports all event type interfaces",
+            "Each event type has a discriminant 'type' field",
+            "PermissionDenied includes toolName, toolInput, and context fields",
+            "TypeScript compiles with no errors"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P1.2",
+          "description": "Define backend interface (start, send, getSessionId, stop) as TypeScript interface",
+          "verification": [
+            "src/types/backend.ts exports Backend interface",
+            "send() returns Promise<{ events: NormalizedEvent[], sessionId: string | null }>",
+            "TypeScript compiles with no errors"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P1.3",
+          "description": "Claude Code backend \u2014 spawn oneshot process and collect stdout",
+          "verification": [
+            "src/backends/claude.ts implements Backend interface",
+            "send() spawns 'claude -p --verbose --output-format stream-json --input-format text'",
+            "Process stdout is collected as a string",
+            "Process exits and exit code is captured"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P1.4",
+          "description": "Claude Code backend \u2014 parse session_id from system init event",
+          "verification": [
+            "First send() extracts session_id from the system init event",
+            "getSessionId() returns the extracted session_id",
+            "Unit test with sample system init JSON verifies extraction"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P1.5",
+          "description": "Claude Code backend \u2014 parse assistant text from assistant events",
+          "verification": [
+            "Text content from assistant message.content[] is extracted",
+            "Multiple text blocks are concatenated",
+            "Returns AssistantText normalized events",
+            "Unit test with sample assistant JSON verifies parsing"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P1.6",
+          "description": "Claude Code backend \u2014 parse permission_denials from result event",
+          "verification": [
+            "permission_denials array from result event is parsed",
+            "Each denial produces a PermissionDenied normalized event with toolName and toolInput",
+            "Empty permission_denials array produces no PermissionDenied events",
+            "Unit test with sample result JSON verifies parsing"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P1.7",
+          "description": "Claude Code backend \u2014 parse permission context from user error events",
+          "verification": [
+            "user events with is_error: true are scanned for permission-related text",
+            "Context text is included in PermissionDenied events",
+            "Unit test verifies extraction"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P1.8",
+          "description": "Claude Code backend \u2014 parse error events",
+          "verification": [
+            "result events with is_error: true produce Error normalized events",
+            "Non-zero exit codes with no structured error produce Error events",
+            "Unit test verifies both cases"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P1.9",
+          "description": "Claude Code backend \u2014 session resume with -r flag",
+          "verification": [
+            "Second send() call includes -r SESSION_ID in args",
+            "Session ID from first call is reused",
+            "Unit test verifies args construction for resume"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P1.10",
+          "description": "Codex CLI backend \u2014 spawn oneshot process and collect stdout",
+          "verification": [
+            "src/backends/codex.ts implements Backend interface",
+            "send() spawns 'codex exec --skip-git-repo-check --json'",
+            "Process stdout is collected as a string",
+            "Process exits and exit code is captured"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P1.11",
+          "description": "Codex CLI backend \u2014 parse thread_id from thread.started event",
+          "verification": [
+            "First send() extracts thread_id from thread.started event",
+            "getSessionId() returns the extracted thread_id",
+            "Unit test with sample thread.started JSON verifies extraction"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P1.12",
+          "description": "Codex CLI backend \u2014 parse agent_message text",
+          "verification": [
+            "item.completed events with type agent_message are parsed",
+            "Text content is extracted as AssistantText normalized events",
+            "Unit test verifies parsing"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P1.13",
+          "description": "Codex CLI backend \u2014 parse command_execution events",
+          "verification": [
+            "item.completed events with type command_execution are parsed",
+            "exit_code and aggregated_output are captured as CommandExecution events",
+            "Unit test verifies parsing"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P1.14",
+          "description": "Codex CLI backend \u2014 detect sandbox denial patterns in output",
+          "verification": [
+            "Agent message text matching /operation not permitted|permission denied/i produces PermissionDenied events",
+            "Command execution output with these patterns also detected",
+            "Unit test with sample sandbox denial output verifies detection"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P1.15",
+          "description": "Codex CLI backend \u2014 session resume with resume subcommand",
+          "verification": [
+            "Second send() uses 'codex exec resume --skip-git-repo-check --json SESSION_ID'",
+            "--sandbox flag is NOT included in resume args",
+            "Unit test verifies args construction for resume"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P1.16",
+          "description": "Codex CLI backend \u2014 configurable sandbox mode",
+          "verification": [
+            "Backend accepts sandbox option (workspace-write, read-only, danger-full-access)",
+            "sandbox flag is included in initial startArgs only",
+            "Default is workspace-write",
+            "Unit test verifies startArgs include --sandbox"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P2",
+      "name": "SQLite Persistence and Router",
+      "outcome": "Bridge state persists across restarts, router maps channels to projects and sessions",
+      "features": [
+        {
+          "id": "P2.1",
+          "description": "SQLite store \u2014 initialize database with WAL mode in .openbridge/ directory",
+          "verification": [
+            "src/store.ts creates .openbridge/bridge.db if it doesn't exist",
+            "Database is opened with WAL journal mode",
+            "Unit test verifies database file is created"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P2.2",
+          "description": "SQLite store \u2014 projects table schema (id, channel_id, project_dir, backend_name, created_at)",
+          "verification": [
+            "projects table is created on init",
+            "channel_id has a unique index",
+            "Unit test verifies table creation"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P2.3",
+          "description": "SQLite store \u2014 sessions table schema (id, thread_id, project_id, backend_session_id, state, created_at, updated_at)",
+          "verification": [
+            "sessions table is created on init",
+            "thread_id has a unique index",
+            "state defaults to 'idle'",
+            "Unit test verifies table creation"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P2.4",
+          "description": "SQLite store \u2014 settings table schema (key, value)",
+          "verification": [
+            "settings table is created on init",
+            "key is the primary key",
+            "Unit test verifies table creation"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P2.5",
+          "description": "SQLite store \u2014 schema migrations via version table",
+          "verification": [
+            "schema_version table tracks current version",
+            "Migrations run sequentially on startup",
+            "Re-running init does not duplicate tables",
+            "Unit test verifies idempotent initialization"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P2.6",
+          "description": "SQLite store \u2014 CRUD for projects (create, getByChannelId, list, delete)",
+          "verification": [
+            "createProject inserts a row and returns it",
+            "getProjectByChannelId retrieves by channel_id",
+            "listProjects returns all projects",
+            "deleteProject removes by id",
+            "Unit tests verify all four operations"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P2.7",
+          "description": "SQLite store \u2014 CRUD for sessions (create, getByThreadId, updateState, updateSessionId, delete)",
+          "verification": [
+            "createSession inserts with state 'idle'",
+            "getSessionByThreadId retrieves by thread_id",
+            "updateSessionState changes state field and updated_at",
+            "updateBackendSessionId sets backend_session_id for resume",
+            "Unit tests verify all operations"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P2.8",
+          "description": "SQLite store \u2014 CRUD for settings (get, set, delete)",
+          "verification": [
+            "setSetting upserts a key-value pair",
+            "getSetting retrieves value by key, returns null if missing",
+            "deleteSetting removes by key",
+            "Unit tests verify all operations"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P2.9",
+          "description": "Session state machine \u2014 valid transitions enforced",
+          "verification": [
+            "idle \u2192 running (on send)",
+            "running \u2192 idle (on turn complete)",
+            "running \u2192 waiting_for_input (on permission denied)",
+            "waiting_for_input \u2192 running (on user response)",
+            "running \u2192 dead (on crash/timeout)",
+            "dead \u2192 idle (on restart)",
+            "Invalid transitions throw an error",
+            "Unit tests verify all valid and invalid transitions"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P2.10",
+          "description": "Router \u2014 resolve channel + thread to project and backend",
+          "verification": [
+            "Given a channel_id and thread_id, router returns project config and session state",
+            "Unknown channel_id returns null (message is not for a bound project)",
+            "Unit test verifies resolution"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P2.11",
+          "description": "Router \u2014 create new session for unknown thread in bound channel",
+          "verification": [
+            "First message in a new thread creates a session row in SQLite",
+            "Session state starts as idle",
+            "Router returns the new session",
+            "Unit test verifies session creation"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P2.12",
+          "description": "Router \u2014 send message through backend and return normalized events",
+          "verification": [
+            "Router calls backend.send() with the message text",
+            "Session state transitions to running during send, back to idle on completion",
+            "Backend session_id is stored in SQLite for resume",
+            "Normalized events are returned to the caller",
+            "Unit test with mock backend verifies the flow"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P2.13",
+          "description": "Router \u2014 detect permission denial and transition to waiting_for_input",
+          "verification": [
+            "When send() returns PermissionDenied events, session state becomes waiting_for_input",
+            "Router returns the PermissionDenied events to the caller for rendering",
+            "Unit test with mock backend returning PermissionDenied verifies state transition"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P2.14",
+          "description": "Router \u2014 handle user response when waiting_for_input",
+          "verification": [
+            "When session is waiting_for_input, next message is routed as a resume",
+            "Session transitions from waiting_for_input \u2192 running \u2192 idle",
+            "Unit test verifies the resume flow"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P2.15",
+          "description": "Router \u2014 reset session (/new command)",
+          "verification": [
+            "Reset clears the backend_session_id in SQLite",
+            "Next message starts a fresh session (no -r flag)",
+            "Session state returns to idle",
+            "Unit test verifies reset"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P3",
+      "name": "Slack Adapter",
+      "outcome": "Users can message the bot in Slack and get responses from the coding backend",
+      "features": [
+        {
+          "id": "P3.1",
+          "description": "Slack app connects via Socket Mode using @slack/bolt",
+          "verification": [
+            "src/adapters/slack.ts creates a Bolt app with Socket Mode",
+            "App connects successfully with valid SLACK_BOT_TOKEN and SLACK_APP_TOKEN",
+            "Connection logged on startup"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P3.2",
+          "description": "Slack adapter implements shared adapter interface",
+          "verification": [
+            "src/types/adapter.ts defines Adapter interface (start, stop, postMessage, postInteractive, postError)",
+            "Slack adapter implements this interface",
+            "TypeScript compiles with no errors"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P3.3",
+          "description": "Slack \u2014 listen for messages in bound channels and route to router",
+          "verification": [
+            "Messages in channels with bound projects are passed to the router",
+            "Messages in unbound channels are ignored",
+            "Bot's own messages are ignored (no loops)"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P3.4",
+          "description": "Slack \u2014 auto-move top-level channel messages into new threads",
+          "verification": [
+            "Message sent directly in channel (not in thread) triggers bot to create a new thread",
+            "Bot replies in the new thread, not in the channel",
+            "Channel stays clean \u2014 only thread starters visible"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P3.5",
+          "description": "Slack \u2014 route thread messages to correct session",
+          "verification": [
+            "Messages in a thread are routed to the session mapped to that thread",
+            "Different threads in the same channel go to different sessions",
+            "New thread creates a new session automatically"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P3.6",
+          "description": "Slack \u2014 post assistant text responses back to thread",
+          "verification": [
+            "AssistantText events are posted as Slack messages in the originating thread",
+            "Long responses are not truncated (Slack's limit is ~4000 chars per message)",
+            "Responses longer than limit are split into multiple messages"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P3.7",
+          "description": "Slack \u2014 render permission denial as Block Kit interactive message",
+          "verification": [
+            "PermissionDenied events render as a Slack message with tool name and input",
+            "Message includes Allow and Deny buttons",
+            "Message includes text: 'or type a custom response'",
+            "Buttons use Block Kit actions layout"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P3.8",
+          "description": "Slack \u2014 handle Allow button click on permission prompt",
+          "verification": [
+            "Clicking Allow sends the appropriate response to the router",
+            "Router resumes the backend session",
+            "Button message is updated to show the selection (ephemeral or edit)",
+            "Session transitions from waiting_for_input \u2192 running \u2192 idle"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P3.9",
+          "description": "Slack \u2014 handle Deny button click on permission prompt",
+          "verification": [
+            "Clicking Deny sends denial to the router",
+            "Backend session is informed of denial",
+            "Button message is updated to show denial was selected"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P3.10",
+          "description": "Slack \u2014 handle freeform text as custom response when waiting_for_input",
+          "verification": [
+            "When session is waiting_for_input, a typed message is treated as the custom response",
+            "Text is passed to router as the user's reply",
+            "Session resumes with the custom text"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P3.11",
+          "description": "Slack \u2014 post error messages for backend failures",
+          "verification": [
+            "Error normalized events are posted as Slack messages with clear explanation",
+            "Backend crash posts a message explaining what happened",
+            "Message includes suggested fix when possible"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P3.12",
+          "description": "Slack \u2014 register /project slash command",
+          "verification": [
+            "/project is registered in Slack app manifest",
+            "Command handler routes to project creation flow",
+            "TypeScript compiles with handler registered"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P3.13",
+          "description": "Slack \u2014 /project with name creates new channel and binds it",
+          "verification": [
+            "/project my-app from a bound channel creates #my-app channel",
+            "New channel is bound to a project directory",
+            "Confirmation message posted"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P3.14",
+          "description": "Slack \u2014 /project from unbound channel offers bind options",
+          "verification": [
+            "/project from unbound channel shows 'Use this channel' and 'Create new' buttons",
+            "User selection binds the channel appropriately"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P3.15",
+          "description": "Slack \u2014 /project with no args lists all bindings",
+          "verification": [
+            "/project with no args lists all channel \u2192 project \u2192 backend bindings",
+            "Unbound project directories are also listed",
+            "User can select one to link"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P3.16",
+          "description": "Slack \u2014 /new resets session in current thread",
+          "verification": [
+            "/new in a thread resets the backend session",
+            "Next message starts a fresh conversation",
+            "Confirmation message posted in thread"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P3.17",
+          "description": "Slack \u2014 /settings displays and modifies bridge configuration",
+          "verification": [
+            "/settings shows current backend, project directory",
+            "User can change backend for the current project",
+            "Changes are persisted to SQLite"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P3.18",
+          "description": "Slack \u2014 file upload handling",
+          "verification": [
+            "File attachment in a project thread is downloaded from Slack",
+            "File is saved to the project directory (or temp location)",
+            "File path is included in the message sent to the backend",
+            "Backend receives context about the uploaded file"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P4",
+      "name": "Discord Adapter",
+      "outcome": "Users can message the bot in Discord and get responses from the coding backend",
+      "features": [
+        {
+          "id": "P4.1",
+          "description": "Discord bot connects via gateway using discord.js",
+          "verification": [
+            "src/adapters/discord.ts creates a Discord client with required intents",
+            "Bot connects successfully with valid DISCORD_BOT_TOKEN",
+            "Connection logged on startup"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P4.2",
+          "description": "Discord adapter implements shared adapter interface",
+          "verification": [
+            "Discord adapter implements Adapter interface from src/types/adapter.ts",
+            "TypeScript compiles with no errors"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P4.3",
+          "description": "Discord \u2014 listen for messages in bound channels and route to router",
+          "verification": [
+            "Messages in bound channels are passed to the router",
+            "Messages in unbound channels are ignored",
+            "Bot's own messages are ignored"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P4.4",
+          "description": "Discord \u2014 thread-based session mapping",
+          "verification": [
+            "Messages in threads are routed to the session for that thread",
+            "New threads create new sessions",
+            "Top-level messages create new threads automatically"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P4.5",
+          "description": "Discord \u2014 post assistant text responses back to thread",
+          "verification": [
+            "AssistantText events are posted in the originating thread",
+            "Long responses are split at Discord's 2000 char limit",
+            "Responses preserve formatting"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P4.6",
+          "description": "Discord \u2014 render permission denial with message component buttons",
+          "verification": [
+            "PermissionDenied events render with Allow and Deny buttons",
+            "Message includes tool name, input, and 'or type a custom response'",
+            "Buttons use Discord message components (action rows)"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P4.7",
+          "description": "Discord \u2014 handle button interaction for permission responses",
+          "verification": [
+            "Allow button sends appropriate response to router",
+            "Deny button sends denial to router",
+            "Interaction is acknowledged and message updated"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P4.8",
+          "description": "Discord \u2014 handle freeform text when waiting_for_input",
+          "verification": [
+            "Typed message during waiting_for_input is treated as custom response",
+            "Text is passed to router for session resume"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P4.9",
+          "description": "Discord \u2014 post error messages",
+          "verification": [
+            "Error events posted as Discord messages with explanation",
+            "Backend crashes reported clearly"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P4.10",
+          "description": "Discord \u2014 register slash commands (/project, /new, /settings)",
+          "verification": [
+            "Commands registered via Discord application commands API",
+            "Commands show up with autocomplete in Discord"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P4.11",
+          "description": "Discord \u2014 /project command flow (create, list, bind)",
+          "verification": [
+            "/project name creates channel and binds",
+            "/project with no args lists bindings",
+            "Same flows as Slack but with Discord UI"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P4.12",
+          "description": "Discord \u2014 /new resets session",
+          "verification": [
+            "/new in a thread resets backend session",
+            "Confirmation posted"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P4.13",
+          "description": "Discord \u2014 /settings command",
+          "verification": [
+            "/settings shows and modifies bridge config",
+            "Changes persisted to SQLite"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P4.14",
+          "description": "Discord \u2014 file upload handling",
+          "verification": [
+            "File attachment downloaded from Discord",
+            "Saved to project directory",
+            "Path passed to backend with context"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P5",
+      "name": "Bridge MCP Server",
+      "outcome": "Coding agents can call bridge tools (upload_file, open_tunnel) during sessions",
+      "features": [
+        {
+          "id": "P5.1",
+          "description": "MCP server setup with stdio transport",
+          "verification": [
+            "src/mcp/server.ts creates an MCP server",
+            "Server registers tools and handles requests",
+            "TypeScript compiles with no errors"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P5.2",
+          "description": "MCP config injection when spawning backend sessions",
+          "verification": [
+            "Backend spawn includes MCP config in environment or CLI args",
+            "Claude Code receives MCP server config via its native MCP support",
+            "Codex CLI receives MCP server config via its native MCP support"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P5.3",
+          "description": "upload_file MCP tool \u2014 uploads file as chat attachment",
+          "verification": [
+            "Tool accepts file_path parameter",
+            "File is uploaded to the originating Slack/Discord thread as an attachment",
+            "Tool returns success confirmation",
+            "File access restricted to project directory by default"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P5.4",
+          "description": "open_tunnel MCP tool \u2014 starts tunnel and posts URL",
+          "verification": [
+            "Tool accepts port parameter",
+            "Cloudflare Tunnel or ngrok is started on the given port",
+            "Public URL is posted in the originating thread",
+            "Tool returns the public URL",
+            "Tunnel has a configurable TTL"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P5.5",
+          "description": "serve_file_browser MCP tool \u2014 serves file browser behind tunnel",
+          "verification": [
+            "Tool serves a lightweight file browser for the project directory",
+            "File browser is accessible via tunnel URL",
+            "URL is posted in the originating thread"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P5.6",
+          "description": "MCP tools enforce project directory boundaries",
+          "verification": [
+            "upload_file rejects paths outside project directory",
+            "serve_file_browser only serves project directory contents",
+            "Out-of-project paths require explicit confirmation"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P6",
+      "name": "CLI Setup Wizard",
+      "outcome": "Users can install globally and run openbridge init to get started",
+      "features": [
+        {
+          "id": "P6.1",
+          "description": "CLI entry point \u2014 openbridge command parses subcommands",
+          "verification": [
+            "src/cli.ts handles 'init' and 'start' subcommands",
+            "npm install -g . makes 'openbridge' available globally",
+            "openbridge --help shows usage"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P6.2",
+          "description": "openbridge init \u2014 platform selection (Slack / Discord / both)",
+          "verification": [
+            "Interactive prompt asks which platform(s)",
+            "Selection is stored in config"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P6.3",
+          "description": "openbridge init \u2014 token input with validation",
+          "verification": [
+            "Prompts for Slack bot token and app token (if Slack selected)",
+            "Prompts for Discord bot token (if Discord selected)",
+            "Validates token format before saving",
+            "Tokens saved to .env.local"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P6.4",
+          "description": "openbridge init \u2014 backend auto-detection",
+          "verification": [
+            "Checks if claude CLI is available on PATH",
+            "Checks if codex CLI is available on PATH",
+            "Reports which backends were found",
+            "User can select default backend"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P6.5",
+          "description": "openbridge init \u2014 first project creation",
+          "verification": [
+            "Prompts for project name and directory path",
+            "Creates project entry in SQLite",
+            "Reports that project is ready"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P6.6",
+          "description": "openbridge init \u2014 writes config to .openbridge/",
+          "verification": [
+            ".openbridge/ directory is created",
+            "SQLite database is initialized",
+            "Settings are persisted"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P6.7",
+          "description": "openbridge start \u2014 launches the bridge process",
+          "verification": [
+            "openbridge start connects to messaging platforms",
+            "Bridge begins listening for messages",
+            "Startup message logged with connected platforms"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P7",
+      "name": "Integration and Polish",
+      "outcome": "Full end-to-end flow works reliably, graceful error handling throughout",
+      "features": [
+        {
+          "id": "P7.1",
+          "description": "End-to-end: Slack message \u2192 Claude Code \u2192 response posted in thread",
+          "verification": [
+            "Send message in bound Slack channel",
+            "Claude Code processes it and responds",
+            "Response appears in the Slack thread",
+            "Session ID is stored for resume"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P7.2",
+          "description": "End-to-end: Slack permission denial \u2192 buttons \u2192 Allow \u2192 resume",
+          "verification": [
+            "Claude Code hits permission boundary",
+            "Slack shows interactive message with Allow/Deny buttons",
+            "User clicks Allow",
+            "Backend resumes and completes the task"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P7.3",
+          "description": "End-to-end: Slack permission denial \u2192 freeform text \u2192 resume",
+          "verification": [
+            "Claude Code hits permission boundary",
+            "Slack shows permission prompt",
+            "User types a custom response instead of clicking buttons",
+            "Backend resumes with the custom text"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P7.4",
+          "description": "End-to-end: Discord message \u2192 Codex CLI \u2192 response",
+          "verification": [
+            "Send message in bound Discord channel",
+            "Codex CLI processes it and responds",
+            "Response appears in Discord thread"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P7.5",
+          "description": "Session persistence across bridge restart",
+          "verification": [
+            "Start a session, send a message, get response",
+            "Restart the bridge process",
+            "Send another message in the same thread",
+            "Backend resumes the previous session (session_id retrieved from SQLite)"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P7.6",
+          "description": "Graceful shutdown \u2014 stop all backends, close connections",
+          "verification": [
+            "SIGTERM triggers graceful shutdown",
+            "All active backend sessions are stopped",
+            "Messaging platform connections are closed",
+            "Process exits cleanly"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P7.7",
+          "description": "Error handling \u2014 missing CLI tool reported to user",
+          "verification": [
+            "If claude CLI is not found, error message posted in thread",
+            "If codex CLI is not found, error message posted in thread",
+            "Message includes suggested fix (install instructions)"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P7.8",
+          "description": "Error handling \u2014 backend timeout reported to user",
+          "verification": [
+            "If backend takes longer than configurable timeout, session is killed",
+            "Error message posted in thread explaining timeout",
+            "Session state transitions to dead"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P7.9",
+          "description": "Error handling \u2014 backend crash reported to user",
+          "verification": [
+            "If backend process crashes (non-zero exit, signal), error is caught",
+            "Error message posted in thread with exit code/signal",
+            "Session state transitions to dead",
+            "Next message in thread starts fresh session"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P7.10",
+          "description": "Logging \u2014 consistent prefixes for all bridge components",
+          "verification": [
+            "All log lines include component prefix (e.g., [slack], [router], [claude], [store])",
+            "Log levels used appropriately (info, warn, error)",
+            "Startup logs show which platforms and backends are active"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P8",
+      "name": "Code Review Bug Fixes and Refactoring",
+      "outcome": "Critical bugs fixed, duplicated code extracted, production readiness improved",
+      "features": [
+        {
+          "id": "P8.1",
+          "description": "Fix Slack file uploads silently ignored \u2014 handleMessage now detects message.files and routes through handleFileUpload",
+          "verification": [
+            "Slack message with file attachments calls handleFileUpload",
+            "File descriptions are combined with message text and sent to backend",
+            "Messages without files still route normally"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P8.2",
+          "description": "Fix Discord project_bind_here and project_create_new button handlers \u2014 clicking 'Use this channel' or 'Create #name' now works",
+          "verification": [
+            "project_bind_here button creates a project binding for the current channel",
+            "project_create_new button creates a new guild channel and binds it",
+            "Both handlers update the interaction message to confirm the action"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P8.3",
+          "description": "Fix Discord slash commands never registered \u2014 start() now calls registerCommands() with non-fatal error handling",
+          "verification": [
+            "Discord adapter start() calls registerCommands() after login",
+            "registerCommands failure does not prevent adapter from starting",
+            "Warning logged if command registration fails"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P8.4",
+          "description": "Fix /settings backend change having no effect \u2014 both adapters now update projects.backend_name via store.updateProjectBackend()",
+          "verification": [
+            "store.updateProjectBackend() updates the backend_name column in projects table",
+            "Slack /settings backend <name> updates the project row, not the settings table",
+            "Discord /settings backend <name> updates the project row, not the settings table",
+            "Router reads project.backend_name which now reflects the change"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P8.5",
+          "description": "Fix sendWithTimeout orphaning child processes \u2014 timer cleared on success, backend.stop() called on timeout and in error catch blocks",
+          "verification": [
+            "Timer is cleared when backend.send() completes normally (no leaked timers)",
+            "backend.stop() is called inside the timeout handler before rejecting",
+            "send() and respond() catch blocks call backend.stop() before transitioning to dead",
+            "Active backend tracking cleaned up after successful oneshot completion"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P8.6",
+          "description": "Extract duplicated splitText() to shared src/utils.ts \u2014 both adapters import from shared module",
+          "verification": [
+            "src/utils.ts exports splitText()",
+            "slack.ts imports splitText from utils.ts and re-exports for backward compatibility",
+            "discord.ts imports splitText from utils.ts and re-exports for backward compatibility",
+            "No duplicated splitText implementations remain in adapter files"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P9",
+      "name": "Code Review Round 2 \u2014 Production Readiness Fixes",
+      "outcome": "Critical runtime bugs fixed, backend interface contract enforced, killable child processes, correct project directory handling",
+      "features": [
+        {
+          "id": "P9.1",
+          "description": "Fix /project slash command storing project name as project_dir \u2014 both Slack and Discord adapters now require an absolute directory path or use a configurable project root",
+          "verification": [
+            "Slack /project <name> from a bound channel stores an absolute project_dir (not the bare name)",
+            "Discord /project <name> from a bound channel stores an absolute project_dir (not the bare name)",
+            "Backend.start() receives a valid absolute path as projectDir",
+            "spawnCollect uses the absolute path as cwd without error",
+            "Unit tests verify project_dir is absolute for slash-command-created projects"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P9.2",
+          "description": "Fix .env.local parser to strip surrounding quotes from values \u2014 loadEnvFile now handles double-quoted and single-quoted values",
+          "verification": [
+            "loadEnvFile('KEY=\"value\"') returns { KEY: 'value' } (quotes stripped)",
+            "loadEnvFile(\"KEY='value'\") returns { KEY: 'value' } (quotes stripped)",
+            "loadEnvFile('KEY=value') still returns { KEY: 'value' } (unquoted unchanged)",
+            "loadEnvFile('KEY=value=with=equals') preserves internal equals signs",
+            "Unit tests verify all four cases"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P9.3",
+          "description": "Fix backend child processes unkillable on timeout \u2014 spawnCollect returns a kill handle, backend.stop() kills the child process",
+          "verification": [
+            "spawnCollect returns an object with both the result promise and a kill() function",
+            "ClaudeBackend.stop() calls kill() on the active child process if one is running",
+            "CodexBackend.stop() calls kill() on the active child process if one is running",
+            "When sendWithTimeout fires, backend.stop() actually terminates the child process",
+            "Unit test verifies that stop() during an active send kills the process"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P9.4",
+          "description": "Fix (backend as any).sessionId type bypass \u2014 Backend interface now has setSessionId() method, router uses it instead of unsafe cast",
+          "verification": [
+            "Backend interface in src/types/backend.ts includes setSessionId(id: string | null): void",
+            "ClaudeBackend implements setSessionId()",
+            "CodexBackend implements setSessionId()",
+            "Router calls backend.setSessionId() instead of (backend as any).sessionId",
+            "No (backend as any).sessionId casts remain in router.ts",
+            "TypeScript compiles with no errors"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P9.5",
+          "description": "Fix Discord button interaction dropping chained permission_denied events \u2014 handleButtonInteraction now uses renderEvents() instead of inline switch",
+          "verification": [
+            "handleButtonInteraction delegates to renderEvents() for event rendering",
+            "Chained permission_denied events (backend returns another denial after Allow) are rendered as new permission prompts",
+            "assistant_text and error events still render correctly after button click",
+            "No duplicated event rendering logic remains in handleButtonInteraction",
+            "Unit test verifies chained permission_denied events are rendered"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P9.6",
+          "description": "Fix false positive shutdown test \u2014 integration test P7.6 assertion now verifies stop() was actually called",
+          "verification": [
+            "integration.test.ts shutdown test asserts stopCalls.length > 0 (not >= 0)",
+            "Test fails if router.shutdown() does not call backend.stop()",
+            "All 374+ tests still pass"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P10",
+      "name": "MCP Wiring \u2014 Connect MCP Server to Runtime",
+      "outcome": "MCP tools (upload_file, open_tunnel, serve_file_browser) are fully wired so backends can invoke them and results flow back through adapters",
+      "features": [
+        {
+          "id": "P10.1",
+          "description": "Schema migration: add platform column to projects table \u2014 migration v2 adds platform TEXT NOT NULL DEFAULT 'unknown', adapters pass 'slack' or 'discord' on createProject",
+          "verification": [
+            "Project interface includes platform: string",
+            "createProject() accepts platform parameter",
+            "Slack adapter passes 'slack' to createProject",
+            "Discord adapter passes 'discord' to createProject",
+            "Existing databases migrate cleanly (default 'unknown')",
+            "Unit tests verify migration and platform persistence"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P10.2",
+          "description": "IPC server for MCP callbacks \u2014 localhost HTTP server on random port with auth, routes for upload-file, open-tunnel, serve-file-browser, post-message",
+          "verification": [
+            "startIpcServer() returns { port, secret, close() }",
+            "Server listens on 127.0.0.1 only (not exposed externally)",
+            "Requests without valid OPENBRIDGE_IPC_SECRET header are rejected (401)",
+            "POST /upload-file, /open-tunnel, /serve-file-browser, /post-message route to handler",
+            "Unknown routes return 404",
+            "close() shuts down the server",
+            "Unit tests verify all routes and auth"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P10.3",
+          "description": "MCP entry point script \u2014 entry.ts parses CLI args, reads IPC env vars, creates fetch-based BridgeCallbacks, starts MCP server on stdio",
+          "verification": [
+            "entry.ts parses --channel, --thread, --project-dir, --platform args",
+            "Reads OPENBRIDGE_IPC_PORT and OPENBRIDGE_IPC_SECRET from environment",
+            "Creates BridgeCallbacks that POST to localhost IPC server",
+            "Calls startMcpServer() with context and callbacks",
+            "TypeScript compiles as standalone entry point"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P10.4",
+          "description": "Tunnel manager \u2014 spawns cloudflared or ngrok, returns public URL, enforces TTL, tracks active tunnels for cleanup",
+          "verification": [
+            "openTunnel(port, ttl) returns { url, close() }",
+            "Prefers cloudflared over ngrok when both available",
+            "Cloudflared: parses URL from stderr output",
+            "Ngrok: queries localhost:4040/api/tunnels for URL",
+            "TTL enforcement: tunnel auto-closes after TTL seconds",
+            "shutdownAllTunnels() stops all active tunnels",
+            "Unit tests with mocked child_process verify spawn and URL parsing"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P10.5",
+          "description": "File browser HTTP server \u2014 serves directory listings and file content on localhost, port 0 for auto-assignment",
+          "verification": [
+            "startFileBrowser(directory) returns { port, close() }",
+            "Directory requests return HTML listing with links to files/subdirs",
+            "File requests stream content with appropriate Content-Type",
+            "Path traversal attacks (../) are rejected",
+            "close() shuts down the server",
+            "Unit tests verify directory listing and file serving"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P10.6",
+          "description": "Adapter uploadFile() methods \u2014 Slack uses files.uploadV2, Discord uses channel.send with attachment",
+          "verification": [
+            "Slack adapter has uploadFile(channelId, threadId, filePath, filename) method",
+            "Discord adapter has uploadFile(channelId, threadId, filePath, filename) method",
+            "Slack calls client.files.uploadV2 with correct parameters",
+            "Discord calls channel.send with files attachment",
+            "Unit tests verify method calls with mocked SDK clients"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P10.7",
+          "description": "Callback handler glue layer \u2014 routes IPC requests to correct adapter (by platform), tunnel manager, and file browser",
+          "verification": [
+            "createCallbackHandler() returns handler with uploadFile, openTunnel, serveFileBrowser, postMessage",
+            "uploadFile routes to correct adapter based on platform in request",
+            "postMessage routes to correct adapter based on platform",
+            "openTunnel delegates to tunnel manager",
+            "serveFileBrowser starts file browser + opens tunnel, returns URL",
+            "Unit tests verify routing logic"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P10.8",
+          "description": "Router passes mcpConfig to backend.start() \u2014 mcpConfigFactory in RouterOptions generates MCP config with IPC env vars",
+          "verification": [
+            "RouterOptions accepts optional mcpConfigFactory",
+            "send() passes mcpConfig from factory to backend.start()",
+            "respond() passes mcpConfig from factory to backend.start()",
+            "getMcpConfig() includes --platform arg and IPC env vars in entry config",
+            "Unit tests verify mcpConfig is passed through"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P10.9",
+          "description": "Wire everything in start.ts \u2014 IPC server started before adapters, mcpConfigFactory created, callback handler registered, shutdown cleans up all resources",
+          "verification": [
+            "IPC server starts on bridge launch",
+            "mcpConfigFactory uses getMcpConfig() with IPC port and secret",
+            "Adapters registered with callback handler for uploadFile/postMessage routing",
+            "Shutdown sequence: close IPC server, stop tunnels, stop file browsers, stop adapters",
+            "Build succeeds, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P10.10",
+          "description": "Integration test \u2014 mock backend triggers MCP tool call, IPC routes to adapter method",
+          "verification": [
+            "Test creates IPC server + callback handler with mock adapter",
+            "Simulates MCP entry.ts making HTTP calls to IPC server",
+            "upload-file IPC call triggers adapter.uploadFile()",
+            "post-message IPC call triggers adapter.postText()",
+            "Auth rejection tested (missing/wrong secret)",
+            "All existing tests still pass"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P11",
+      "name": "Real-Time Permission Handling via Claude Code Hooks",
+      "outcome": "Claude Code permission prompts surface in Slack/Discord in real-time via hooks, MCP tools pre-approved",
+      "features": [
+        {
+          "id": "P11.1",
+          "description": "Pre-approve MCP tools in --allowedTools \u2014 MCP_TOOLS constant always merged into buildClaudeArgs allowedTools",
+          "verification": [
+            "MCP_TOOLS exported from claude.ts with 4 tool names",
+            "buildClaudeArgs() always includes MCP tools in --allowedTools",
+            "Deduplication when user-approved tools overlap with MCP tools",
+            "Unit tests verify MCP tools always present in args"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P11.2",
+          "description": "Add env param to spawnCollect() \u2014 child process inherits custom env vars for hook scripts",
+          "verification": [
+            "spawnCollect() accepts optional env parameter",
+            "env vars merged with process.env for child process",
+            "Unit test verifies env var passed to child"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P11.3",
+          "description": "PreToolUse hook script \u2014 auto-approves MCP tools, defers to default for others",
+          "verification": [
+            "src/hooks/pre-tool-use.ts reads JSON from stdin",
+            "mcp__openbridge__* tools return permissionDecision: allow",
+            "Other tools exit cleanly (defer to default)",
+            "Invalid input handled gracefully",
+            "Unit tests verify all cases"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P11.4",
+          "description": "Permission endpoints on IPC server \u2014 /permission-request, /permission-poll (long-poll), /permission-resolve, plus in-process resolvePermission()",
+          "verification": [
+            "POST /permission-request creates pending entry and calls handler.requestPermission()",
+            "POST /permission-poll long-polls for decision, returns resolved or pending",
+            "POST /permission-resolve resolves a pending request via HTTP",
+            "resolvePermission() resolves in-process (for adapters)",
+            "Stale entries cleaned up after 10 minutes",
+            "Unit tests verify all endpoints"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P11.5",
+          "description": "PermissionRequest hook script \u2014 blocks, sends prompt to IPC, polls for user decision, returns allow/deny",
+          "verification": [
+            "Hook reads JSON from stdin, sends /permission-request to IPC",
+            "Polls /permission-poll until user responds or timeout",
+            "Returns allow when user approves",
+            "Returns deny when user denies or timeout",
+            "Handles missing env vars and invalid input gracefully",
+            "Integration tests with real IPC server verify full flow"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P11.6",
+          "description": "Extend BackendOptions with IPC/hook fields, wire through router to backend.start()",
+          "verification": [
+            "BackendOptions has ipc, channelId, threadId, platform, hookScriptDir fields",
+            "RouterOptions accepts ipc and hookScriptDir",
+            "Router.send() and Router.respond() pass all fields to backend.start()",
+            "All 473 existing tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P11.7",
+          "description": "buildHookSettings() generates hook config JSON, buildClaudeArgs() passes --settings, ClaudeBackend.send() wires hook env vars",
+          "verification": [
+            "buildHookSettings() returns valid JSON with PreToolUse and PermissionRequest hooks",
+            "buildClaudeArgs() includes --settings when settingsJson provided",
+            "ClaudeBackend stores IPC/context from start() and passes env vars + settings to spawnCollect()",
+            "All 480 tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P11.8",
+          "description": "Adapters embed requestId in permission buttons; hook-based flow resolves in-process via resolvePermission()",
+          "verification": [
+            "callbacks.ts requestPermission() routes to adapter.postPermissionPrompt with requestId",
+            "Slack embeds requestId in button value, resolves in-process when present",
+            "Discord embeds requestId in customId, resolves in-process when present",
+            "Legacy flow (no requestId) still works via router.respond()",
+            "All 481 tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P11.9",
+          "description": "Wire IPC server info and hookScriptDir through to Router in start.ts",
+          "verification": [
+            "Router receives ipc and hookScriptDir options",
+            "hookScriptDir points to dist/ where compiled hook scripts live",
+            "Build succeeds, all 481 tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P11.10",
+          "description": "Move permission flow into PreToolUse hook (PermissionRequest event does not exist)",
+          "verification": [
+            "PreToolUse hook auto-allows MCP tools",
+            "PreToolUse hook sends IPC permission request for Bash/Write/Edit/NotebookEdit",
+            "PreToolUse hook defers to default for safe tools (Read, Glob, etc.)",
+            "Integration test: IPC allow flow works end-to-end",
+            "Integration test: IPC deny flow works end-to-end",
+            "buildHookSettings only configures PreToolUse (no PermissionRequest)",
+            "All 482 tests pass"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P12",
+      "name": "Permission Modes, Accumulated Permissions, and Image Passing",
+      "outcome": "Projects have trusted/supervised permission mode, Claude accumulates 'Always Allow' patterns, Codex supports sandbox upgrade, both backends accept image uploads from chat",
+      "features": [
+        {
+          "id": "P12.1",
+          "description": "Schema migration v3 \u2014 add permission_mode column to projects (trusted/supervised, default supervised), add allowed_tools table (project_id, tool_pattern, created_at), add sandbox_mode column to projects (default workspace-write)",
+          "verification": [
+            "Migration v3 runs cleanly on existing databases",
+            "projects table has permission_mode TEXT NOT NULL DEFAULT 'supervised'",
+            "projects table has sandbox_mode TEXT NOT NULL DEFAULT 'workspace-write'",
+            "allowed_tools table has project_id (FK), tool_pattern (TEXT), created_at",
+            "Store has CRUD for allowed_tools: addAllowedTool, getAllowedTools, removeAllowedTool",
+            "Store has updatePermissionMode and updateSandboxMode methods",
+            "Unit tests verify migration, CRUD, and defaults"
+          ],
+          "status": "passing"
+        },
+        {
+          "description": "/project connect asks permission mode \u2014 both Slack and Discord adapters prompt 'Trusted (skip all permissions)' or 'Supervised (approve per action)' during project connect, store choice in projects.permission_mode",
+          "verification": [
+            "Slack /project connect shows permission mode buttons after path selection",
+            "Discord /project connect shows permission mode buttons after path selection",
+            "Selected mode stored via store.updatePermissionMode()",
+            "Default is supervised if user skips or doesn't choose",
+            "Unit tests verify mode is stored on project creation"
+          ],
+          "status": "passing",
+          "id": "P12.2"
+        },
+        {
+          "id": "P12.3",
+          "description": "Claude trusted mode \u2014 when project.permission_mode is 'trusted', pass --dangerously-skip-permissions to Claude CLI and skip hooks entirely",
+          "verification": [
+            "buildClaudeArgs() includes --dangerously-skip-permissions when trusted",
+            "buildClaudeArgs() omits --settings hook config when trusted",
+            "ClaudeBackend.send() does not pass hook env vars when trusted",
+            "Supervised mode behavior unchanged (hooks + normal flow)",
+            "Unit tests verify args for both modes"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P12.4",
+          "description": "Codex trusted mode \u2014 when project.permission_mode is 'trusted', pass --sandbox danger-full-access regardless of stored sandbox_mode",
+          "verification": [
+            "buildCodexArgs() uses danger-full-access when trusted",
+            "Supervised mode uses stored sandbox_mode from project",
+            "Unit tests verify args for both modes"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P12.5",
+          "description": "Always Allow button for Claude permissions \u2014 third button in permission prompts stores tool pattern in allowed_tools table",
+          "verification": [
+            "Slack permission prompt has Allow / Always Allow / Deny buttons",
+            "Discord permission prompt has Allow / Always Allow / Deny buttons",
+            "Always Allow extracts tool pattern (e.g. 'Bash' from tool_name) and stores via store.addAllowedTool()",
+            "Also resolves the current permission request (same as Allow)",
+            "Unit tests verify pattern storage and permission resolution"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P12.6",
+          "description": "Claude loads and passes accumulated allowed_tools \u2014 on every send, reads stored patterns from DB and merges into --allowedTools",
+          "verification": [
+            "ClaudeBackend.send() or router reads allowed_tools for the project",
+            "Stored patterns merged with MCP_TOOLS in --allowedTools args",
+            "New patterns from Always Allow are picked up on next invocation",
+            "Unit tests verify patterns appear in buildClaudeArgs output"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P12.7",
+          "description": "Codex sandbox upgrade flow \u2014 when sandbox denial detected in supervised mode, show 'Upgrade to full access?' button; if approved, update project.sandbox_mode and clear session",
+          "verification": [
+            "Sandbox denial in supervised mode shows upgrade button in Slack/Discord",
+            "Clicking upgrade stores 'danger-full-access' via store.updateSandboxMode()",
+            "Session is reset (cleared backend_session_id) so next message uses new sandbox",
+            "Subsequent sends use the upgraded sandbox_mode",
+            "Clicking 'Keep restricted' leaves sandbox_mode unchanged",
+            "Unit tests verify upgrade flow and persistence"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P12.8",
+          "description": "spawnCollect accepts stdin data \u2014 optional stdin parameter pipes data to child process stdin then closes it",
+          "verification": [
+            "spawnCollect() accepts optional stdin: string parameter",
+            "When provided, data is written to child process stdin and stdin is closed",
+            "When not provided, stdin is 'ignore' as before",
+            "Unit tests verify stdin piping"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P12.9",
+          "description": "Claude switches to stream-json input with image support \u2014 uses --input-format stream-json, constructs JSON messages on stdin with text and image content blocks",
+          "verification": [
+            "buildClaudeArgs() uses --input-format stream-json instead of text",
+            "ClaudeBackend.send() builds JSON input message with text content block",
+            "When images provided, includes image content blocks (base64-encoded) in the message",
+            "Prompt text passed via stdin JSON, not as CLI arg",
+            "Output parsing unchanged (stream-json output format already used)",
+            "Unit tests verify JSON message construction with and without images"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P12.10",
+          "description": "Codex image passing \u2014 saves image data to temp file, passes path via --image flag, cleans up temp file after send completes",
+          "verification": [
+            "CodexBackend.send() accepts optional images parameter",
+            "Each image saved to OS temp directory with appropriate extension",
+            "buildCodexArgs() includes --image /tmp/file.png for each image",
+            "Temp files cleaned up after send() completes (success or failure)",
+            "Unit tests verify temp file creation, arg construction, and cleanup"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P12.11",
+          "description": "Adapter image handling \u2014 both adapters download images from platform, pass image data (buffer + mime type) through router to backend",
+          "verification": [
+            "Backend interface send() accepts optional images: { data: Buffer, mimeType: string, filename: string }[]",
+            "Router.send() passes images through to backend.send()",
+            "Slack adapter downloads file via files.info or URL, extracts buffer and mime type",
+            "Discord adapter downloads attachment via URL, extracts buffer and mime type",
+            "Images passed alongside text in existing message flow",
+            "Unit tests verify image download and passthrough"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P13",
+      "name": "Image Upload Staging & Save Tool",
+      "outcome": "Uploaded images saved to staging dir, MCP tool lets backends save them to project",
+      "features": [
+        {
+          "id": "P13.1",
+          "description": "Staging directory utilities — saveToStagingDir, cleanupStagingFiles, getUploadsDir",
+          "verification": [
+            "saveToStagingDir creates file in ~/.openbridge-ai/uploads/ with correct content",
+            "Upload IDs are unique and match upload_XXXXXXXXXXXX format",
+            "Filename sanitized via path.basename (no path traversal)",
+            "cleanupStagingFiles deletes files, ignores missing",
+            "Unit tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P13.2",
+          "description": "Extend ImageAttachment with optional uploadId, filename, stagingPath fields",
+          "verification": [
+            "ImageAttachment interface has uploadId?, filename?, stagingPath?",
+            "Existing code compiles without changes (fields are optional)",
+            "Build and tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P13.3",
+          "description": "Adapters save images to staging and populate upload metadata on ImageAttachment",
+          "verification": [
+            "Slack handleFileUpload calls saveToStagingDir after downloadToBase64",
+            "Discord handleFileUpload calls saveToStagingDir after downloadToBase64",
+            "ImageAttachment objects include uploadId, filename, stagingPath",
+            "Unit tests verify staging metadata is populated"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P13.4",
+          "description": "Router augments prompt text with upload info and cleans up staging after turn",
+          "verification": [
+            "Prompt text includes [Uploaded image: ... (upload_id: ...)] for images with uploadId",
+            "Text not augmented when images lack uploadId",
+            "Staging files cleaned up after successful send",
+            "Staging files cleaned up after failed send",
+            "Unit tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P13.5",
+          "description": "Codex backend reuses staging file paths for --image instead of creating temp copies",
+          "verification": [
+            "When images have stagingPath, Codex uses them directly for --image",
+            "No temp files created when staging paths exist",
+            "Falls back to temp files when stagingPath absent",
+            "Unit tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P13.6",
+          "description": "IPC endpoint /save-uploaded-file with saveUploadedFile on IpcHandler",
+          "verification": [
+            "IpcHandler interface has saveUploadedFile method",
+            "/save-uploaded-file endpoint returns 200 with path on success",
+            "Auth required, returns 401 without secret",
+            "Unit tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P13.7",
+          "description": "Callbacks handler saveUploadedFile — copies from staging to project dir",
+          "verification": [
+            "Finds staging file by uploadId prefix",
+            "Copies file to destination within project dir",
+            "Rejects path traversal outside project dir",
+            "Creates parent directories if needed",
+            "Unit tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P13.8",
+          "description": "Register save_uploaded_file MCP tool, wire through entry.ts, add to MCP_TOOLS",
+          "verification": [
+            "save_uploaded_file tool registered on MCP server",
+            "BridgeCallbacks includes saveUploadedFile",
+            "entry.ts wires callback to /save-uploaded-file IPC endpoint",
+            "MCP_TOOLS includes mcp__openbridge__save_uploaded_file",
+            "Unit tests pass"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P14",
+      "name": "Universal File Upload Support",
+      "outcome": "All uploaded file types (images, PDFs, text, binary) are downloaded, staged, and appropriately passed to backends",
+      "features": [
+        {
+          "id": "P14.1",
+          "description": "Rename ImageAttachment to FileAttachment with kind field, add classifyMimeType and downloadAndStageFile utilities, rename all references across codebase",
+          "verification": [
+            "FileAttachment has kind: FileKind ('image' | 'pdf' | 'text' | 'binary')",
+            "classifyMimeType correctly classifies images, PDFs, text, and binary MIME types",
+            "downloadAndStageFile downloads, classifies, and stages in one call",
+            "No ImageAttachment references remain in src/",
+            "Unit tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P14.2",
+          "description": "Adapters download ALL file types using shared downloadAndStageFile, include text file contents inline in prompt",
+          "verification": [
+            "Non-image files are downloaded and staged (not just described as text)",
+            "Text files have their contents included inline in the prompt",
+            "Both adapters use downloadAndStageFile (DRY)",
+            "Unit tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P14.3",
+          "description": "Claude backend passes PDFs as type:document content blocks alongside images",
+          "verification": [
+            "PDFs produce type:document content blocks with application/pdf media type",
+            "Images still produce type:image content blocks",
+            "Text and binary files produce no content blocks",
+            "useStreamJson only activates for images or PDFs",
+            "Unit tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P14.4",
+          "description": "Codex backend filters to images-only for --image flag, other file types pass through staging only",
+          "verification": [
+            "Only kind:image files produce --image flags",
+            "PDFs, text, and binary files are not passed to Codex via --image",
+            "Unit tests pass"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P15",
+      "name": "Bugfixes — Permission Hook",
+      "outcome": "PreToolUse hook output format corrected, Allow button works",
+      "features": [
+        {
+          "id": "P15.1",
+          "description": "Add required hookEventName field to PreToolUse hook output",
+          "verification": [
+            "Hook outputs hookEventName: 'PreToolUse' in hookSpecificOutput",
+            "All hook tests pass with hookEventName assertions",
+            "Build passes"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P16",
+      "name": "post_message MCP + Output Cleanup",
+      "outcome": "Permission prompts don't crash on large inputs, Claude communicates via post_message MCP tool, assistant text noise suppressed",
+      "features": [
+        {
+          "id": "P16.1",
+          "description": "Permission prompt truncation — cap tool input display at 500 chars in both adapters",
+          "verification": [
+            "Large Write input permission prompt renders without Slack API error",
+            "Truncated output contains '(truncated)' indicator",
+            "Discord adapter has same truncation",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P16.2",
+          "description": "Register post_message MCP tool in server.ts",
+          "verification": [
+            "post_message tool registered with description and text input schema",
+            "Tool calls callbacks.postMessage() which routes to adapter.sendMessage()",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P16.3",
+          "description": "Remove hardcoded postMessage from open_tunnel and serve_file_browser",
+          "verification": [
+            "open_tunnel no longer calls callbacks.postMessage() directly",
+            "serve_file_browser no longer calls callbacks.postMessage() directly",
+            "Tool descriptions updated to remove 'post URL in chat' language",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P16.4",
+          "description": "Track post_message per turn, suppress assistant_text when used, render only last when not",
+          "verification": [
+            "When post_message called during turn, assistant_text events are suppressed",
+            "When post_message not called, only last assistant_text is rendered",
+            "Permission_denied and error events always rendered regardless",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P16.5",
+          "description": "Truncate fallback assistant_text to last 500 chars (keep ending, discard beginning)",
+          "verification": [
+            "Long assistant_text (>500 chars) is truncated from the top with '...' prefix",
+            "Short assistant_text renders unchanged",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P17",
+      "name": "Consolidated Preview Server",
+      "outcome": "Single MCP tool starts a server + tunnel in one call, eliminating port collisions and silent failures",
+      "features": [
+        {
+          "id": "P17.1",
+          "description": "preview-server.ts module — findFreePort, built-in static server, command runner, tunnel integration, cleanup",
+          "verification": [
+            "findFreePort() returns valid free port via net.createServer(0)",
+            "Static server serves files with correct MIME types, index.html for dirs, path traversal blocked",
+            "Command mode spawns command with PORT env var, waits for port, tunnels",
+            "Command early exit rejects with descriptive error",
+            "closeAllPreviews() cleans up all active servers and tunnels",
+            "13 unit tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P17.2",
+          "description": "Wire preview_server through callbacks, IPC server, and entry.ts",
+          "verification": [
+            "IpcHandler interface has previewServer(directory, command, ttl) method",
+            "IPC server has /preview-server endpoint",
+            "callbacks.ts routes to startPreviewServer()",
+            "entry.ts wires callback to IPC endpoint",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P17.3",
+          "description": "Register preview_server MCP tool, update open_tunnel description to reference preview_server",
+          "verification": [
+            "preview_server tool registered with directory, command, ttl inputs",
+            "open_tunnel description updated to suggest preview_server for starting new servers",
+            "MCP server log includes preview_server in tool list",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P17.4",
+          "description": "Add mcp__openbridge__preview_server to MCP_TOOLS, add closeAllPreviews to shutdown",
+          "verification": [
+            "MCP_TOOLS includes mcp__openbridge__preview_server",
+            "start.ts shutdown calls closeAllPreviews()",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P18",
+      "name": "Bug Fixes — Live Testing Feedback",
+      "outcome": "Sandbox upgrade, Discord presence, and Codex image handling work correctly",
+      "features": [
+        {
+          "id": "P18.1",
+          "description": "Sandbox upgrade resets session so next message starts fresh with new permissions",
+          "verification": [
+            "Both adapters call router.resetSession() after updating sandbox mode",
+            "Confirmation message mentions session reset",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P18.2",
+          "description": "Discord bot: pass clientId for slash commands, add Ready handler with online presence",
+          "verification": [
+            "clientId extracted from bot token and passed to DiscordAdapter in start.ts",
+            "Events.ClientReady handler sets presence to online with activity",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P18.3",
+          "description": "Fix Codex image flag: use -i (documented short flag) instead of --image",
+          "verification": [
+            "buildCodexArgs uses -i flag for image paths, not --image",
+            "Resume mode does not include -i (images persist from initial invocation)",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P19",
+      "name": "Live Testing Fixes — Discord, Codex MCP, Tool Descriptions",
+      "outcome": "Discord UX polished, Codex MCP tools working, MCP tool descriptions rewritten for model clarity, open_tunnel removed",
+      "features": [
+        {
+          "id": "P19.1",
+          "description": "Discord fixes — guild-scoped slash commands, cross-platform /project list, file upload threading",
+          "verification": [
+            "Slash commands registered per-guild (not global)",
+            "Cross-platform /project list works",
+            "File uploads thread correctly in Discord"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P19.2",
+          "description": "Fix Discord permission prompts and untruncate spawn log",
+          "verification": [
+            "Permission prompts render correctly in Discord",
+            "Spawn log output not truncated for debugging"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P19.3",
+          "description": "Disable staging file cleanup to persist uploads across turns",
+          "verification": [
+            "Staging files not cleaned up after router send",
+            "Existing cleanup tests skipped",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P19.4",
+          "description": "/settings uses subcommands (backend, root, view) on Discord instead of flat args",
+          "verification": [
+            "Discord /settings has view, backend, root subcommands",
+            "Backend subcommand has choices dropdown",
+            "Tests updated for subcommand structure"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P19.5",
+          "description": "Intercept plain-text slash commands in Discord messages",
+          "verification": [
+            "Messages starting with /project, /settings, /new, /cancel are intercepted",
+            "Bot replies with a hint to use the slash command picker",
+            "Regular messages still route to backend"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P19.6",
+          "description": "Fix MCP tools for Codex — pass IPC port/secret as CLI args instead of env vars",
+          "verification": [
+            "getMcpConfig adds --ipc-port and --ipc-secret args",
+            "entry.ts reads args first, env vars as fallback",
+            "TOML config includes enabled = true",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P19.7",
+          "description": "Pass MCP config via -c flag to codex exec at runtime",
+          "verification": [
+            "buildCodexArgs generates -c mcp_servers.openbridge={...} flag",
+            "No .codex/config.toml file needed in user project",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P19.8",
+          "description": "Rewrite MCP tool descriptions to be model-friendly (what/when/how/enforcements)",
+          "verification": [
+            "Descriptions written from model perspective, no platform references",
+            "Each tool has: what it does, when to use it, how to use it",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P19.9",
+          "description": "Remove open_tunnel tool (superseded by preview_server), refine all MCP tool descriptions",
+          "verification": [
+            "open_tunnel removed from server.ts, claude.ts MCP_TOOLS, all tests",
+            "upload_file mentions post_message for confirmation",
+            "preview_server has DO NOT enforcements",
+            "post_message emphasizes succinct output",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P19.10",
+          "description": "Add sendMessage truncation failsafe in adapters (Discord 2000, Slack 40000)",
+          "verification": [
+            "Discord sendMessage truncates at 2000 chars",
+            "Slack sendMessage truncates at 40000 chars",
+            "Truncated messages show '... (truncated)' indicator",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "phase": "P20",
+      "title": "UX polish and command reorganization",
+      "features": [
+        {
+          "id": "P20.1",
+          "description": "Move backend subcommand from /settings to /project (backend is per-project, not global)",
+          "verification": [
+            "/project backend codex changes backend for the connected project",
+            "/project backend shows current backend",
+            "/settings no longer has backend subcommand",
+            "Slack manifest, Discord commands, SLASH-COMMANDS.md, init hint all updated",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P20.2",
+          "description": "AskUserQuestion tool renders as dynamic chat buttons in Slack/Discord",
+          "verification": [
+            "PreToolUse hook intercepts AskUserQuestion and sends to IPC",
+            "IPC server has /ask-user-question, /question-poll, /question-resolve endpoints",
+            "Slack adapter renders question as Block Kit buttons, resolves on click",
+            "Discord adapter renders question as ButtonBuilder buttons, resolves on click",
+            "Hook denies with answer in reason string so Claude proceeds with user's choice",
+            "Build passes, all 621 tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P20.3",
+          "description": "Skip AskUserQuestion permission_denied events in renderEvents to prevent double rendering",
+          "verification": [
+            "renderEvents in both Slack and Discord adapters skips permission_denied events where toolName is AskUserQuestion",
+            "Only question buttons appear in chat, no redundant Allow/Deny prompt",
+            "Build passes, all 621 tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P20.4",
+          "description": "Fix Discord sendToThread null-context path and surface IPC rendering errors to chat",
+          "verification": [
+            "sendToThread throws on failure instead of silently swallowing errors",
+            "Null-context path fetches channel by ID and throws if not sendable",
+            "IPC /permission-request and /ask-user-question post errors back to chat on failure",
+            "Build passes, all 621 tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P20.5",
+          "description": "Register hooks in both trusted and supervised modes (not just supervised)",
+          "verification": [
+            "Hooks are registered when trustMode is 'trusted' or 'supervised'",
+            "AskUserQuestion and permission buttons work in trusted mode",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P20.6",
+          "description": "threadId-to-requestId index in IPC server for typed responses to pending questions",
+          "verification": [
+            "IPC server maintains threadToQuestionId map for pending questions",
+            "Typed responses in thread resolve the pending question via hasPendingQuestion check",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P20.7",
+          "description": "Update original question message when user types a response instead of clicking a button",
+          "verification": [
+            "Slack updates question message to show 'Answered: <text>' when user types a response",
+            "Discord updates question message to show 'Answered: <text>' and removes buttons",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P20.8",
+          "description": "Preserve question text when updating question message after button click or typed response",
+          "verification": [
+            "Updated question message shows original question text plus selected answer",
+            "Both Slack and Discord preserve question text in the updated message",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P20.9",
+          "description": "Processing indicator for all resolution paths — post Processing after every user interaction, delete centrally in renderEvents",
+          "verification": [
+            "Processing posted after permission Allow/Deny button clicks",
+            "Processing posted after AskUserQuestion button clicks",
+            "Processing posted after typed responses to pending questions",
+            "Processing posted after freeform text responses",
+            "Processing deleted centrally at start of renderEvents()",
+            "Processing deleted on backend error paths",
+            "No orphaned Processing messages on multi-permission turns",
+            "Build passes, all 631 tests pass"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P21",
+      "name": "Error Handling Cleanup — Eliminate Silent Failures",
+      "outcome": "No silent error swallowing anywhere in the codebase. Errors either surface to the user in chat, log visibly, or throw.",
+      "features": [
+        {
+          "id": "P21.1",
+          "description": "Slack adapter — throw on critical failures (bot auth, channel join, sendToThread, uploadFile, sendMessage), log on cosmetic failures (processing indicator, message updates after button clicks)",
+          "verification": [
+            "start() throws if auth.test fails (bot user ID required for self-filtering)",
+            "ensureInChannel() throws if channel join fails",
+            "sendToThread/uploadFile/sendMessage throw on failure (no .catch(() => null))",
+            "postProcessing/deleteProcessing log error but don't throw",
+            "Button handler message updates (handlePermissionAction, handleQuestionAnswer) log error but don't throw",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P21.2",
+          "description": "Discord adapter — throw on critical failures (sendToThread, uploadFile, sendMessage channel fetch), log on cosmetic failures (processing indicator, interaction updates)",
+          "verification": [
+            "sendToThread throws on channel fetch failure instead of .catch(() => null)",
+            "uploadFile throws on channel fetch failure instead of .catch(() => null)",
+            "sendMessage throws on channel fetch failure instead of .catch(() => null)",
+            "postProcessing/deleteProcessing log error but don't throw",
+            "Button interaction updates log error but don't throw",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P21.3",
+          "description": "Claude backend — log on log-file creation failure, warn on JSON parse failures instead of silent null return",
+          "verification": [
+            "spawnCollect log stream failure logs console.error with context",
+            "parseJsonLine logs malformed lines at warn level instead of silently returning null",
+            "writeClaudeMcpConfig logs if existing config read fails (distinguishes ENOENT from other errors)",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P21.4",
+          "description": "Codex backend — warn on JSON parse failures, log on cleanup failures, distinguish ENOENT from real errors in config read",
+          "verification": [
+            "parseJsonLine logs malformed lines at warn level instead of silently returning null",
+            "cleanupTempImages logs failures instead of empty catch",
+            "writeCodexMcpConfig distinguishes ENOENT (expected) from other errors (logged)",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P21.5",
+          "description": "Hooks — pre-tool-use.ts logs errors before exit, permission-request.ts includes error detail in deny message",
+          "verification": [
+            "pre-tool-use.ts main().catch logs error to stderr before exit(0)",
+            "permission-request.ts top-level catch includes err.message in deny output",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P21.6",
+          "description": "Utils and callbacks — downloadToBase64 throws instead of returning null, cleanupStagingFiles logs failures, closeAllFileBrowsers logs failures",
+          "verification": [
+            "downloadToBase64 throws on fetch/conversion failure (callers updated to handle)",
+            "cleanupStagingFiles logs each file cleanup failure with filename",
+            "closeAllFileBrowsers logs each close failure",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P21.7",
+          "description": "Start.ts — adapter start failure throws (don't run bridge in half-broken state), IPC cleanup stale entries logs denials",
+          "verification": [
+            "If any adapter fails to start, bridge exits with clear error message instead of continuing",
+            "cleanupStaleEntries logs when auto-denying stale permission requests",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P22",
+      "name": "Live Todo Checklist",
+      "outcome": "TodoWrite calls render as a live-updating checklist message in Slack/Discord threads",
+      "features": [
+        {
+          "id": "P22.1",
+          "description": "PreToolUse hook intercepts TodoWrite, fires IPC render-todos, allows tool",
+          "verification": [
+            "Hook exits 0 with no output (allows tool) after POSTing to /render-todos",
+            "Without IPC configured, hook still exits 0 (no-op)",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P22.2",
+          "description": "IPC /render-todos endpoint and adapter renderTodoList method with post/update pattern",
+          "verification": [
+            "First TodoWrite posts a new checklist message in the thread",
+            "Subsequent TodoWrite calls update the same message in place",
+            "Formatting: strikethrough for completed, bold for in-progress, plain for pending",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P23",
+      "name": "Scheduled Sessions",
+      "outcome": "AI backends can register one-time or recurring schedules via MCP tool; bridge fires sessions at the scheduled time, creating threads and streaming responses back to the chat platform; users manage schedules via /schedule slash command",
+      "features": [
+        {
+          "id": "P23.1",
+          "description": "SQLite schedules table (migration 3) with columns: project_id, channel_id, prompt, original_request, cron_expression, scheduled_at, next_run_at, is_recurring, is_active. Store CRUD methods: createSchedule, getDueSchedules, getSchedulesByChannelId, deactivateSchedule, updateNextRun",
+          "verification": [
+            "Migration 3 creates schedules table with correct schema and index",
+            "createSchedule inserts a row and returns a Schedule object",
+            "getDueSchedules returns only active schedules where next_run_at <= now",
+            "deactivateSchedule sets is_active = 0",
+            "updateNextRun updates the next_run_at column",
+            "Build passes, all tests pass"
+          ],
+          "status": "pending"
+        },
+        {
+          "id": "P23.2",
+          "description": "schedule_session MCP tool registered in server.ts with inputs: prompt, original_request, cron_expression (optional), scheduled_at (optional). Validates exactly one of cron/scheduled_at is provided. IPC endpoint /schedule-session in ipc-server.ts, entry.ts case, and callbacks.ts handler that stores the schedule via Store",
+          "verification": [
+            "MCP tool is registered with correct input schema",
+            "Tool rejects if both cron_expression and scheduled_at are provided",
+            "Tool rejects if neither is provided",
+            "IPC /schedule-session endpoint stores schedule in DB and returns scheduleId",
+            "Callbacks handler looks up project by channelId and computes next_run_at",
+            "Build passes, all tests pass"
+          ],
+          "status": "pending"
+        },
+        {
+          "id": "P23.3",
+          "description": "Adapter createThread method — Slack posts a message to start a thread (returns ts), Discord creates a thread channel (returns thread ID). Added to Adapter interface",
+          "verification": [
+            "Adapter interface includes createThread(channelId, title): Promise<string>",
+            "Slack implementation uses client.chat.postMessage and returns result.ts",
+            "Discord implementation uses channel.threads.create and returns thread.id",
+            "Build passes, all tests pass"
+          ],
+          "status": "pending"
+        },
+        {
+          "id": "P23.4",
+          "description": "Scheduler class (src/scheduler.ts) with 60-second setInterval loop. tick() queries getDueSchedules, fire() creates thread via adapter, runs router.send() with stored prompt, posts events back, advances next_run_at for recurring or deactivates one-time schedules",
+          "verification": [
+            "Scheduler.start() begins the interval and runs an immediate tick",
+            "Scheduler.stop() clears the interval",
+            "Due one-time schedule fires: thread created, router.send called, schedule deactivated after",
+            "Due recurring schedule fires: thread created, router.send called, next_run_at advanced",
+            "Missing project or adapter logs warning and deactivates schedule",
+            "Errors in fire() are caught and logged, don't crash the loop",
+            "Build passes, all tests pass"
+          ],
+          "status": "pending"
+        },
+        {
+          "id": "P23.5",
+          "description": "Scheduler integration in start.ts — create Scheduler after adapters start, pass store/router/adapterMap, call scheduler.start(). Stop scheduler in shutdown handler",
+          "verification": [
+            "Scheduler is created and started after all adapters are up",
+            "Scheduler is stopped during graceful shutdown before adapters disconnect",
+            "Build passes, all tests pass"
+          ],
+          "status": "pending"
+        },
+        {
+          "id": "P23.6",
+          "description": "/schedule slash command for Slack and Discord. Subcommands: list (shows original_request, next run time, ID for all active schedules in channel) and cancel <id> (deactivates schedule). Queries bridge store directly, not the project backend",
+          "verification": [
+            "Slack /schedule list shows all active schedules for the channel with original_request text",
+            "Slack /schedule cancel <id> deactivates the schedule and confirms",
+            "Discord /schedule list and cancel work identically",
+            "No schedules: responds with 'No scheduled sessions for this channel'",
+            "Cancel nonexistent ID: responds with error message",
+            "Build passes, all tests pass"
+          ],
+          "status": "pending"
+        },
+        {
+          "id": "P23.7",
+          "description": "Install cron-parser npm dependency for cron expression parsing and next-run computation",
+          "verification": [
+            "cron-parser is in package.json dependencies",
+            "computeNextRun correctly parses cron expressions and returns next ISO datetime",
+            "Invalid cron expressions throw a clear error",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        }
+      ]
+    },
+    {
+      "id": "P24",
+      "name": "Session Resume — Continue Laptop Sessions from Chat",
+      "outcome": "/resume command shows laptop Claude Code sessions paginated 3 at a time (most recent first) with last message preview; selecting one sets backend_session_id so the next message resumes that conversation",
+      "features": [
+        {
+          "id": "P24.1",
+          "description": "Session JSONL scanner: reads ~/.claude/projects/<project-dir>/*.jsonl, filters to laptop-only sessions (userType !== 'external'), sorts by mtime descending, returns all matching sessions with metadata (session ID, mtime, last user message truncated to 40 chars). Caller paginates with offset/limit.",
+          "verification": [
+            "Given a mix of laptop (userType: human) and OpenBridge (userType: external) session files, only laptop sessions are returned",
+            "Sessions are sorted most-recent-first by file mtime",
+            "Last user message is extracted by scanning JSONL from the end",
+            "Message text is truncated to 40 characters with ellipsis",
+            "Returns empty array when no laptop sessions exist",
+            "Supports offset and limit parameters for pagination",
+            "Build passes, all tests pass"
+          ],
+          "status": "passing"
+        },
+        {
+          "id": "P24.2",
+          "description": "Slack /resume command: registers slash command, calls session scanner for the channel's bound project, renders 3 sessions per page with Block Kit buttons showing relative timestamp + last message preview, 'Show more' button for pagination (offset-based, page size 3), action handler sets backend_session_id on the thread's session row",
+          "verification": [
+            "/resume in a project-bound channel shows up to 3 buttons for recent laptop sessions",
+            "Button labels show relative time and truncated last message",
+            "'Show more' button appears when more sessions exist, showing remaining count",
+            "Tapping 'Show more' shows the next 3 sessions",
+            "Tapping a session button sets backend_session_id in the sessions table",
+            "Confirmation message is posted after selection",
+            "/resume in an unbound channel shows an error message",
+            "No sessions found shows a helpful message mentioning Mutagen sync",
+            "Build passes, all tests pass"
+          ],
+          "status": "pending"
+        },
+        {
+          "id": "P24.3",
+          "description": "Discord /resume command: registers slash command, calls session scanner for the channel's bound project, renders 3 sessions per page with ButtonBuilder buttons (customId resume_session:<uuid>), 'Show more' button for pagination (customId resume_picker_more:<offset>), interaction handler sets backend_session_id on the thread's session row",
+          "verification": [
+            "/resume in a project-bound channel shows up to 3 buttons for recent laptop sessions",
+            "Button labels show relative time and truncated last message",
+            "'Show more' button appears when more sessions exist, showing remaining count",
+            "Clicking 'Show more' shows the next 3 sessions",
+            "Clicking a session button sets backend_session_id in the sessions table",
+            "Confirmation message is posted after selection",
+            "/resume in an unbound channel shows an error message",
+            "No sessions found shows a helpful message mentioning Mutagen sync",
+            "Build passes, all tests pass"
+          ],
+          "status": "pending"
+        },
+        {
+          "id": "P24.4",
+          "description": "End-to-end resume flow: after selecting a session via /resume, the next user message in that thread spawns Claude Code with -r <session-id> and the conversation continues from where it left off on the laptop",
+          "verification": [
+            "After /resume selection, backend_session_id is set to the chosen UUID",
+            "Router passes the session ID to backend via setSessionId() before start()",
+            "Claude backend includes -r flag with the session ID in spawn args",
+            "A follow-up message in the thread resumes the laptop conversation",
+            "Build passes, all tests pass"
+          ],
+          "status": "pending"
+        }
+      ]
+    }
+  ]
+}
