@@ -149,6 +149,42 @@ export async function getLastUserMessage(filePath: string): Promise<string> {
 }
 
 /**
+ * Find all Claude project directories that match a given project path.
+ *
+ * Because laptop and VPS have different home directories, the same project
+ * produces different Claude dir names:
+ *   Laptop: /Users/abhishek/Documents/bigmac/openbridge → -Users-abhishek-Documents-bigmac-openbridge
+ *   VPS:    /home/openbridge/bigmac/openbridge          → -home-openbridge-bigmac-openbridge
+ *
+ * We match by suffix: extract the last 2 path segments (e.g. "bigmac-openbridge")
+ * and find all directories ending with that suffix.
+ */
+export function findMatchingProjectDirs(claudeDir: string, projectDir: string): string[] {
+  if (!fs.existsSync(claudeDir)) return [];
+
+  // Extract last 2 path segments as suffix for matching
+  const segments = projectDir.split('/').filter(Boolean);
+  const suffix = segments.length >= 2
+    ? '-' + segments.slice(-2).join('-')
+    : '-' + segments.slice(-1).join('-');
+
+  try {
+    return fs.readdirSync(claudeDir)
+      .filter((d) => {
+        // Match exact dir name OR dirs ending with the same suffix
+        const fullPath = path.join(claudeDir, d);
+        try {
+          if (!fs.statSync(fullPath).isDirectory()) return false;
+        } catch { return false; }
+        return d === projectDirToClaudeDir(projectDir) || d.endsWith(suffix);
+      })
+      .map((d) => path.join(claudeDir, d));
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Scan for laptop-only Claude Code sessions for a given project directory.
  *
  * Returns all matching sessions sorted by mtime descending (most recent first).
@@ -159,21 +195,25 @@ export async function scanSessions(
   options?: { claudeProjectsDir?: string },
 ): Promise<SessionInfo[]> {
   const claudeDir = options?.claudeProjectsDir ?? getClaudeProjectsDir();
-  const projectDirName = projectDirToClaudeDir(projectDir);
-  const sessionsDir = path.join(claudeDir, projectDirName);
 
-  if (!fs.existsSync(sessionsDir)) {
+  // Find all matching project dirs (handles laptop vs VPS path differences)
+  const matchingDirs = findMatchingProjectDirs(claudeDir, projectDir);
+
+  if (matchingDirs.length === 0) {
     return [];
   }
 
-  // Find all *.jsonl files (session files)
-  let jsonlFiles: string[];
-  try {
-    jsonlFiles = fs.readdirSync(sessionsDir)
-      .filter((f) => f.endsWith('.jsonl'))
-      .map((f) => path.join(sessionsDir, f));
-  } catch {
-    return [];
+  // Collect *.jsonl files from all matching directories
+  let jsonlFiles: string[] = [];
+  for (const dir of matchingDirs) {
+    try {
+      const files = fs.readdirSync(dir)
+        .filter((f) => f.endsWith('.jsonl'))
+        .map((f) => path.join(dir, f));
+      jsonlFiles = jsonlFiles.concat(files);
+    } catch {
+      continue;
+    }
   }
 
   if (jsonlFiles.length === 0) {

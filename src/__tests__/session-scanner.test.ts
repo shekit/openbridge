@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import {
   projectDirToClaudeDir,
+  findMatchingProjectDirs,
   formatRelativeTime,
   truncateText,
   isLaptopSession,
@@ -255,6 +256,66 @@ describe('scanSessions', () => {
     const sessions = await scanSessions(projectDir, { claudeProjectsDir: tmpDir });
     expect(sessions[0].lastMessage.length).toBe(40);
     expect(sessions[0].lastMessage.endsWith('…')).toBe(true);
+  });
+
+  it('finds laptop sessions from a different machine path (cross-machine sync)', async () => {
+    // VPS project dir: /home/openbridge/bigmac/openbridge
+    const vpsProjectDir = '/home/openbridge/bigmac/openbridge';
+
+    // Laptop sessions synced via Mutagen end up with the laptop path format
+    const laptopDir = path.join(tmpDir, '-Users-abhishek-Documents-bigmac-openbridge');
+    fs.mkdirSync(laptopDir, { recursive: true });
+    writeSessionFile(laptopDir, 'laptop-sess-1', [userMessage('laptop task', 'human')]);
+
+    // VPS sessions have the VPS path format
+    const vpsDir = path.join(tmpDir, '-home-openbridge-bigmac-openbridge');
+    fs.mkdirSync(vpsDir, { recursive: true });
+    writeSessionFile(vpsDir, 'vps-sess-1', [userMessage('vps task', 'external')]);
+
+    // Scanning with the VPS path should find laptop sessions from the synced laptop dir
+    const sessions = await scanSessions(vpsProjectDir, { claudeProjectsDir: tmpDir });
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].sessionId).toBe('laptop-sess-1');
+  });
+});
+
+describe('findMatchingProjectDirs', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = makeTempDir();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('matches exact VPS path', () => {
+    const dir = path.join(tmpDir, '-home-openbridge-bigmac-openbridge');
+    fs.mkdirSync(dir);
+    const matches = findMatchingProjectDirs(tmpDir, '/home/openbridge/bigmac/openbridge');
+    expect(matches).toHaveLength(1);
+  });
+
+  it('matches laptop path by suffix', () => {
+    const laptopDir = path.join(tmpDir, '-Users-abhishek-Documents-bigmac-openbridge');
+    fs.mkdirSync(laptopDir);
+    const matches = findMatchingProjectDirs(tmpDir, '/home/openbridge/bigmac/openbridge');
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toContain('-Users-abhishek');
+  });
+
+  it('matches both laptop and VPS dirs', () => {
+    fs.mkdirSync(path.join(tmpDir, '-home-openbridge-bigmac-openbridge'));
+    fs.mkdirSync(path.join(tmpDir, '-Users-abhishek-Documents-bigmac-openbridge'));
+    const matches = findMatchingProjectDirs(tmpDir, '/home/openbridge/bigmac/openbridge');
+    expect(matches).toHaveLength(2);
+  });
+
+  it('does not match unrelated projects', () => {
+    fs.mkdirSync(path.join(tmpDir, '-home-user-other-project'));
+    const matches = findMatchingProjectDirs(tmpDir, '/home/openbridge/bigmac/openbridge');
+    expect(matches).toHaveLength(0);
   });
 });
 
