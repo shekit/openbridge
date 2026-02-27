@@ -208,12 +208,6 @@ export class SlackAdapter {
       await this.handleSettingsCommand(command, client);
     });
 
-    this.app.command('/resume', async ({ command, ack, client }) => {
-      await ack();
-      if (!(await this.ensureInChannel(command.channel_id, client))) return;
-      await this.handleResumeCommand(command, client);
-    });
-
     // /schedule subcommands are handled under /settings (schedule list, schedule cancel)
   }
 
@@ -818,6 +812,7 @@ export class SlackAdapter {
     lines.push('• `/project list` — show all connected projects');
     lines.push('• `/project disconnect` — disconnect this channel');
     lines.push('• `/project backend codex` — switch the AI backend for this project');
+    lines.push('• `/project resume` — resume a laptop Claude Code session');
     return lines;
   }
 
@@ -1030,6 +1025,12 @@ export class SlackAdapter {
         `• Permissions: ${project.permission_mode}`,
       ].join('\n');
       await client.chat.postMessage({ channel: channelId, text });
+      return;
+    }
+
+    // /project resume — show laptop sessions to resume
+    if (subcommand === 'resume') {
+      await this.handleResumeCommand(command, client);
       return;
     }
 

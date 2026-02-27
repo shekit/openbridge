@@ -157,6 +157,10 @@ export class DiscordAdapter {
         .addSubcommand((sub) =>
           sub.setName('info')
             .setDescription('Show project info for this channel')
+        )
+        .addSubcommand((sub) =>
+          sub.setName('resume')
+            .setDescription('Resume a laptop Claude Code session')
         ),
       new SlashCommandBuilder()
         .setName('new')
@@ -185,9 +189,6 @@ export class DiscordAdapter {
       new SlashCommandBuilder()
         .setName('cancel')
         .setDescription('Cancel the running task in this thread'),
-      new SlashCommandBuilder()
-        .setName('resume')
-        .setDescription('Resume a laptop Claude Code session'),
     ];
 
     const rest = new REST().setToken(this.botToken);
@@ -412,9 +413,6 @@ export class DiscordAdapter {
           break;
         case 'cancel':
           await this.handleCancelCommand(interaction);
-          break;
-        case 'resume':
-          await this.handleResumeCommand(interaction);
           break;
         // schedule subcommands are handled under /settings (schedule-list, schedule-cancel)
       }
@@ -966,6 +964,12 @@ export class DiscordAdapter {
       return;
     }
 
+    // /project resume
+    if (subcommand === 'resume') {
+      await this.handleResumeCommand(interaction);
+      return;
+    }
+
     await interaction.reply([
       ':warning: Unsupported command. Try one of these:',
       ...this.getProjectCommandLines(),
@@ -985,6 +989,7 @@ export class DiscordAdapter {
       '- `/project list` — show all connected projects',
       '- `/project disconnect` — disconnect this channel',
       '- `/project backend name:claude` or `codex` — switch the AI backend',
+      '- `/project resume` — resume a laptop Claude Code session',
     ];
   }
 
