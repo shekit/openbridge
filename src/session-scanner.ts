@@ -2,14 +2,13 @@
  * Session JSONL scanner for OpenBridge.
  *
  * Reads Claude Code session files from ~/.claude/projects/<project-dir>/,
- * filters to laptop-only sessions (userType !== 'external'), and returns
+ * filters to sessions from other machines (laptop), and returns
  * metadata for the session resume picker.
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import * as readline from 'node:readline';
 
 /** Metadata for a single Claude Code session. */
 export interface SessionInfo {
@@ -73,32 +72,19 @@ export function truncateText(text: string, maxLen: number = 40): string {
 }
 
 /**
- * Check if a session JSONL file is a laptop (human) session.
- * Reads the first user message and checks userType !== 'external'.
+ * Check if a session file comes from a different machine (i.e. the laptop).
+ *
+ * When sessions are synced via Mutagen, laptop sessions live in directories
+ * named after the laptop's path (e.g. -Users-abhishek-Documents-bigmac-openbridge)
+ * while VPS sessions live in the local path (e.g. -home-openbridge-bigmac-openbridge).
+ *
+ * A session is "from another machine" if its parent directory name does NOT match
+ * the exact Claude dir name for the current project path.
  */
-export async function isLaptopSession(filePath: string): Promise<boolean> {
-  try {
-    const stream = fs.createReadStream(filePath, { encoding: 'utf-8' });
-    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-
-    for await (const line of rl) {
-      if (!line.trim()) continue;
-      try {
-        const entry = JSON.parse(line);
-        if (entry.type === 'user' && entry.message?.role === 'user') {
-          rl.close();
-          stream.destroy();
-          return entry.userType !== 'external';
-        }
-      } catch {
-        // Skip malformed lines
-        continue;
-      }
-    }
-  } catch {
-    // File read error
-  }
-  return false;
+export function isRemoteSession(filePath: string, localProjectDir: string): boolean {
+  const parentDirName = path.basename(path.dirname(filePath));
+  const localDirName = projectDirToClaudeDir(localProjectDir);
+  return parentDirName !== localDirName;
 }
 
 /**
@@ -233,13 +219,12 @@ export async function scanSessions(
     .filter((f): f is { path: string; mtimeMs: number } => f !== null)
     .sort((a, b) => b.mtimeMs - a.mtimeMs);
 
-  // Filter to laptop-only sessions and extract metadata
+  // Filter to sessions from other machines (laptop) — exclude local VPS sessions
   const sessions: SessionInfo[] = [];
   const now = Date.now();
 
   for (const file of filesWithStats) {
-    const isLaptop = await isLaptopSession(file.path);
-    if (!isLaptop) continue;
+    if (!isRemoteSession(file.path, projectDir)) continue;
 
     const sessionId = path.basename(file.path, '.jsonl');
     const lastMsg = await getLastUserMessage(file.path);

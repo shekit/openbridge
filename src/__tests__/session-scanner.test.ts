@@ -5,9 +5,9 @@ import * as os from 'node:os';
 import {
   projectDirToClaudeDir,
   findMatchingProjectDirs,
+  isRemoteSession,
   formatRelativeTime,
   truncateText,
-  isLaptopSession,
   getLastUserMessage,
   scanSessions,
   getSessionPage,
@@ -117,45 +117,17 @@ describe('truncateText', () => {
   });
 });
 
-describe('isLaptopSession', () => {
-  let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = makeTempDir();
+describe('isRemoteSession', () => {
+  it('returns true when file is in a different machine dir', () => {
+    // File from laptop dir, but local project is on VPS
+    const filePath = '/claude/projects/-Users-abhishek-Documents-bigmac-openbridge/sess.jsonl';
+    expect(isRemoteSession(filePath, '/home/openbridge/bigmac/openbridge')).toBe(true);
   });
 
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it('returns true for human (laptop) sessions', async () => {
-    const filePath = writeSessionFile(tmpDir, 'sess-human', [
-      { type: 'queue-operation', operation: 'enqueue' },
-      userMessage('fix the auth bug', 'human'),
-    ]);
-    expect(await isLaptopSession(filePath)).toBe(true);
-  });
-
-  it('returns false for external (OpenBridge) sessions', async () => {
-    const filePath = writeSessionFile(tmpDir, 'sess-external', [
-      { type: 'queue-operation', operation: 'enqueue' },
-      userMessage('fix the auth bug', 'external'),
-    ]);
-    expect(await isLaptopSession(filePath)).toBe(false);
-  });
-
-  it('returns true when userType is missing (defaults to laptop)', async () => {
-    const filePath = writeSessionFile(tmpDir, 'sess-no-type', [
-      {
-        type: 'user',
-        message: { role: 'user', content: [{ type: 'text', text: 'hello' }] },
-      },
-    ]);
-    expect(await isLaptopSession(filePath)).toBe(true);
-  });
-
-  it('returns false for non-existent files', async () => {
-    expect(await isLaptopSession('/nonexistent/file.jsonl')).toBe(false);
+  it('returns false when file is in the local machine dir', () => {
+    // File from VPS dir, local project is also on VPS
+    const filePath = '/claude/projects/-home-openbridge-bigmac-openbridge/sess.jsonl';
+    expect(isRemoteSession(filePath, '/home/openbridge/bigmac/openbridge')).toBe(false);
   });
 });
 
@@ -198,24 +170,29 @@ describe('getLastUserMessage', () => {
 
 describe('scanSessions', () => {
   let tmpDir: string;
-  let projectDir: string;
-  let sessionsDir: string;
+  /** VPS project dir — the "local" machine. */
+  const projectDir = '/home/openbridge/bigmac/myapp';
+  /** Remote (laptop) session dir — different path prefix, same suffix. */
+  let remoteDir: string;
+  /** Local (VPS) session dir — exact match for projectDir. */
+  let localDir: string;
 
   beforeEach(() => {
     tmpDir = makeTempDir();
-    projectDir = '/home/user/myapp';
-    sessionsDir = path.join(tmpDir, projectDirToClaudeDir(projectDir));
-    fs.mkdirSync(sessionsDir, { recursive: true });
+    remoteDir = path.join(tmpDir, '-Users-abhishek-Documents-bigmac-myapp');
+    localDir = path.join(tmpDir, projectDirToClaudeDir(projectDir));
+    fs.mkdirSync(remoteDir, { recursive: true });
+    fs.mkdirSync(localDir, { recursive: true });
   });
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('returns only laptop sessions, excluding external ones', async () => {
-    writeSessionFile(sessionsDir, 'laptop-1', [userMessage('laptop task', 'human')]);
-    writeSessionFile(sessionsDir, 'bridge-1', [userMessage('bridge task', 'external')]);
-    writeSessionFile(sessionsDir, 'laptop-2', [userMessage('another laptop task', 'human')]);
+  it('returns only remote (laptop) sessions, excluding local (VPS) ones', async () => {
+    writeSessionFile(remoteDir, 'laptop-1', [userMessage('laptop task')]);
+    writeSessionFile(remoteDir, 'laptop-2', [userMessage('another laptop task')]);
+    writeSessionFile(localDir, 'vps-1', [userMessage('vps task')]);
 
     const sessions = await scanSessions(projectDir, { claudeProjectsDir: tmpDir });
     expect(sessions).toHaveLength(2);
@@ -223,10 +200,9 @@ describe('scanSessions', () => {
   });
 
   it('sorts sessions by mtime descending (most recent first)', async () => {
-    const file1 = writeSessionFile(sessionsDir, 'old-sess', [userMessage('old')]);
-    const file2 = writeSessionFile(sessionsDir, 'new-sess', [userMessage('new')]);
+    const file1 = writeSessionFile(remoteDir, 'old-sess', [userMessage('old')]);
+    const file2 = writeSessionFile(remoteDir, 'new-sess', [userMessage('new')]);
 
-    // Set different mtimes
     const oldTime = new Date('2026-01-01');
     const newTime = new Date('2026-02-27');
     fs.utimesSync(file1, oldTime, oldTime);
@@ -242,8 +218,8 @@ describe('scanSessions', () => {
     expect(sessions).toEqual([]);
   });
 
-  it('returns empty array when only external sessions exist', async () => {
-    writeSessionFile(sessionsDir, 'bridge-only', [userMessage('bridge task', 'external')]);
+  it('returns empty array when only local (VPS) sessions exist', async () => {
+    writeSessionFile(localDir, 'vps-only', [userMessage('vps task')]);
 
     const sessions = await scanSessions(projectDir, { claudeProjectsDir: tmpDir });
     expect(sessions).toEqual([]);
@@ -251,31 +227,11 @@ describe('scanSessions', () => {
 
   it('truncates last message to 40 chars', async () => {
     const longMsg = 'this is a very long message that should definitely be truncated because it is way too long';
-    writeSessionFile(sessionsDir, 'long-msg', [userMessage(longMsg)]);
+    writeSessionFile(remoteDir, 'long-msg', [userMessage(longMsg)]);
 
     const sessions = await scanSessions(projectDir, { claudeProjectsDir: tmpDir });
     expect(sessions[0].lastMessage.length).toBe(40);
     expect(sessions[0].lastMessage.endsWith('…')).toBe(true);
-  });
-
-  it('finds laptop sessions from a different machine path (cross-machine sync)', async () => {
-    // VPS project dir: /home/openbridge/bigmac/openbridge
-    const vpsProjectDir = '/home/openbridge/bigmac/openbridge';
-
-    // Laptop sessions synced via Mutagen end up with the laptop path format
-    const laptopDir = path.join(tmpDir, '-Users-abhishek-Documents-bigmac-openbridge');
-    fs.mkdirSync(laptopDir, { recursive: true });
-    writeSessionFile(laptopDir, 'laptop-sess-1', [userMessage('laptop task', 'human')]);
-
-    // VPS sessions have the VPS path format
-    const vpsDir = path.join(tmpDir, '-home-openbridge-bigmac-openbridge');
-    fs.mkdirSync(vpsDir, { recursive: true });
-    writeSessionFile(vpsDir, 'vps-sess-1', [userMessage('vps task', 'external')]);
-
-    // Scanning with the VPS path should find laptop sessions from the synced laptop dir
-    const sessions = await scanSessions(vpsProjectDir, { claudeProjectsDir: tmpDir });
-    expect(sessions).toHaveLength(1);
-    expect(sessions[0].sessionId).toBe('laptop-sess-1');
   });
 });
 
@@ -321,13 +277,14 @@ describe('findMatchingProjectDirs', () => {
 
 describe('getSessionPage', () => {
   let tmpDir: string;
-  let projectDir: string;
+  const projectDir = '/home/openbridge/bigmac/myapp';
+  /** Remote (laptop) dir — sessions here should be found. */
   let sessionsDir: string;
 
   beforeEach(() => {
     tmpDir = makeTempDir();
-    projectDir = '/home/user/myapp';
-    sessionsDir = path.join(tmpDir, projectDirToClaudeDir(projectDir));
+    // Use a "remote" dir (different path prefix, same suffix) so sessions are found
+    sessionsDir = path.join(tmpDir, '-Users-abhishek-Documents-bigmac-myapp');
     fs.mkdirSync(sessionsDir, { recursive: true });
   });
 
