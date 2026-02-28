@@ -22,6 +22,7 @@
    - `files:write` — upload files as chat attachments
    - `commands` — register slash commands (`/project`, `/new`, `/settings`)
    - `reactions:write` — add emoji reactions to acknowledge messages
+   - `users:read` — fetch user timezone for correct schedule timing
 5. **Install to Workspace** → copy the `xoxb-...` token → that's your `SLACK_BOT_TOKEN`
 6. **Event Subscriptions** → Enable → Subscribe to bot events:
    - `message.channels` (messages in public channels)
