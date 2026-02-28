@@ -18,14 +18,44 @@ export const DEFAULT_TICK_INTERVAL_MS = 30_000;
 export const SYSTEM_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 /**
- * Compute the next run time from a cron expression in the system timezone.
+ * Compute the next run time from a cron expression in the given timezone.
+ * Falls back to SYSTEM_TIMEZONE if no timezone is provided.
  * Returns an ISO 8601 datetime string (UTC).
  * Throws if the cron expression is invalid.
  */
-export function computeNextRun(cronExpression: string): string {
-  const interval = CronExpressionParser.parse(cronExpression, { tz: SYSTEM_TIMEZONE });
+export function computeNextRun(cronExpression: string, timezone?: string): string {
+  const tz = timezone || SYSTEM_TIMEZONE;
+  const interval = CronExpressionParser.parse(cronExpression, { tz });
   const next = interval.next();
   return next.toISOString()!;
+}
+
+/**
+ * Convert a local datetime string (without timezone indicator) to a UTC ISO 8601 string,
+ * interpreting it in the given IANA timezone.
+ *
+ * Example: convertLocalToUtc("2026-02-28T10:00:00", "America/New_York")
+ *          → "2026-02-28T15:00:00.000Z" (EST = UTC-5)
+ *
+ * This is needed because `new Date("2026-02-28T10:00:00")` interprets the string
+ * relative to the system timezone, which is UTC on the server — making the conversion
+ * a no-op. This helper correctly applies the user's timezone offset.
+ */
+export function convertLocalToUtc(localDatetime: string, timezone: string): string {
+  const [datePart, timePart] = localDatetime.split('T');
+  const [y, m, d] = datePart.split('-').map(Number);
+  const parts = (timePart || '00:00:00').split(':').map(Number);
+  const [h, min, s] = [parts[0] || 0, parts[1] || 0, parts[2] || 0];
+
+  // Create a UTC date with the local time components (pretend they're UTC)
+  const guess = new Date(Date.UTC(y, m - 1, d, h, min, s));
+
+  // Format that UTC instant in the target timezone to find the offset
+  const inTz = new Date(guess.toLocaleString('en-US', { timeZone: timezone }));
+  const offsetMs = inTz.getTime() - guess.getTime();
+
+  // Subtract the offset to get the actual UTC time
+  return new Date(guess.getTime() - offsetMs).toISOString();
 }
 
 export interface SchedulerOptions {
@@ -155,7 +185,7 @@ export class Scheduler {
     // Update schedule: advance next_run_at for recurring, deactivate one-time
     if (schedule.is_recurring && schedule.cron_expression) {
       try {
-        const nextRun = computeNextRun(schedule.cron_expression);
+        const nextRun = computeNextRun(schedule.cron_expression, schedule.timezone ?? undefined);
         this.store.updateNextRun(schedule.id, nextRun);
         console.log(`[scheduler] schedule ${schedule.id}: next run at ${nextRun}`);
       } catch (err) {

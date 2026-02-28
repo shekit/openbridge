@@ -33,7 +33,8 @@ export interface BridgeCallbacks {
   saveUploadedFile(uploadId: string, destination: string, projectDir: string): Promise<string>;
   /** Register a scheduled session with the bridge. */
   scheduleSession(channelId: string, threadId: string, prompt: string, originalRequest: string,
-    cronExpression: string | undefined, scheduledAt: string | undefined, title: string | undefined): Promise<{ scheduleId: number }>;
+    cronExpression: string | undefined, scheduledAt: string | undefined, title: string | undefined,
+    timezone: string | undefined): Promise<{ scheduleId: number }>;
 }
 
 /**
@@ -44,6 +45,8 @@ export interface McpSessionContext {
   channelId: string;
   threadId: string;
   projectDir: string;
+  /** IANA timezone of the user (e.g. "America/New_York"). Defaults to UTC if not provided. */
+  timezone?: string;
 }
 
 /**
@@ -260,6 +263,8 @@ export function createMcpServer(
   );
 
   // --- schedule_session tool ---
+  const userTz = context.timezone || 'UTC';
+  const userLocalTime = new Date().toLocaleString('sv-SE', { timeZone: userTz });
   server.registerTool(
     'schedule_session',
     {
@@ -267,10 +272,10 @@ export function createMcpServer(
         'Schedule a future session with the bridge. ' +
         'Use this when the user asks you to do something at a specific time or on a recurring schedule — ' +
         'e.g. "remind me every morning at 9am", "check deploys on Friday at 5pm", "remind me in 5 minutes". ' +
-        `The current local time is: ${new Date().toLocaleString('sv-SE')} (${Intl.DateTimeFormat().resolvedOptions().timeZone}). ` +
+        `The current local time is: ${userLocalTime} (${userTz}). ` +
         'Use this to calculate scheduled_at for relative or calendar-based requests ' +
         '(e.g. "in 5 minutes" = current time + 5 minutes, "tomorrow at 5pm", "next Friday at 3pm"). ' +
-        'All times are in the local timezone shown above. ' +
+        `All times are in the ${userTz} timezone. ` +
         'The prompt field is what a fresh instance of yourself will receive in a new thread when the schedule fires. ' +
         'Write it as clear instructions for that future AI to execute the user\'s request. ' +
         'Do NOT include any scheduling, timing, or recurrence details in the prompt — the bridge handles all timing. ' +
@@ -313,6 +318,7 @@ export function createMcpServer(
           context.channelId, context.threadId,
           prompt, original_request,
           cron_expression ?? undefined, scheduled_at ?? undefined, title ?? undefined,
+          context.timezone,
         );
 
         const typeLabel = cron_expression ? 'Recurring' : 'One-time';
@@ -361,17 +367,21 @@ export function getMcpConfig(
   context: McpSessionContext & { platform: string },
   ipc: { port: number; secret: string },
 ): McpServerEntry {
+  const args = [
+    entryScriptPath,
+    '--channel', context.channelId,
+    '--thread', context.threadId,
+    '--project-dir', context.projectDir,
+    '--platform', context.platform,
+    '--ipc-port', String(ipc.port),
+    '--ipc-secret', ipc.secret,
+  ];
+  if (context.timezone) {
+    args.push('--timezone', context.timezone);
+  }
   return {
     command: 'node',
-    args: [
-      entryScriptPath,
-      '--channel', context.channelId,
-      '--thread', context.threadId,
-      '--project-dir', context.projectDir,
-      '--platform', context.platform,
-      '--ipc-port', String(ipc.port),
-      '--ipc-secret', ipc.secret,
-    ],
+    args,
     env: {
       OPENBRIDGE_IPC_PORT: String(ipc.port),
       OPENBRIDGE_IPC_SECRET: ipc.secret,

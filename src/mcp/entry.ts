@@ -54,6 +54,7 @@ async function main(): Promise<void> {
   const threadId = args['thread'];
   const projectDir = args['project-dir'];
   const platform = args['platform'];
+  const timezone = args['timezone'] || undefined;
 
   if (!channelId || !threadId || !projectDir || !platform) {
     console.error('[mcp-entry] missing required args: --channel, --thread, --project-dir, --platform');
@@ -70,7 +71,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const context: McpSessionContext = { channelId, threadId, projectDir };
+  const context: McpSessionContext = { channelId, threadId, projectDir, timezone };
 
   const callbacks: BridgeCallbacks = {
     async uploadFile(filePath, chId, thId) {
@@ -115,7 +116,7 @@ async function main(): Promise<void> {
       return result.path as string;
     },
 
-    async scheduleSession(chId, thId, prompt, originalRequest, cronExpression, scheduledAt, title) {
+    async scheduleSession(chId, thId, prompt, originalRequest, cronExpression, scheduledAt, title, tz) {
       const result = await ipcPost(ipcPort, ipcSecret, '/schedule-session', {
         channelId: chId,
         threadId: thId,
@@ -124,13 +125,14 @@ async function main(): Promise<void> {
         cronExpression,
         scheduledAt,
         title,
+        timezone: tz ?? timezone,
         platform,
       });
       return { scheduleId: result.scheduleId as number };
     },
   };
 
-  console.error('[mcp-entry] starting MCP server for', { channelId, threadId, projectDir, platform });
+  console.error('[mcp-entry] starting MCP server for', { channelId, threadId, projectDir, platform, timezone: timezone ?? 'UTC' });
   await startMcpServer(context, callbacks);
   console.error('[mcp-entry] MCP server connected via stdio');
 }

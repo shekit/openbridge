@@ -35,7 +35,8 @@ export interface IpcHandler {
     platform: string): Promise<void>;
   /** Register a scheduled session. Returns the schedule ID. */
   scheduleSession?(channelId: string, threadId: string, prompt: string, originalRequest: string,
-    cronExpression: string | undefined, scheduledAt: string | undefined, title: string | undefined): Promise<{ scheduleId: number }>;
+    cronExpression: string | undefined, scheduledAt: string | undefined, title: string | undefined,
+    timezone: string | undefined): Promise<{ scheduleId: number }>;
 }
 
 /** Pending permission request — waiting for user to click Allow/Deny. */
@@ -416,9 +417,9 @@ export function startIpcServer(handler: IpcHandler): Promise<IpcServer> {
         }
 
         case '/schedule-session': {
-          const { channelId, threadId, prompt, originalRequest, cronExpression, scheduledAt, title } = data as {
+          const { channelId, threadId, prompt, originalRequest, cronExpression, scheduledAt, title, timezone } = data as {
             channelId: string; threadId: string; prompt: string; originalRequest: string;
-            cronExpression?: string; scheduledAt?: string; title?: string;
+            cronExpression?: string; scheduledAt?: string; title?: string; timezone?: string;
           };
           if (!handler.scheduleSession) {
             res.writeHead(501, { 'Content-Type': 'application/json' });
@@ -426,7 +427,7 @@ export function startIpcServer(handler: IpcHandler): Promise<IpcServer> {
             break;
           }
           const result = await handler.scheduleSession(channelId, threadId, prompt, originalRequest,
-            cronExpression, scheduledAt, title);
+            cronExpression, scheduledAt, title, timezone);
           console.log(`[ipc] schedule-session created: ${result.scheduleId}`);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, scheduleId: result.scheduleId }));

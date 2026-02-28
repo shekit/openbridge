@@ -47,6 +47,7 @@ export interface Schedule {
   channel_id: string;
   thread_id: string | null;
   title: string | null;
+  timezone: string | null;
   prompt: string;
   original_request: string;
   cron_expression: string | null;
@@ -148,6 +149,10 @@ const MIGRATIONS: string[] = [
   // Version 5: add title to schedules for recurring thread names
   `
   ALTER TABLE schedules ADD COLUMN title TEXT;
+  `,
+  // Version 6: add timezone to schedules for correct cron re-computation
+  `
+  ALTER TABLE schedules ADD COLUMN timezone TEXT;
   `,
 ];
 
@@ -313,15 +318,16 @@ export class Store {
     channelId: string,
     prompt: string,
     originalRequest: string,
-    opts: { cronExpression?: string; scheduledAt?: string; nextRunAt: string; threadId?: string; title?: string },
+    opts: { cronExpression?: string; scheduledAt?: string; nextRunAt: string; threadId?: string; title?: string; timezone?: string },
   ): Schedule {
     const isRecurring = opts.cronExpression ? 1 : 0;
     const stmt = this.db.prepare(
-      `INSERT INTO schedules (project_id, channel_id, thread_id, title, prompt, original_request, cron_expression, scheduled_at, next_run_at, is_recurring)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO schedules (project_id, channel_id, thread_id, title, timezone, prompt, original_request, cron_expression, scheduled_at, next_run_at, is_recurring)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const info = stmt.run(
-      projectId, channelId, opts.threadId ?? null, opts.title ?? null, prompt, originalRequest,
+      projectId, channelId, opts.threadId ?? null, opts.title ?? null, opts.timezone ?? null,
+      prompt, originalRequest,
       opts.cronExpression ?? null, opts.scheduledAt ?? null,
       opts.nextRunAt, isRecurring,
     );

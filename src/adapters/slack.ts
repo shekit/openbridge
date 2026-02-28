@@ -56,6 +56,9 @@ export class SlackAdapter {
   private permissionAckMessages = new Map<string, Array<{ channel: string; ts: string }>>();
   /** Pending resume session IDs per channel (set by /resume, consumed by next thread message). */
   private pendingResumeSessions = new Map<string, string>();
+  /** Per-user timezone cache (from Slack users.info API). TTL: 1 hour. */
+  private tzCache = new Map<string, { tz: string; fetchedAt: number }>();
+  private static readonly TZ_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
   constructor(options: SlackAdapterOptions) {
     this.router = options.router;
@@ -86,6 +89,29 @@ export class SlackAdapter {
   /** Get the underlying Bolt app (for testing). */
   getApp(): App {
     return this.app;
+  }
+
+  /**
+   * Get the IANA timezone for a Slack user (e.g. "America/New_York").
+   * Results are cached for 1 hour to avoid excessive API calls.
+   * Falls back to "UTC" if the lookup fails.
+   */
+  private async getUserTimezone(userId: string, client: any): Promise<string> {
+    const cached = this.tzCache.get(userId);
+    if (cached && Date.now() - cached.fetchedAt < SlackAdapter.TZ_CACHE_TTL_MS) {
+      return cached.tz;
+    }
+
+    try {
+      const result = await client.users.info({ user: userId });
+      const tz = result.user?.tz || 'UTC';
+      this.tzCache.set(userId, { tz, fetchedAt: Date.now() });
+      console.log(`[slack] fetched timezone for user ${userId}: ${tz}`);
+      return tz;
+    } catch (err: any) {
+      console.warn(`[slack] failed to fetch timezone for user ${userId}: ${err.message} — falling back to UTC`);
+      return 'UTC';
+    }
   }
 
   /** Register all Slack event handlers. */
@@ -377,7 +403,8 @@ export class SlackAdapter {
 
     // Handle file attachments — route through handleFileUpload
     if (Array.isArray(message.files) && message.files.length > 0) {
-      await this.handleFileUpload(channelId, threadTs, message.files, text, client, message.ts);
+      const fileTz = await this.getUserTimezone(message.user, client);
+      await this.handleFileUpload(channelId, threadTs, message.files, text, client, message.ts, fileTz);
       return;
     }
 
@@ -412,7 +439,8 @@ export class SlackAdapter {
     // Check if the session is waiting_for_input (freeform text response)
     const session = this.store.getSessionByThreadId(threadTs);
     if (session && session.state === 'waiting_for_input') {
-      await this.handleFreeformResponse(channelId, threadTs, text, client, message.ts);
+      const freeformTz = await this.getUserTimezone(message.user, client);
+      await this.handleFreeformResponse(channelId, threadTs, text, client, message.ts, freeformTz);
       return;
     }
 
@@ -428,12 +456,15 @@ export class SlackAdapter {
       }
     }
 
+    // Fetch user timezone for schedule conversions and context header
+    const userTz = await this.getUserTimezone(message.user, client);
+
     // Route through the router
     clearPostMessageFlag(threadTs);
     clearScheduleFlag(threadTs);
     let result: RouteResult;
     try {
-      result = await this.router.send(channelId, threadTs, text);
+      result = await this.router.send(channelId, threadTs, text, undefined, userTz);
     } catch (err: any) {
       await this.postError(channelId, threadTs, err.message, client);
       return;
@@ -459,12 +490,13 @@ export class SlackAdapter {
     text: string,
     client: any,
     messageTs?: string,
+    timezone?: string,
   ): Promise<void> {
     clearPostMessageFlag(threadTs);
     clearScheduleFlag(threadTs);
     let result: RouteResult;
     try {
-      result = await this.router.respond(channelId, threadTs, text);
+      result = await this.router.respond(channelId, threadTs, text, undefined, timezone);
     } catch (err: any) {
       await this.postError(channelId, threadTs, err.message, client);
       return;
@@ -1687,6 +1719,7 @@ export class SlackAdapter {
     text: string,
     client: any,
     messageTs?: string,
+    timezone?: string,
   ): Promise<void> {
     const project = this.store.getProjectByChannelId(channelId);
     if (!project) return;
@@ -1737,6 +1770,7 @@ export class SlackAdapter {
       result = await this.router.send(
         channelId, threadTs, combinedText,
         attachments.length > 0 ? attachments : undefined,
+        timezone,
       );
     } catch (err: any) {
       await this.postError(channelId, threadTs, err.message, client);

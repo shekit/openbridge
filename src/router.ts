@@ -48,6 +48,8 @@ export interface McpConfigContext {
   threadId: string;
   projectDir: string;
   platform: string;
+  /** IANA timezone of the user (e.g. "America/New_York"). */
+  timezone?: string;
 }
 
 /** Factory that creates MCP config for a backend session. */
@@ -133,6 +135,7 @@ export class Router {
     threadId: string,
     project: Project,
     channelId: string,
+    timezone?: string,
   ): Promise<Backend> {
     // Check for existing alive backend
     const existing = this.activeBackends.get(threadId);
@@ -161,6 +164,7 @@ export class Router {
       threadId,
       projectDir: project.project_dir,
       platform: project.platform,
+      timezone,
     });
     await backend.start({
       projectDir: project.project_dir,
@@ -260,7 +264,8 @@ export class Router {
   }
 
   /** Prepend context metadata (time, source platform) so the backend can reason about relative dates and message origin. */
-  private prependContext(text: string, platform: string): string {
+  private prependContext(text: string, platform: string, timezone?: string): string {
+    const tz = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
     const now = new Date().toLocaleString('en-US', {
       weekday: 'long',
       year: 'numeric',
@@ -269,8 +274,10 @@ export class Router {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
+      timeZone: tz,
     });
-    return `[Current time: ${now}]\n[Source: ${platform}]\n[You are responding in a chat thread. Keep your final text responses succinct and scannable.]\n\n${text}`;
+    const tzLabel = timezone ? ` (${timezone})` : '';
+    return `[Current time: ${now}${tzLabel}]\n[Source: ${platform}]\n[You are responding in a chat thread. Keep your final text responses succinct and scannable.]\n\n${text}`;
   }
 
   /** Augment prompt text with upload info for files that have staging metadata. */
@@ -306,16 +313,16 @@ export class Router {
    * Send a message through the backend and return normalized events.
    * Manages session state transitions and persists backend session ID.
    */
-  async send(channelId: string, threadId: string, text: string, files?: FileAttachment[]): Promise<RouteResult> {
+  async send(channelId: string, threadId: string, text: string, files?: FileAttachment[], timezone?: string): Promise<RouteResult> {
     const release = await this.acquireThreadLock(threadId);
     try {
-      return await this._send(channelId, threadId, text, files);
+      return await this._send(channelId, threadId, text, files, timezone);
     } finally {
       release();
     }
   }
 
-  private async _send(channelId: string, threadId: string, text: string, files?: FileAttachment[]): Promise<RouteResult> {
+  private async _send(channelId: string, threadId: string, text: string, files?: FileAttachment[], timezone?: string): Promise<RouteResult> {
     const resolved = this.resolve(channelId, threadId);
     if (!resolved) {
       throw new Error(`Channel ${channelId} is not connected to a project`);
@@ -342,7 +349,7 @@ export class Router {
     this.store.updateSessionState(session.id, 'running');
 
     // Get or create a backend for this thread (persistent pool)
-    const backend = await this.getOrCreateBackend(threadId, project, channelId);
+    const backend = await this.getOrCreateBackend(threadId, project, channelId, timezone);
 
     // Load accumulated allowed tools from the store (P12.6)
     const accumulatedTools = this.store.getAllowedTools(project.id).map(t => t.tool_pattern);
@@ -351,7 +358,7 @@ export class Router {
     }
 
     // Prepend context (time + source platform) so backend can reason about dates and message origin
-    const timedText = this.prependContext(text, project.platform);
+    const timedText = this.prependContext(text, project.platform, timezone);
 
     // Augment prompt with upload info so backend knows about staged files
     const augmentedText = this.augmentTextWithUploadInfo(timedText, files);
@@ -430,16 +437,16 @@ export class Router {
    * This resumes the backend with the user's response text.
    * When allowedTools is provided, the backend will auto-approve those tools.
    */
-  async respond(channelId: string, threadId: string, text: string, allowedTools?: string[]): Promise<RouteResult> {
+  async respond(channelId: string, threadId: string, text: string, allowedTools?: string[], timezone?: string): Promise<RouteResult> {
     const release = await this.acquireThreadLock(threadId);
     try {
-      return await this._respond(channelId, threadId, text, allowedTools);
+      return await this._respond(channelId, threadId, text, allowedTools, timezone);
     } finally {
       release();
     }
   }
 
-  private async _respond(channelId: string, threadId: string, text: string, allowedTools?: string[]): Promise<RouteResult> {
+  private async _respond(channelId: string, threadId: string, text: string, allowedTools?: string[], timezone?: string): Promise<RouteResult> {
     const resolved = this.resolve(channelId, threadId);
     if (!resolved) {
       throw new Error(`Channel ${channelId} is not connected to a project`);
@@ -455,7 +462,7 @@ export class Router {
     this.store.updateSessionState(session.id, 'running');
 
     // Get or create a backend for this thread (persistent pool)
-    const backend = await this.getOrCreateBackend(threadId, project, channelId);
+    const backend = await this.getOrCreateBackend(threadId, project, channelId, timezone);
 
     // Merge one-shot allowed tools with accumulated tools from the store (P12.6)
     const accumulatedTools = this.store.getAllowedTools(project.id).map(t => t.tool_pattern);
@@ -465,7 +472,7 @@ export class Router {
     }
 
     // Prepend context (time + source platform) so backend can reason about dates and message origin
-    const timedText = this.prependContext(text, project.platform);
+    const timedText = this.prependContext(text, project.platform, timezone);
 
     // Track activity for idle timeout
     this.lastActivity.set(threadId, Date.now());

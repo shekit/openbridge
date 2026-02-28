@@ -14,7 +14,7 @@ import { openTunnel } from './tunnel.js';
 import { startFileBrowser, type FileBrowser } from './file-browser.js';
 import { startPreviewServer } from './preview-server.js';
 import { getUploadsDir } from '../utils.js';
-import { computeNextRun } from '../scheduler.js';
+import { computeNextRun, convertLocalToUtc } from '../scheduler.js';
 
 export interface CallbackHandlerOptions {
   adapters: Map<string, Adapter>;
@@ -169,7 +169,7 @@ export function createCallbackHandler(options: CallbackHandlerOptions): IpcHandl
       return resolvedDest;
     },
 
-    async scheduleSession(channelId, threadId, prompt, originalRequest, cronExpression, scheduledAt, title) {
+    async scheduleSession(channelId, threadId, prompt, originalRequest, cronExpression, scheduledAt, title, timezone) {
       if (!store) {
         throw new Error('Store not available for scheduling');
       }
@@ -178,24 +178,23 @@ export function createCallbackHandler(options: CallbackHandlerOptions): IpcHandl
         throw new Error(`No project connected to channel ${channelId}`);
       }
 
-      // computeNextRun already returns UTC (cron-parser with tz option).
-      // For one-time scheduled_at: Claude provides local time without Z suffix.
-      // new Date() interprets strings without timezone indicator as local time,
-      // and toISOString() converts to UTC — exactly what the scheduler needs.
+      // Use the user's timezone for converting local times to UTC.
+      // Falls back to UTC if no timezone is available (e.g. Discord users).
+      const tz = timezone || 'UTC';
+
       let nextRunAt: string;
       if (cronExpression) {
-        nextRunAt = computeNextRun(cronExpression);
+        nextRunAt = computeNextRun(cronExpression, tz);
       } else {
-        const parsed = new Date(scheduledAt!);
-        if (isNaN(parsed.getTime())) {
-          throw new Error(`Invalid scheduled_at value: ${scheduledAt}`);
+        if (!scheduledAt) {
+          throw new Error('scheduled_at is required for one-time schedules');
         }
-        nextRunAt = parsed.toISOString();
+        nextRunAt = convertLocalToUtc(scheduledAt, tz);
       }
 
       const schedule = store.createSchedule(
         project.id, channelId, prompt, originalRequest,
-        { cronExpression, scheduledAt, nextRunAt, threadId, title },
+        { cronExpression, scheduledAt, nextRunAt, threadId, title, timezone: tz },
       );
       console.log(`[callbacks] created schedule ${schedule.id} for channel ${channelId}`);
 

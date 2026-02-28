@@ -144,18 +144,19 @@ describe('Store', () => {
       expect(table).toBeDefined();
 
       const row = db.prepare('SELECT MAX(version) as v FROM schema_version').get() as { v: number };
-      expect(row.v).toBe(5);
+      expect(row.v).toBe(6);
     });
 
     it('migrations run sequentially on startup', () => {
       const db = (store as any).db;
       const versions = db.prepare('SELECT version FROM schema_version ORDER BY version').all() as Array<{ version: number }>;
-      expect(versions.length).toBe(5);
+      expect(versions.length).toBe(6);
       expect(versions[0].version).toBe(1);
       expect(versions[1].version).toBe(2);
       expect(versions[2].version).toBe(3);
       expect(versions[3].version).toBe(4);
       expect(versions[4].version).toBe(5);
+      expect(versions[5].version).toBe(6);
     });
 
     it('re-running init does not duplicate tables (idempotent)', () => {
@@ -164,9 +165,9 @@ describe('Store', () => {
       store = new Store(dbPath);
 
       const db = (store as any).db;
-      // Version should still be 5
+      // Version should still be 6
       const row = db.prepare('SELECT MAX(version) as v FROM schema_version').get() as { v: number };
-      expect(row.v).toBe(5);
+      expect(row.v).toBe(6);
 
       // Tables should exist exactly once
       const tables = db.prepare(
