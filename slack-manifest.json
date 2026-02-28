@@ -38,7 +38,8 @@
         "files:read",
         "files:write",
         "commands",
-        "reactions:write"
+        "reactions:write",
+        "users:read"
       ]
     }
   },
