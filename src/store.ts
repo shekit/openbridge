@@ -268,6 +268,12 @@ export class Store {
     ).run(backendSessionId, id);
   }
 
+  getSessionsByProjectId(projectId: number): Session[] {
+    return this.db.prepare(
+      'SELECT * FROM sessions WHERE project_id = ? ORDER BY updated_at DESC'
+    ).all(projectId) as Session[];
+  }
+
   deleteSession(id: number): boolean {
     const info = this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
     return info.changes > 0;

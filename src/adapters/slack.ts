@@ -9,7 +9,7 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { App, type LogLevel } from '@slack/bolt';
-import type { Router, RouteResult } from '../router.js';
+import type { Router, RouteResult, SessionStatus } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
 import { splitText, downloadAndStageFile, markdownToSlackMrkdwn, formatToolInput } from '../utils.js';
@@ -351,6 +351,18 @@ export class SlackAdapter {
         } catch (err: any) {
           await this.postError(channelId, threadTs, err.message, client);
         }
+        return;
+      }
+      if (trimmed === 'status') {
+        const status = this.router.getSessionStatus(threadTs);
+        const text = status
+          ? formatSessionStatus(status)
+          : 'No session found for this thread.';
+        await client.chat.postMessage({
+          channel: channelId,
+          thread_ts: threadTs,
+          text,
+        });
         return;
       }
     }
@@ -813,6 +825,7 @@ export class SlackAdapter {
     lines.push('• `/project disconnect` — disconnect this channel');
     lines.push('• `/project backend codex` — switch the AI backend for this project');
     lines.push('• `/project resume` — resume a laptop Claude Code session');
+    lines.push('• `/project status` — show active session status');
     return lines;
   }
 
@@ -1004,6 +1017,21 @@ export class SlackAdapter {
         channel: channelId,
         text: `Backend changed to \`${subArg}\` for this project.`,
       });
+      return;
+    }
+
+    // /project status
+    if (subcommand === 'status') {
+      const projectStatus = this.router.getProjectStatus(channelId);
+      if (!projectStatus) {
+        await client.chat.postMessage({
+          channel: channelId,
+          text: 'No project connected to this channel. Use `/project connect` to set one up.',
+        });
+        return;
+      }
+      const text = formatProjectStatus(projectStatus);
+      await client.chat.postMessage({ channel: channelId, text });
       return;
     }
 
@@ -1811,6 +1839,78 @@ export class SlackAdapter {
       }
     }
   }
+}
+
+/** Format a duration in milliseconds to a human-readable string. */
+function formatDuration(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainSec = seconds % 60;
+  if (minutes < 60) return `${minutes}m ${remainSec}s`;
+  const hours = Math.floor(minutes / 60);
+  const remainMin = minutes % 60;
+  return `${hours}h ${remainMin}m`;
+}
+
+/** State emoji mapping. */
+function stateEmoji(state: string, backendAlive: boolean): string {
+  if (state === 'running' && backendAlive) return '🟢';
+  if (state === 'running' && !backendAlive) return '🟡';
+  if (state === 'waiting_for_input') return '🟠';
+  if (state === 'dead') return '🔴';
+  return '⚪'; // idle
+}
+
+/** Format a single session status for display (used in thread-level "status" command). */
+function formatSessionStatus(status: SessionStatus): string {
+  const emoji = stateEmoji(status.state, status.backendAlive);
+  const lines: string[] = [];
+  lines.push(`${emoji} *Status:* ${status.state}`);
+  if (status.backendAlive) {
+    lines.push('• Backend: alive');
+  } else {
+    lines.push('• Backend: not running');
+  }
+  if (status.lastActivityMs !== null) {
+    lines.push(`• Last activity: ${formatDuration(status.lastActivityMs)} ago`);
+  }
+  return lines.join('\n');
+}
+
+/** Format project-level status showing all sessions (used in channel-level "/project status"). */
+function formatProjectStatus(projectStatus: import('../router.js').ProjectStatus): string {
+  const { project, sessions } = projectStatus;
+  const lines: string[] = [];
+  lines.push(`*📦 Project:* \`${project.project_dir}\``);
+
+  const active = sessions.filter(s => s.state !== 'idle' || s.backendAlive);
+  const idle = sessions.filter(s => s.state === 'idle' && !s.backendAlive);
+
+  if (active.length === 0 && idle.length === 0) {
+    lines.push('No sessions.');
+    return lines.join('\n');
+  }
+
+  if (active.length === 0) {
+    lines.push(`All ${idle.length} session(s) idle.`);
+    return lines.join('\n');
+  }
+
+  for (const s of active) {
+    const emoji = stateEmoji(s.state, s.backendAlive);
+    let detail = `${emoji} Thread \`${s.threadId}\` — *${s.state}*`;
+    if (s.lastActivityMs !== null) {
+      detail += ` (last activity ${formatDuration(s.lastActivityMs)} ago)`;
+    }
+    lines.push(detail);
+  }
+
+  if (idle.length > 0) {
+    lines.push(`\n_+ ${idle.length} idle session(s)_`);
+  }
+
+  return lines.join('\n');
 }
 
 // splitText is imported from ../utils.js

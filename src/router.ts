@@ -23,6 +23,22 @@ export interface RouteResult {
   session: Session;
 }
 
+/** Status info for a single session. */
+export interface SessionStatus {
+  threadId: string;
+  state: string;
+  backendAlive: boolean;
+  lastActivityMs: number | null;
+  durationMs: number | null;
+  updatedAt: string;
+}
+
+/** Status info for a project (may include multiple sessions). */
+export interface ProjectStatus {
+  project: Project;
+  sessions: SessionStatus[];
+}
+
 /** Default timeout for backend.send() in milliseconds (0 = disabled). */
 const DEFAULT_TIMEOUT_MS = 0;
 
@@ -548,6 +564,56 @@ export class Router {
     const updatedSession = this.store.getSessionById(session.id)!;
     console.log(`[router] session ${session.id} reset`);
     return updatedSession;
+  }
+
+  /**
+   * Get status for a single session (thread-level).
+   * Returns null if the thread has no session.
+   */
+  getSessionStatus(threadId: string): SessionStatus | null {
+    const session = this.store.getSessionByThreadId(threadId);
+    if (!session) return null;
+
+    const backend = this.activeBackends.get(threadId);
+    const lastActivity = this.lastActivity.get(threadId) ?? null;
+    const now = Date.now();
+
+    return {
+      threadId: session.thread_id,
+      state: session.state,
+      backendAlive: backend ? backend.isAlive() : false,
+      lastActivityMs: lastActivity ? now - lastActivity : null,
+      durationMs: session.state === 'running' && lastActivity ? now - lastActivity : null,
+      updatedAt: session.updated_at,
+    };
+  }
+
+  /**
+   * Get status for all sessions in a project (channel-level).
+   * Returns null if the channel is not bound to a project.
+   */
+  getProjectStatus(channelId: string): ProjectStatus | null {
+    const project = this.store.getProjectByChannelId(channelId);
+    if (!project) return null;
+
+    const sessions = this.store.getSessionsByProjectId(project.id);
+    const now = Date.now();
+
+    const sessionStatuses: SessionStatus[] = sessions.map((s) => {
+      const backend = this.activeBackends.get(s.thread_id);
+      const lastActivity = this.lastActivity.get(s.thread_id) ?? null;
+
+      return {
+        threadId: s.thread_id,
+        state: s.state,
+        backendAlive: backend ? backend.isAlive() : false,
+        lastActivityMs: lastActivity ? now - lastActivity : null,
+        durationMs: s.state === 'running' && lastActivity ? now - lastActivity : null,
+        updatedAt: s.updated_at,
+      };
+    });
+
+    return { project, sessions: sessionStatuses };
   }
 
   /**

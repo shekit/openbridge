@@ -452,6 +452,79 @@ describe('Router', () => {
     });
   });
 
+  describe('getSessionStatus', () => {
+    it('returns null for unknown thread', () => {
+      const status = router.getSessionStatus('UNKNOWN_THREAD');
+      expect(status).toBeNull();
+    });
+
+    it('returns status for an idle session', async () => {
+      store.createProject('CH_STATUS', '/tmp/status', 'claude');
+      // Send a message to create a session
+      await router.send('CH_STATUS', 'T_STATUS', 'hello');
+      const status = router.getSessionStatus('T_STATUS');
+      expect(status).not.toBeNull();
+      expect(status!.threadId).toBe('T_STATUS');
+      expect(status!.state).toBe('idle');
+    });
+
+    it('returns backendAlive=true for a running backend', async () => {
+      let sendResolve: (value: SendResult) => void;
+      const aliveBackend: Backend = {
+        start: vi.fn(async () => {}),
+        send: vi.fn(() => new Promise<SendResult>((resolve) => { sendResolve = resolve; })),
+        getSessionId: vi.fn(() => null),
+        setSessionId: vi.fn(),
+        setAllowedTools: vi.fn(),
+        interrupt: vi.fn(async () => {}),
+        isAlive: vi.fn(() => true),
+        stop: vi.fn(async () => {}),
+      };
+      const factory: BackendFactory = () => aliveBackend;
+      const r = new Router(store, factory);
+      store.createProject('CH_ALIVE', '/tmp/alive', 'claude');
+
+      const sendPromise = r.send('CH_ALIVE', 'T_ALIVE', 'hello').catch(() => {});
+      await vi.waitFor(() => expect(aliveBackend.send).toHaveBeenCalled());
+
+      const status = r.getSessionStatus('T_ALIVE');
+      expect(status).not.toBeNull();
+      expect(status!.state).toBe('running');
+      expect(status!.backendAlive).toBe(true);
+      expect(status!.lastActivityMs).not.toBeNull();
+
+      // Clean up
+      sendResolve!({ events: [], sessionId: null });
+      await sendPromise;
+    });
+  });
+
+  describe('getProjectStatus', () => {
+    it('returns null for unknown channel', () => {
+      const status = router.getProjectStatus('UNKNOWN_CHANNEL');
+      expect(status).toBeNull();
+    });
+
+    it('returns project with sessions', async () => {
+      store.createProject('CH_PROJ_STATUS', '/tmp/proj-status', 'claude');
+      // Create sessions by sending messages
+      await router.send('CH_PROJ_STATUS', 'T_PS1', 'hello');
+      await router.send('CH_PROJ_STATUS', 'T_PS2', 'world');
+
+      const status = router.getProjectStatus('CH_PROJ_STATUS');
+      expect(status).not.toBeNull();
+      expect(status!.project.channel_id).toBe('CH_PROJ_STATUS');
+      expect(status!.sessions.length).toBe(2);
+    });
+
+    it('returns empty sessions array for project with no sessions', () => {
+      store.createProject('CH_EMPTY', '/tmp/empty', 'claude');
+      const status = router.getProjectStatus('CH_EMPTY');
+      expect(status).not.toBeNull();
+      expect(status!.sessions).toEqual([]);
+    });
+  });
+
   describe('per-thread message queue', () => {
     it('serializes concurrent sends to the same thread', async () => {
       const order: number[] = [];

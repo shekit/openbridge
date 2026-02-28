@@ -1149,6 +1149,66 @@ describe('DiscordAdapter', () => {
     });
   });
 
+  describe('/project status shows session status', () => {
+    it('shows project status from channel level', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_STATUS', '/test/status', 'claude');
+
+      const { interaction, replies } = createMockInteraction({
+        commandName: 'project',
+        subcommand: 'status',
+        channelId: 'C_STATUS',
+        isThread: false,
+      });
+
+      await triggerInteraction(interaction);
+
+      const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
+      expect(text).toContain('/test/status');
+    });
+
+    it('shows session status from thread level', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_STATUS2', '/test/status2', 'claude');
+      // Create a session so there's something to show
+      store.createSession('thread-123', store.getProjectByChannelId('C_STATUS2')!.id);
+
+      const { interaction, replies } = createMockInteraction({
+        commandName: 'project',
+        subcommand: 'status',
+        channelId: 'thread-123',
+        isThread: true,
+        parentId: 'C_STATUS2',
+      });
+
+      await triggerInteraction(interaction);
+
+      const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
+      expect(text).toContain('Status');
+    });
+
+    it('reports no project when channel is unbound', async () => {
+      createAdapter();
+      await adapter.start();
+
+      const { interaction, replies } = createMockInteraction({
+        commandName: 'project',
+        subcommand: 'status',
+        channelId: 'C_UNBOUND',
+        isThread: false,
+      });
+
+      await triggerInteraction(interaction);
+
+      const text = typeof replies[0] === 'string' ? replies[0] : replies[0].content || replies[0];
+      expect(text).toContain('No project connected');
+    });
+  });
+
   describe('P4.13: Discord — /settings command', () => {
     it('displays settings with project info', async () => {
       createAdapter();

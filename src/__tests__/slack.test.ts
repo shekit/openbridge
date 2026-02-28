@@ -911,6 +911,91 @@ describe('SlackAdapter', () => {
     });
   });
 
+  describe('text command: "status" shows session status in thread', () => {
+    it('shows session status when session exists', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_STATUS', '/test/status', 'claude');
+
+      // First send a message to create a session
+      await triggerMessage({
+        channel: 'C_STATUS',
+        text: 'hello',
+        ts: '2000.000001',
+        user: 'U_USER',
+      });
+
+      mockApp.client.chat.postMessage.mockClear();
+
+      // Now type 'status' in the thread
+      await triggerMessage({
+        channel: 'C_STATUS',
+        text: 'status',
+        thread_ts: '2000.000001',
+        ts: '2000.000099',
+        user: 'U_USER',
+      });
+
+      expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining('Status'),
+        })
+      );
+    });
+
+    it('reports no session when thread has no session', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_STATUS2', '/test/status2', 'claude');
+
+      await triggerMessage({
+        channel: 'C_STATUS2',
+        text: 'status',
+        thread_ts: 'UNKNOWN_THREAD',
+        ts: '2000.000199',
+        user: 'U_USER',
+      });
+
+      expect(mockApp.client.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining('No session found'),
+        })
+      );
+    });
+  });
+
+  describe('/project status shows project-level status', () => {
+    it('shows status for a connected project', async () => {
+      createAdapter();
+      await adapter.start();
+
+      store.createProject('C_PS', '/test/proj-status', 'claude');
+
+      await triggerCommand('/project', {
+        channel_id: 'C_PS',
+        text: 'status',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      expect(calls[0][0].text).toContain('/test/proj-status');
+    });
+
+    it('reports no project when channel is unbound', async () => {
+      createAdapter();
+      await adapter.start();
+
+      await triggerCommand('/project', {
+        channel_id: 'C_UNBOUND',
+        text: 'status',
+      });
+
+      const calls = mockApp.client.chat.postMessage.mock.calls;
+      expect(calls[0][0].text).toContain('No project connected');
+    });
+  });
+
   describe('P3.17: /settings displays and modifies bridge configuration', () => {
     it('displays current settings with project info', async () => {
       createAdapter();

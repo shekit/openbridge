@@ -285,6 +285,23 @@ describe('Store', () => {
       store.createSession('T_DUP', projectId);
       expect(() => store.createSession('T_DUP', projectId)).toThrow();
     });
+
+    it('getSessionsByProjectId returns all sessions for a project', () => {
+      store.createSession('T_GP1', projectId);
+      store.createSession('T_GP2', projectId);
+      const sessions = store.getSessionsByProjectId(projectId);
+      expect(sessions.length).toBe(2);
+      const threadIds = sessions.map(s => s.thread_id);
+      expect(threadIds).toContain('T_GP1');
+      expect(threadIds).toContain('T_GP2');
+    });
+
+    it('getSessionsByProjectId returns empty array when no sessions', () => {
+      // Use the existing project but no sessions created for it with these thread IDs
+      const otherProject = store.createProject('OTHER_CH', '/other', 'codex');
+      const sessions = store.getSessionsByProjectId(otherProject.id);
+      expect(sessions.length).toBe(0);
+    });
   });
 
   describe('P2.8: CRUD for settings', () => {

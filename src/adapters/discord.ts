@@ -26,7 +26,7 @@ import {
 } from 'discord.js';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import type { Router, RouteResult } from '../router.js';
+import type { Router, RouteResult, SessionStatus } from '../router.js';
 import type { NormalizedEvent } from '../types/events.js';
 import type { Store } from '../store.js';
 import { splitText, downloadAndStageFile, markdownToDiscord, formatToolInput } from '../utils.js';
@@ -161,6 +161,10 @@ export class DiscordAdapter {
         .addSubcommand((sub) =>
           sub.setName('resume')
             .setDescription('Resume a laptop Claude Code session')
+        )
+        .addSubcommand((sub) =>
+          sub.setName('status')
+            .setDescription('Show active session status for this project')
         ),
       new SlashCommandBuilder()
         .setName('new')
@@ -970,6 +974,31 @@ export class DiscordAdapter {
       return;
     }
 
+    // /project status — progressive filtering: thread → session, channel → all sessions
+    if (subcommand === 'status') {
+      const channel = interaction.channel;
+      const isThread = channel?.isThread?.();
+
+      if (isThread) {
+        // Thread-level: show just this session
+        const threadId = channel.id;
+        const status = this.router.getSessionStatus(threadId);
+        const text = status
+          ? formatSessionStatusDiscord(status)
+          : 'No session found for this thread.';
+        await interaction.reply(text);
+      } else {
+        // Channel-level: show all sessions for this project
+        const projectStatus = this.router.getProjectStatus(channelId);
+        if (!projectStatus) {
+          await interaction.reply('No project connected to this channel. Use `/project connect` to set one up.');
+        } else {
+          await interaction.reply(formatProjectStatusDiscord(projectStatus));
+        }
+      }
+      return;
+    }
+
     await interaction.reply([
       ':warning: Unsupported command. Try one of these:',
       ...this.getProjectCommandLines(),
@@ -990,6 +1019,7 @@ export class DiscordAdapter {
       '- `/project disconnect` — disconnect this channel',
       '- `/project backend name:claude` or `codex` — switch the AI backend',
       '- `/project resume` — resume a laptop Claude Code session',
+      '- `/project status` — show active session status',
     ];
   }
 
@@ -1598,6 +1628,78 @@ export class DiscordAdapter {
       }
     }
   }
+}
+
+/** Format a duration in milliseconds to a human-readable string. */
+function formatDuration(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainSec = seconds % 60;
+  if (minutes < 60) return `${minutes}m ${remainSec}s`;
+  const hours = Math.floor(minutes / 60);
+  const remainMin = minutes % 60;
+  return `${hours}h ${remainMin}m`;
+}
+
+/** State emoji mapping. */
+function stateEmoji(state: string, backendAlive: boolean): string {
+  if (state === 'running' && backendAlive) return '🟢';
+  if (state === 'running' && !backendAlive) return '🟡';
+  if (state === 'waiting_for_input') return '🟠';
+  if (state === 'dead') return '🔴';
+  return '⚪'; // idle
+}
+
+/** Format a single session status for Discord (thread-level). */
+function formatSessionStatusDiscord(status: SessionStatus): string {
+  const emoji = stateEmoji(status.state, status.backendAlive);
+  const lines: string[] = [];
+  lines.push(`${emoji} **Status:** ${status.state}`);
+  if (status.backendAlive) {
+    lines.push('• Backend: alive');
+  } else {
+    lines.push('• Backend: not running');
+  }
+  if (status.lastActivityMs !== null) {
+    lines.push(`• Last activity: ${formatDuration(status.lastActivityMs)} ago`);
+  }
+  return lines.join('\n');
+}
+
+/** Format project-level status for Discord (channel-level). */
+function formatProjectStatusDiscord(projectStatus: import('../router.js').ProjectStatus): string {
+  const { project, sessions } = projectStatus;
+  const lines: string[] = [];
+  lines.push(`**📦 Project:** \`${project.project_dir}\``);
+
+  const active = sessions.filter(s => s.state !== 'idle' || s.backendAlive);
+  const idle = sessions.filter(s => s.state === 'idle' && !s.backendAlive);
+
+  if (active.length === 0 && idle.length === 0) {
+    lines.push('No sessions.');
+    return lines.join('\n');
+  }
+
+  if (active.length === 0) {
+    lines.push(`All ${idle.length} session(s) idle.`);
+    return lines.join('\n');
+  }
+
+  for (const s of active) {
+    const emoji = stateEmoji(s.state, s.backendAlive);
+    let detail = `${emoji} Thread \`${s.threadId}\` — **${s.state}**`;
+    if (s.lastActivityMs !== null) {
+      detail += ` (last activity ${formatDuration(s.lastActivityMs)} ago)`;
+    }
+    lines.push(detail);
+  }
+
+  if (idle.length > 0) {
+    lines.push(`\n*+ ${idle.length} idle session(s)*`);
+  }
+
+  return lines.join('\n');
 }
 
 // splitText is imported from ../utils.js
