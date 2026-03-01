@@ -321,7 +321,8 @@ export function markdownToSlackMrkdwn(text: string): string {
     // Bold: **text** → placeholder to protect from italic pass
     const boldSlots: string[] = [];
     converted = converted.replace(/\*\*\*(.+?)\*\*\*/g, (_m, content) => {
-      boldSlots.push(`_${content}_`);
+      // For URLs, skip italic wrapping — it will also skip bold in the restore step
+      boldSlots.push(/^https?:\/\/\S+$/.test(content) ? content : `_${content}_`);
       return `\x01BOLD${boldSlots.length - 1}\x01`;
     });
     converted = converted.replace(/\*\*(.+?)\*\*/g, (_m, content) => {
@@ -330,10 +331,19 @@ export function markdownToSlackMrkdwn(text: string): string {
     });
 
     // Italic: *text* → _text_ (now safe — bold markers are placeholders)
-    converted = converted.replace(/\*([^*]+?)\*/g, '_$1_');
+    // Skip URLs — wrapping in underscores breaks Slack auto-linking
+    converted = converted.replace(/\*([^*]+?)\*/g, (_m, content) =>
+      /^https?:\/\/\S+$/.test(content) ? content : `_${content}_`
+    );
 
     // Restore bold placeholders as Slack bold *text*
-    converted = converted.replace(/\x01BOLD(\d+)\x01/g, (_m, idx) => `*${boldSlots[parseInt(idx, 10)]}*`);
+    // If the bold content is a URL, skip the bold wrapping — Slack's mrkdwn
+    // parser can't bold raw URLs and the asterisks bleed into the link text.
+    const urlRe = /^https?:\/\/\S+$/;
+    converted = converted.replace(/\x01BOLD(\d+)\x01/g, (_m, idx) => {
+      const content = boldSlots[parseInt(idx, 10)];
+      return urlRe.test(content) ? content : `*${content}*`;
+    });
 
     // Strikethrough: ~~text~~ → ~text~
     converted = converted.replace(/~~(.+?)~~/g, '~$1~');

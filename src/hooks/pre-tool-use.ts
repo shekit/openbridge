@@ -150,6 +150,9 @@ async function main(): Promise<void> {
   }
 
   const toolName = input.tool_name ?? '';
+  const permMode = process.env.OPENBRIDGE_PERMISSION_MODE ?? '(unset)';
+  const rawInput = input.tool_input ?? {};
+  process.stderr.write(`[pre-tool-use] tool=${toolName} permissionMode=${permMode} input=${JSON.stringify(rawInput).slice(0, 200)}\n`);
 
   // 1. Auto-approve our own MCP tools (belt-and-suspenders with --allowedTools)
   if (toolName.startsWith('mcp__openbridge__')) {
@@ -202,6 +205,19 @@ async function main(): Promise<void> {
 
     const toolInput = input.tool_input ?? {};
     const questions = (toolInput as Record<string, unknown>).questions ?? [];
+
+    // Filter out malformed questions — a real question needs at least 2 options
+    // to be meaningful. Single-option "Which? • A" placeholders are suppressed.
+    const firstQ = (questions as Array<Record<string, unknown>>)[0];
+    const options = Array.isArray(firstQ?.options) ? firstQ.options : [];
+    if (!firstQ || options.length < 2) {
+      process.stderr.write(`[pre-tool-use] suppressing AskUserQuestion with ${options.length} option(s)\n`);
+      process.stdout.write(denyOutput(
+        'The question was suppressed because it had fewer than 2 options. Proceed with your best judgment.'
+      ));
+      process.exit(0);
+      return;
+    }
 
     let requestId: string;
     try {
