@@ -35,6 +35,14 @@ export interface BridgeCallbacks {
   scheduleSession(channelId: string, threadId: string, prompt: string, originalRequest: string,
     cronExpression: string | undefined, scheduledAt: string | undefined, title: string | undefined,
     timezone: string | undefined): Promise<{ scheduleId: number }>;
+  /** List active schedules for a channel. */
+  listSchedules(channelId: string): Promise<{ schedules: Array<{
+    id: number; title: string | null; original_request: string;
+    is_recurring: number; cron_expression: string | null;
+    next_run_at: string; timezone: string | null;
+  }> }>;
+  /** Cancel (deactivate) a schedule by ID. */
+  cancelSchedule(channelId: string, scheduleId: number): Promise<{ ok: boolean; error?: string }>;
 }
 
 /**
@@ -335,7 +343,78 @@ export function createMcpServer(
     },
   );
 
-  console.error('[mcp] server created with tools: upload_file, serve_file_browser, preview_server, save_uploaded_file, post_message, schedule_session');
+  // --- list_schedules tool ---
+  server.registerTool(
+    'list_schedules',
+    {
+      description:
+        'List all active scheduled sessions for this channel. ' +
+        'Use this when the user asks to see, show, or list their reminders, schedules, or scheduled tasks. ' +
+        'Returns schedule details including ID, title, type (one-time/recurring), and next run time.',
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        const result = await callbacks.listSchedules(context.channelId);
+        if (result.schedules.length === 0) {
+          return {
+            content: [{ type: 'text', text: 'No active schedules found for this channel.' }],
+          };
+        }
+        const lines = result.schedules.map((s) => {
+          const typeLabel = s.is_recurring ? `Recurring (${s.cron_expression})` : 'One-time';
+          const tz = s.timezone || 'UTC';
+          const nextRun = new Date(s.next_run_at).toLocaleString('en-US', { timeZone: tz });
+          return `- **ID ${s.id}**: "${s.title || s.original_request}" — ${typeLabel}, next: ${nextRun} (${tz})`;
+        });
+        return {
+          content: [{ type: 'text', text: `Active schedules:\n${lines.join('\n')}` }],
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: 'text', text: `Error listing schedules: ${message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // --- cancel_schedule tool ---
+  server.registerTool(
+    'cancel_schedule',
+    {
+      description:
+        'Cancel an active scheduled session by its ID. ' +
+        'Use this when the user asks to cancel, remove, or delete a reminder or scheduled task. ' +
+        'Use list_schedules first to find the schedule ID if needed.',
+      inputSchema: {
+        schedule_id: z.number().describe('The ID of the schedule to cancel (from list_schedules)'),
+      },
+    },
+    async ({ schedule_id }) => {
+      try {
+        const result = await callbacks.cancelSchedule(context.channelId, schedule_id);
+        if (!result.ok) {
+          return {
+            content: [{ type: 'text', text: `Error: ${result.error}` }],
+            isError: true,
+          };
+        }
+        return {
+          content: [{ type: 'text', text: `Schedule ${schedule_id} cancelled successfully.` }],
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: 'text', text: `Error cancelling schedule: ${message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  console.error('[mcp] server created with tools: upload_file, serve_file_browser, preview_server, save_uploaded_file, post_message, schedule_session, list_schedules, cancel_schedule');
   return server;
 }
 

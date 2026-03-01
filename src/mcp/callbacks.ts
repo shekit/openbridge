@@ -205,6 +205,43 @@ export function createCallbackHandler(options: CallbackHandlerOptions): IpcHandl
 
       return { scheduleId: schedule.id };
     },
+
+    async listSchedules(channelId) {
+      if (!store) {
+        throw new Error('Store not available for listing schedules');
+      }
+      const schedules = store.getSchedulesByChannelId(channelId);
+      return {
+        schedules: schedules.map((s) => ({
+          id: s.id,
+          title: s.title,
+          original_request: s.original_request,
+          is_recurring: s.is_recurring,
+          cron_expression: s.cron_expression,
+          next_run_at: s.next_run_at,
+          timezone: s.timezone,
+        })),
+      };
+    },
+
+    async cancelSchedule(channelId, scheduleId) {
+      if (!store) {
+        throw new Error('Store not available for cancelling schedules');
+      }
+      const schedule = store.getScheduleById(scheduleId);
+      if (!schedule) {
+        return { ok: false, error: `Schedule #${scheduleId} not found` };
+      }
+      if (schedule.channel_id !== channelId) {
+        return { ok: false, error: `Schedule #${scheduleId} does not belong to this channel` };
+      }
+      if (!schedule.is_active) {
+        return { ok: false, error: `Schedule #${scheduleId} is already inactive` };
+      }
+      store.deactivateSchedule(scheduleId);
+      console.log(`[callbacks] cancelled schedule ${scheduleId} for channel ${channelId}`);
+      return { ok: true };
+    },
   };
 }
 

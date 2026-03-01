@@ -37,6 +37,10 @@ export interface IpcHandler {
   scheduleSession?(channelId: string, threadId: string, prompt: string, originalRequest: string,
     cronExpression: string | undefined, scheduledAt: string | undefined, title: string | undefined,
     timezone: string | undefined): Promise<{ scheduleId: number }>;
+  /** List active schedules for a channel. */
+  listSchedules?(channelId: string): Promise<{ schedules: any[] }>;
+  /** Cancel (deactivate) a schedule by ID. Validates it belongs to the channel. */
+  cancelSchedule?(channelId: string, scheduleId: number): Promise<{ ok: boolean; error?: string }>;
 }
 
 /** Pending permission request — waiting for user to click Allow/Deny. */
@@ -431,6 +435,32 @@ export function startIpcServer(handler: IpcHandler): Promise<IpcServer> {
           console.log(`[ipc] schedule-session created: ${result.scheduleId}`);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, scheduleId: result.scheduleId }));
+          break;
+        }
+
+        case '/list-schedules': {
+          const { channelId } = data as { channelId: string };
+          if (!handler.listSchedules) {
+            res.writeHead(501, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'listSchedules not implemented' }));
+            break;
+          }
+          const result = await handler.listSchedules(channelId);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, schedules: result.schedules }));
+          break;
+        }
+
+        case '/cancel-schedule': {
+          const { channelId, scheduleId } = data as { channelId: string; scheduleId: number };
+          if (!handler.cancelSchedule) {
+            res.writeHead(501, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'cancelSchedule not implemented' }));
+            break;
+          }
+          const result = await handler.cancelSchedule(channelId, scheduleId);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
           break;
         }
 

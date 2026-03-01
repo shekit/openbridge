@@ -130,6 +130,16 @@ async function main(): Promise<void> {
       });
       return { scheduleId: result.scheduleId as number };
     },
+
+    async listSchedules(chId) {
+      const result = await ipcPost(ipcPort, ipcSecret, '/list-schedules', { channelId: chId });
+      return { schedules: result.schedules as any[] };
+    },
+
+    async cancelSchedule(chId, scheduleId) {
+      const result = await ipcPost(ipcPort, ipcSecret, '/cancel-schedule', { channelId: chId, scheduleId });
+      return { ok: result.ok as boolean, error: result.error as string | undefined };
+    },
   };
 
   console.error('[mcp-entry] starting MCP server for', { channelId, threadId, projectDir, platform, timezone: timezone ?? 'UTC' });
