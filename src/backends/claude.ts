@@ -55,7 +55,7 @@ export function spawnCollect(
     cwd,
     stdio: [stdinData ? 'pipe' : 'ignore', 'pipe', 'pipe'],
     detached: true,
-    ...(env ? { env: { ...process.env, ...env } } : {}),
+    env: (() => { const e = { ...process.env, ...(env || {}) }; delete e.CLAUDECODE; delete e.CLAUDE_CODE_ENTRYPOINT; return e; })(),
   });
 
   // Write stdin data and close
