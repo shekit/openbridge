@@ -82,6 +82,11 @@ export class Router {
   private hookScriptDir?: string;
   /** Per-thread lock to serialize concurrent sends/responds to the same thread. */
   private threadLocks: Map<string, Promise<void>> = new Map();
+
+  /** Check whether a thread currently has an active lock (i.e. a message is being processed). */
+  isThreadBusy(threadId: string): boolean {
+    return this.threadLocks.has(threadId);
+  }
   /** Last activity timestamp per thread for idle timeout cleanup. */
   private lastActivity: Map<string, number> = new Map();
   /** Idle cleanup interval handle. */
@@ -313,9 +318,10 @@ export class Router {
    * Send a message through the backend and return normalized events.
    * Manages session state transitions and persists backend session ID.
    */
-  async send(channelId: string, threadId: string, text: string, files?: FileAttachment[], timezone?: string): Promise<RouteResult> {
+  async send(channelId: string, threadId: string, text: string, files?: FileAttachment[], timezone?: string, onStart?: () => void): Promise<RouteResult> {
     const release = await this.acquireThreadLock(threadId);
     try {
+      if (onStart) onStart();
       return await this._send(channelId, threadId, text, files, timezone);
     } finally {
       release();

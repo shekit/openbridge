@@ -248,6 +248,26 @@ export class DiscordAdapter {
     }
   }
 
+  /** React with ⏳ to indicate a message is queued behind an active session. */
+  private async reactQueued(message: Message): Promise<void> {
+    try {
+      await message.react('⏳');
+    } catch (err: any) {
+      console.error(`[discord] failed to add hourglass reaction: ${err.message}`);
+    }
+  }
+
+  /** Swap ⏳ → 👀 when a queued message starts processing. */
+  private async swapQueuedToSeen(message: Message): Promise<void> {
+    try {
+      const reaction = message.reactions.cache.get('⏳');
+      if (reaction) await reaction.users.remove(this.client.user?.id);
+    } catch {
+      // Non-fatal
+    }
+    await this.reactSeen(message);
+  }
+
   /** Swap 👀 to ✅ to confirm a schedule was created (no text reply needed). */
   private async reactScheduleConfirm(message: Message): Promise<void> {
     await this.removeReactSeen(message);
@@ -323,8 +343,13 @@ export class DiscordAdapter {
       }
     }
 
-    // React with 👀 to acknowledge the user's message
-    await this.reactSeen(message);
+    // React with 👀 (immediate) or ⏳ (queued behind active session)
+    const isQueued = this.router.isThreadBusy(threadId);
+    if (isQueued) {
+      await this.reactQueued(message);
+    } else {
+      await this.reactSeen(message);
+    }
 
     // Handle file attachments (after thread creation so they land in the thread)
     if (message.attachments.size > 0) {
@@ -383,7 +408,10 @@ export class DiscordAdapter {
     clearScheduleFlag(threadId);
     let result: RouteResult;
     try {
-      result = await this.router.send(channelId, threadId, text);
+      result = await this.router.send(channelId, threadId, text, undefined, undefined, isQueued ? () => {
+        console.log(`[discord] thread ${threadId} — dequeued, now processing`);
+        this.swapQueuedToSeen(message);
+      } : undefined);
     } catch (err: any) {
       await this.postError(channelId, threadId, err.message, message);
       return;

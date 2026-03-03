@@ -282,6 +282,25 @@ export class SlackAdapter {
     }
   }
 
+  /** React with ⏳ to indicate a message is queued behind an active session. */
+  private async reactQueued(channelId: string, messageTs: string, client: any): Promise<void> {
+    try {
+      await client.reactions.add({ channel: channelId, timestamp: messageTs, name: 'hourglass_flowing_sand' });
+    } catch (err: any) {
+      console.error(`[slack] failed to add hourglass reaction in ${channelId}: ${err.message}`);
+    }
+  }
+
+  /** Swap ⏳ → 👀 when a queued message starts processing. */
+  private async swapQueuedToSeen(channelId: string, messageTs: string, client: any): Promise<void> {
+    try {
+      await client.reactions.remove({ channel: channelId, timestamp: messageTs, name: 'hourglass_flowing_sand' });
+    } catch {
+      // Non-fatal
+    }
+    await this.reactSeen(channelId, messageTs, client);
+  }
+
   /** Remove the 👀 reaction after the backend has responded. */
   private async removeReactSeen(channelId: string, messageTs: string, client: any): Promise<void> {
     try {
@@ -398,8 +417,13 @@ export class SlackAdapter {
       threadTs = message.ts;
     }
 
-    // React with 👀 to acknowledge the user's message
-    await this.reactSeen(channelId, message.ts, client);
+    // React with 👀 (immediate) or ⏳ (queued behind active session)
+    const isQueued = this.router.isThreadBusy(threadTs);
+    if (isQueued) {
+      await this.reactQueued(channelId, message.ts, client);
+    } else {
+      await this.reactSeen(channelId, message.ts, client);
+    }
 
     // Handle file attachments — route through handleFileUpload
     if (Array.isArray(message.files) && message.files.length > 0) {
@@ -464,7 +488,10 @@ export class SlackAdapter {
     clearScheduleFlag(threadTs);
     let result: RouteResult;
     try {
-      result = await this.router.send(channelId, threadTs, text, undefined, userTz);
+      result = await this.router.send(channelId, threadTs, text, undefined, userTz, isQueued ? () => {
+        console.log(`[slack] thread ${threadTs} — dequeued, now processing`);
+        this.swapQueuedToSeen(channelId, message.ts, client);
+      } : undefined);
     } catch (err: any) {
       await this.postError(channelId, threadTs, err.message, client);
       return;
