@@ -241,6 +241,9 @@ export class ClaudeSdkBackend implements Backend {
 
     // Build env vars for hook scripts
     const env: Record<string, string | undefined> = { ...process.env };
+    // Prevent "nested session" error when OpenBridge spawns Claude Code
+    delete env.CLAUDECODE;
+    delete env.CLAUDE_CODE_ENTRYPOINT;
     if (this.ipc) {
       env.OPENBRIDGE_IPC_PORT = String(this.ipc.port);
       env.OPENBRIDGE_IPC_SECRET = this.ipc.secret;
